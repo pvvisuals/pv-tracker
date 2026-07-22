@@ -122,8 +122,9 @@ function calcAge(birthDateStr) {
 function hourlyRate(emp) {
   const salary = Number(emp.monthly_salary) || 0;
   const days = Number(emp.work_days_per_month) || 0;
-  if (salary <= 0 || days <= 0) return 0;
-  return salary / (days * 8);
+  const dayHours = Number(emp.daily_work_hours) || 8;
+  if (salary <= 0 || days <= 0 || dayHours <= 0) return 0;
+  return salary / (days * dayHours);
 }
 
 function requireFields(body, fields) {
@@ -163,6 +164,7 @@ function adminEmployeeView(e) {
     ...publicEmployee(e),
     monthly_salary: Number(e.monthly_salary) || 0,
     work_days_per_month: Number(e.work_days_per_month) || 0,
+    daily_work_hours: Number(e.daily_work_hours) || 8,
     hourly_rate: +hourlyRate(e).toFixed(2),
   };
 }
@@ -254,7 +256,7 @@ export default {
 // ---------------------------------------------------------------- auth handlers
 
 async function register(db, body) {
-  const missing = requireFields(body, ["name", "phone", "password", "title", "dept", "secret_q", "secret_a"]);
+  const missing = requireFields(body, ["name", "phone", "password", "title", "dept", "secret_q", "secret_a", "birth_date"]);
   if (missing) return err(`Missing field: ${missing}`);
 
   const existing = await db.execute({ sql: "SELECT id FROM employees WHERE phone = ?", args: [body.phone] });
@@ -268,9 +270,9 @@ async function register(db, body) {
   const secretAHash = await makeSecretHash(String(body.secret_a).trim().toLowerCase());
 
   const insert = await db.execute({
-    sql: `INSERT INTO employees (emp_code, name, phone, password_hash, title, dept, secret_q, secret_a, role, casual_balance, annual_balance)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
-    args: [empCode, body.name, body.phone, passwordHash, body.title, body.dept, body.secret_q, secretAHash,
+    sql: `INSERT INTO employees (emp_code, name, phone, password_hash, title, dept, secret_q, secret_a, birth_date, role, casual_balance, annual_balance)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+    args: [empCode, body.name, body.phone, passwordHash, body.title, body.dept, body.secret_q, secretAHash, body.birth_date,
            isFirst ? "admin" : "employee", CASUAL_YEARLY, ANNUAL_YEARLY],
   });
 
@@ -630,6 +632,9 @@ async function monthlyReport(db, employeeId, monthStr) {
   const emp = empRes.rows[0];
   if (!emp) return err("Employee not found", 404);
 
+  const dayHours = Number(emp.daily_work_hours) || 8;
+  const daySeconds = dayHours * 3600;
+
   const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDayNum = daysInMonth(year, month);
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
@@ -728,18 +733,18 @@ async function monthlyReport(db, employeeId, monthStr) {
           actual_seconds: actualSeconds, counted_seconds: countedSeconds,
         });
       } else {
-        totalCountedSeconds += WORK_DAY_SECONDS;
-        totalHolidayOffSeconds += WORK_DAY_SECONDS;
-        days.push({ date: dateStr, status: "official_holiday_off", holiday_label: holiday.label, counted_seconds: WORK_DAY_SECONDS });
+        totalCountedSeconds += daySeconds;
+        totalHolidayOffSeconds += daySeconds;
+        days.push({ date: dateStr, status: "official_holiday_off", holiday_label: holiday.label, counted_seconds: daySeconds });
       }
       continue;
     }
 
     const leave = leaveByDate[dateStr];
     if (leave) {
-      totalCountedSeconds += WORK_DAY_SECONDS;
+      totalCountedSeconds += daySeconds;
       if (leave.type === "casual") leaveDaysCasual++; else leaveDaysAnnual++;
-      days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: WORK_DAY_SECONDS });
+      days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds });
       continue;
     }
 
@@ -755,9 +760,9 @@ async function monthlyReport(db, employeeId, monthStr) {
     let countedSeconds, overtimeSeconds = 0;
     if (overtimeApproved) {
       countedSeconds = actualSeconds;
-      overtimeSeconds = Math.max(0, actualSeconds - WORK_DAY_SECONDS);
+      overtimeSeconds = Math.max(0, actualSeconds - daySeconds);
     } else {
-      countedSeconds = Math.min(actualSeconds, WORK_DAY_SECONDS);
+      countedSeconds = Math.min(actualSeconds, daySeconds);
     }
 
     totalActualSeconds += actualSeconds;
@@ -857,6 +862,11 @@ async function handleAdmin(db, admin, path, method, body, url) {
     return await decideOvertime(db, admin, Number(otDecideMatch[1]), body);
   }
 
+  // ---------- unified approved/rejected history across all request types ----------
+  if (path === "/api/admin/requests" && method === "GET") {
+    return await adminAllRequests(db, url.searchParams.get("status") || "approved");
+  }
+
   // ---------- financial requests ----------
   if (path === "/api/admin/financial-requests" && method === "GET") {
     return await adminListRequests(db, "financial_requests", url.searchParams.get("status") || "pending");
@@ -915,6 +925,7 @@ async function handleAdmin(db, admin, path, method, body, url) {
     const args = [];
     if (body.monthly_salary !== undefined) { fields.push("monthly_salary = ?"); args.push(Number(body.monthly_salary) || 0); }
     if (body.work_days_per_month !== undefined) { fields.push("work_days_per_month = ?"); args.push(Number(body.work_days_per_month) || 0); }
+    if (body.daily_work_hours !== undefined) { fields.push("daily_work_hours = ?"); args.push(Number(body.daily_work_hours) || 8); }
     if (body.birth_date !== undefined) { fields.push("birth_date = ?"); args.push(body.birth_date || null); }
     if (!fields.length) return err("مفيش بيانات للتحديث");
     args.push(empId);
@@ -1028,4 +1039,43 @@ async function decideSimple(db, admin, table, requestId, body) {
     args: [body.action === "approve" ? "approved" : "rejected", admin.id, requestId],
   });
   return json({ ok: true });
+}
+
+const REQUEST_KIND_META = [
+  { table: "leave_requests", kind: "leave", detail: (r) => "Leave (" + (r.type === "casual" ? "Casual / عارضة" : "Annual / اعتيادية") + ")" },
+  { table: "overtime_requests", kind: "overtime", detail: () => "Overtime / اوفر تايم" },
+  { table: "financial_requests", kind: "financial", detail: (r) => "EGP " + r.amount_egp + " / مستحقات مالية" },
+  { table: "offclock_requests", kind: "offclock", detail: (r) => r.hours + "h Off-clock / ساعات خارج البصمة" },
+  { table: "permission_requests", kind: "permission", detail: (r) => r.hours + "h Permission / اذن انصراف" },
+];
+
+async function adminAllRequests(db, status) {
+  const results = [];
+  for (const meta of REQUEST_KIND_META) {
+    const res = await db.execute({
+      sql: `SELECT r.*, e.name as employee_name, e.emp_code, a.name as decided_by_name
+            FROM ${meta.table} r
+            JOIN employees e ON e.id = r.employee_id
+            LEFT JOIN employees a ON a.id = r.decided_by
+            WHERE r.status = ?`,
+      args: [status],
+    });
+    for (const row of res.rows) {
+      results.push({
+        id: row.id,
+        kind: meta.kind,
+        employee_name: row.employee_name,
+        emp_code: row.emp_code,
+        date: row.date || (row.requested_at ? row.requested_at.slice(0, 10) : null),
+        detail: meta.detail(row),
+        reason: row.reason || row.note || null,
+        status: row.status,
+        requested_at: row.requested_at,
+        decided_at: row.decided_at,
+        decided_by_name: row.decided_by_name || null,
+      });
+    }
+  }
+  results.sort((a, b) => String(b.decided_at || b.requested_at || "").localeCompare(String(a.decided_at || a.requested_at || "")));
+  return json({ requests: results });
 }
