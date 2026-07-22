@@ -6,7 +6,7 @@
 <title>PV Visual Studio</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600&family=Cairo:wght@400;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#000;--card:#111;--border:#2a2a2a;--border2:#1a1a1a;--text:#fff;--muted:#666;--muted2:#3a3a3a;}
+:root{--bg:#000;--card:#111;--border:#3a3a3a;--border2:#2a2a2a;--text:#fff;--muted:#a8a8a8;--muted2:#7a7a7a;}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-height:100vh;overflow-x:hidden;}
 #splash{position:fixed;inset:0;z-index:1000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;}
@@ -16,8 +16,8 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-
 .sg{width:100%;height:100%;object-fit:contain;mix-blend-mode:screen;}
 .splash-line{width:1px;height:36px;background:linear-gradient(to bottom,transparent,#333,transparent);margin:12px auto;animation:fadeUp 0.5s 1.4s ease both;}
 .splash-bottom{text-align:center;animation:fadeUp 0.5s 1.5s ease both;}
-.splash-title{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:10px;color:#fff;margin-bottom:5px;}
-.splash-sub{font-family:'Cairo',sans-serif;font-size:11px;color:#444;letter-spacing:3px;}
+.splash-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:10px;color:#fff;margin-bottom:5px;}
+.splash-sub{font-family:'Cairo',sans-serif;font-size:15px;color:#444;letter-spacing:3px;}
 .splash-bar{width:140px;height:1px;background:#1a1a1a;margin:18px auto 0;overflow:hidden;animation:fadeUp 0.5s 1.7s ease both;}
 .splash-bar-fill{height:100%;background:#fff;animation:fillBar 1.8s 1.8s ease both;width:0;}
 @keyframes fillBar{to{width:100%;}}
@@ -28,23 +28,23 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-
 @keyframes cardIn{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:none;}}
 .card-logo{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--border);}
 .card-logo img{height:28px;object-fit:contain;}
-.card-logo-text{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:4px;color:var(--muted);}
-.card-title{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:3px;margin-bottom:3px;}
-.card-sub{font-family:'Cairo',sans-serif;font-size:12px;color:var(--muted);margin-bottom:24px;}
+.card-logo-text{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:4px;color:var(--muted);}
+.card-title{font-family:'Bebas Neue',sans-serif;font-size:36px;letter-spacing:3px;margin-bottom:3px;}
+.card-sub{font-family:'Cairo',sans-serif;font-size:16px;color:var(--muted);margin-bottom:24px;}
 .fg{margin-bottom:12px;}
-.fl{font-size:10px;font-weight:600;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between;}
-.fla{font-family:'Cairo',sans-serif;font-size:10px;color:var(--muted2);}
-input,select,textarea{width:100%;background:#000;border:1px solid var(--border);padding:11px 14px;color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;transition:border-color 0.2s;outline:none;}
+.fl{font-size:14px;font-weight:600;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between;}
+.fla{font-family:'Cairo',sans-serif;font-size:14px;color:var(--muted2);}
+input,select,textarea{width:100%;background:#000;border:1px solid var(--border);padding:11px 14px;color:var(--text);font-family:'Outfit',sans-serif;font-size:18px;transition:border-color 0.2s;outline:none;}
 input:focus,select:focus,textarea:focus{border-color:#fff;}
 input::placeholder{color:var(--muted2);}
 select option{background:#111;}
-.btn-p{width:100%;padding:13px;background:#fff;border:none;color:#000;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:3px;cursor:pointer;transition:opacity 0.2s;margin-top:8px;}
+.btn-p{width:100%;padding:13px;background:#fff;border:none;color:#000;font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:3px;cursor:pointer;transition:opacity 0.2s;margin-top:8px;}
 .btn-p:hover{opacity:0.85;}
-.btn-s{width:100%;padding:11px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;transition:all 0.2s;margin-top:6px;}
+.btn-s{width:100%;padding:11px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Outfit',sans-serif;font-size:17px;cursor:pointer;transition:all 0.2s;margin-top:6px;}
 .btn-s:hover{border-color:rgba(255,255,255,0.2);color:#fff;}
-.msg{font-size:11px;margin-top:8px;display:none;font-family:'Cairo',sans-serif;}
+.msg{font-size:15px;margin-top:8px;display:none;font-family:'Cairo',sans-serif;}
 .msg.error{color:#ff4444;}.msg.success{color:#44ff88;}.msg.show{display:block;}
-.link-btn{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline;padding:0;font-family:'Outfit',sans-serif;}
+.link-btn{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;text-decoration:underline;padding:0;font-family:'Outfit',sans-serif;}
 .link-btn:hover{color:#fff;}
 #app{display:none;min-height:100vh;flex-direction:column;}
 #app.active{display:flex;}
@@ -52,104 +52,104 @@ select option{background:#111;}
 .header-left{display:flex;align-items:center;gap:14px;}
 .header-left img{height:22px;object-fit:contain;}
 .hd{width:1px;height:18px;background:var(--border);}
-.ht{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:4px;color:var(--muted);}
+.ht{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:4px;color:var(--muted);}
 .header-right{display:flex;align-items:center;gap:16px;}
-.live-time{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;}
+.live-time{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;}
 .user-badge{display:flex;align-items:center;gap:8px;}
-.user-avatar{width:32px;height:32px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#000;overflow:hidden;cursor:pointer;}
+.user-avatar{width:32px;height:32px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#000;overflow:hidden;cursor:pointer;}
 .user-avatar img{width:100%;height:100%;object-fit:cover;}
-.user-name{font-size:12px;color:var(--muted);}
+.user-name{font-size:16px;color:var(--muted);}
 .tabs{display:flex;background:#000;border-bottom:1px solid var(--border);padding:0 28px;overflow-x:auto;}
 .tabs::-webkit-scrollbar{display:none;}
-.tab{padding:13px 20px;font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-bottom:1px solid transparent;transition:color 0.2s,border-color 0.2s;white-space:nowrap;flex-shrink:0;}
+.tab{padding:13px 20px;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-bottom:1px solid transparent;transition:color 0.2s,border-color 0.2s;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--muted);}.tab.active{color:#fff;border-bottom-color:#fff;}
 .tab-content{display:none;padding:32px 28px;max-width:840px;margin:0 auto;width:100%;}
 .tab-content.active{display:block;}
 .sec-head{margin-bottom:24px;}
-.sec-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:3px;margin-bottom:2px;}
-.sec-sub{font-family:'Cairo',sans-serif;font-size:11px;color:var(--muted);}
+.sec-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:3px;margin-bottom:2px;}
+.sec-sub{font-family:'Cairo',sans-serif;font-size:15px;color:var(--muted);}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:20px;}
 @media(max-width:560px){.info-grid{grid-template-columns:1fr;}}
 .info-card{background:var(--card);padding:20px 22px;}
-.info-card-label{font-size:9px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
-.info-card-value{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;}
-.status-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--border);font-size:9px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:18px;color:var(--muted);}
+.info-card-label{font-size:15px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text);margin-bottom:8px;}
+.info-card-value{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1px;}
+.status-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--border);font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:18px;color:var(--muted);}
 .status-pill.in{border-color:rgba(255,255,255,0.3);color:#fff;}
 .status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
 .status-dot.pulse{animation:pulse 1.5s infinite;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.2;}}
 .action-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
-.btn{flex:1;min-width:130px;padding:12px 16px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;}
+.btn{flex:1;min-width:130px;padding:12px 16px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:8px;}
 .btn-in{border-color:rgba(255,255,255,0.2);color:#fff;}.btn-in:hover{background:#fff;color:#000;}
 .btn-out:hover:not(:disabled){border-color:rgba(255,255,255,0.15);color:#ccc;}
 .btn:disabled{opacity:0.2;cursor:not-allowed;}
 .log-wrap{border:1px solid var(--border);}
-.log-header{padding:11px 18px;background:var(--card);border-bottom:1px solid var(--border);font-size:9px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;}
-.log-entry{padding:13px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border2);font-size:13px;}
+.log-header{padding:14px 18px;background:var(--card);border-bottom:1px solid var(--border);font-size:17px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);display:flex;justify-content:space-between;}
+.log-entry{padding:13px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border2);font-size:17px;}
 .log-entry:last-child{border-bottom:none;}
-.log-type{font-size:8px;font-weight:700;letter-spacing:1.5px;border:1px solid var(--border);padding:3px 8px;text-transform:uppercase;min-width:72px;text-align:center;color:var(--muted);}
+.log-type{font-size:12px;font-weight:700;letter-spacing:1.5px;border:1px solid var(--border);padding:3px 8px;text-transform:uppercase;min-width:72px;text-align:center;color:var(--muted);}
 .log-type.in{border-color:rgba(255,255,255,0.2);color:#fff;}
-.log-time{font-family:'Bebas Neue',sans-serif;font-size:17px;color:#fff;letter-spacing:1px;}
-.log-note{color:var(--muted);font-size:11px;flex:1;}
-.empty-log{padding:28px;text-align:center;color:var(--muted2);font-size:12px;letter-spacing:1px;}
+.log-time{font-family:'Bebas Neue',sans-serif;font-size:21px;color:#fff;letter-spacing:1px;}
+.log-note{color:var(--muted);font-size:15px;flex:1;}
+.empty-log{padding:28px;text-align:center;color:var(--muted2);font-size:16px;letter-spacing:1px;}
 .timer-card{background:var(--card);border:1px solid var(--border);padding:44px 36px;text-align:center;margin-bottom:18px;position:relative;overflow:hidden;}
 .timer-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.1),transparent);}
-.timer-label{font-size:9px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
-.timer-label-ar{font-family:'Cairo',sans-serif;font-size:11px;color:var(--muted2);margin-bottom:16px;}
+.timer-label{font-size:13px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+.timer-label-ar{font-family:'Cairo',sans-serif;font-size:15px;color:var(--muted2);margin-bottom:16px;}
 .timer-display{font-family:'Bebas Neue',sans-serif;font-size:86px;letter-spacing:4px;color:var(--muted2);line-height:1;margin:8px 0 24px;transition:color 0.4s;}
 .timer-display.running{color:#fff;}
 .timer-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-.btn-ts{padding:13px 48px;background:#fff;color:#000;border:none;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:2px;cursor:pointer;transition:opacity 0.2s;}
+.btn-ts{padding:13px 48px;background:#fff;color:#000;border:none;font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:2px;cursor:pointer;transition:opacity 0.2s;}
 .btn-ts:hover{opacity:0.85;}
-.btn-te{padding:13px 48px;background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.25);font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:2px;cursor:pointer;}
+.btn-te{padding:13px 48px;background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.25);font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:2px;cursor:pointer;}
 .btn-te:hover{background:rgba(255,255,255,0.05);}
 .task-form{background:var(--card);border:1px solid var(--border);padding:22px;margin-bottom:18px;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
 @media(max-width:560px){.form-row{grid-template-columns:1fr;}}
 textarea{resize:vertical;min-height:76px;}
-.btn-add{padding:11px 26px;background:#fff;border:none;color:#000;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;cursor:pointer;transition:opacity 0.2s;}
+.btn-add{padding:11px 26px;background:#fff;border:none;color:#000;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;cursor:pointer;transition:opacity 0.2s;}
 .btn-add:hover{opacity:0.85;}
 .tasks-list{display:flex;flex-direction:column;gap:1px;background:var(--border);border:1px solid var(--border);}
 .task-card{background:var(--card);padding:17px 18px;display:flex;align-items:flex-start;gap:14px;}
 .task-card.active-task{border-left:2px solid #fff;}
-.task-num{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--muted2);min-width:26px;line-height:1.3;}
+.task-num{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--muted2);min-width:26px;line-height:1.3;}
 .task-info{flex:1;}
-.task-project{font-size:8px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
-.task-name{font-size:14px;font-weight:500;margin-bottom:3px;}
-.task-desc{font-size:12px;color:var(--muted);margin-bottom:5px;line-height:1.5;}
-.task-meta{font-size:9px;color:var(--muted2);letter-spacing:1px;margin-bottom:4px;}
-.task-dur{font-size:11px;color:#fff;letter-spacing:1px;font-family:'Bebas Neue',sans-serif;margin-bottom:4px;}
-.btn-end-task{padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:1px;cursor:pointer;transition:all 0.2s;margin-top:6px;}
+.task-project{font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+.task-name{font-size:18px;font-weight:500;margin-bottom:3px;}
+.task-desc{font-size:16px;color:var(--muted);margin-bottom:5px;line-height:1.5;}
+.task-meta{font-size:13px;color:var(--muted2);letter-spacing:1px;margin-bottom:4px;}
+.task-dur{font-size:15px;color:#fff;letter-spacing:1px;font-family:'Bebas Neue',sans-serif;margin-bottom:4px;}
+.btn-end-task{padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;transition:all 0.2s;margin-top:6px;}
 .btn-end-task:hover{border-color:#fff;color:#fff;}
 .settings-section{margin-bottom:24px;}
-.settings-label{font-size:9px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.settings-label{font-size:17px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);margin-bottom:12px;}
 .avatar-upload{text-align:center;margin-bottom:20px;}
-.avatar-big{width:80px;height:80px;background:var(--card);border:1px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--muted);margin:0 auto 10px;overflow:hidden;cursor:pointer;}
+.avatar-big{width:80px;height:80px;background:var(--card);border:1px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--muted);margin:0 auto 10px;overflow:hidden;cursor:pointer;}
 .avatar-big img{width:100%;height:100%;object-fit:cover;}
-.avatar-hint{font-size:10px;color:var(--muted);letter-spacing:1px;}
-.profile-row{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border2);font-size:12px;}
+.avatar-hint{font-size:14px;color:var(--muted);letter-spacing:1px;}
+.profile-row{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border2);font-size:16px;}
 .profile-row:last-child{border-bottom:none;}
-.profile-key{color:var(--muted);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;}
+.profile-key{color:var(--muted);font-size:13px;letter-spacing:1.5px;text-transform:uppercase;}
 .profile-val{color:#fff;font-weight:500;}
-.btn-logout{margin-top:14px;padding:9px 20px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:1.5px;cursor:pointer;transition:all 0.2s;}
+.btn-logout{margin-top:14px;padding:9px 20px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1.5px;cursor:pointer;transition:all 0.2s;}
 .btn-logout:hover{border-color:rgba(255,255,255,0.25);color:#fff;}
 .modal-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.88);display:none;align-items:center;justify-content:center;padding:20px;}
 .modal-overlay.active{display:flex;}
 .modal{background:var(--card);border:1px solid var(--border);padding:28px;max-width:400px;width:100%;animation:cardIn 0.2s ease;}
-.modal h3{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;margin-bottom:8px;}
-.modal p{color:var(--muted);font-size:12px;margin-bottom:22px;line-height:1.7;}
+.modal h3{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;margin-bottom:8px;}
+.modal p{color:var(--muted);font-size:16px;margin-bottom:22px;line-height:1.7;}
 .modal-actions{display:flex;gap:10px;}
-.btn-mc{flex:1;padding:11px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer;transition:all 0.2s;}
+.btn-mc{flex:1;padding:11px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Outfit',sans-serif;font-size:16px;cursor:pointer;transition:all 0.2s;}
 .btn-mc:hover{border-color:rgba(255,255,255,0.2);color:#fff;}
-.btn-mo{flex:1;padding:11px;background:#fff;border:none;color:#000;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;cursor:pointer;transition:opacity 0.2s;}
+.btn-mo{flex:1;padding:11px;background:#fff;border:none;color:#000;font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1.5px;cursor:pointer;transition:opacity 0.2s;}
 .btn-mo:hover{opacity:0.85;}
-.toast{position:fixed;bottom:22px;right:22px;z-index:99999;background:#fff;color:#000;padding:11px 18px;display:none;align-items:center;gap:9px;font-size:12px;font-weight:600;box-shadow:0 8px 36px rgba(0,0,0,0.5);max-width:280px;}
+.toast{position:fixed;bottom:22px;right:22px;z-index:99999;background:#fff;color:#000;padding:11px 18px;display:none;align-items:center;gap:9px;font-size:16px;font-weight:600;box-shadow:0 8px 36px rgba(0,0,0,0.5);max-width:280px;}
 .toast.show{display:flex;}.toast.hide{animation:toastOut 0.2s ease forwards;}
 @keyframes toastOut{to{opacity:0;transform:translateY(14px);}}
 .loading-overlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;}
 .loading-overlay.active{display:flex;}
-.loading-spinner{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:4px;color:#fff;animation:pulse 1s infinite;}
-.sync-status{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--muted2);margin-top:18px;justify-content:center;letter-spacing:1px;}
+.loading-spinner{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:4px;color:#fff;animation:pulse 1s infinite;}
+.sync-status{display:flex;align-items:center;gap:7px;font-size:14px;color:var(--muted2);margin-top:18px;justify-content:center;letter-spacing:1px;}
 .sync-dot{width:5px;height:5px;border-radius:50%;background:var(--muted2);}
 .sync-dot.ok{background:#fff;}.sync-dot.syncing{background:var(--muted);animation:pulse 1s infinite;}
 </style>
@@ -238,6 +238,11 @@ textarea{resize:vertical;min-height:76px;}
 </select>
 </div>
 <div class="fg">
+<div class="fl">Birth Date <span class="fla">تاريخ الميلاد</span>
+</div>
+<input type="date" id="reg-birthdate"/>
+</div>
+<div class="fg">
 <div class="fl">Secret Question <span class="fla">سؤال الاسترجاع</span>
 </div>
 <select id="reg-sq">
@@ -294,7 +299,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="msg error" id="re3">
 </div>
 <div class="msg success" id="recOK">تم تغيير الباسورد!</div>
-<button class="btn-p" onclick="recoverStep3()">SAVE</button>
+<button class="btn-p" onclick="recoverStep3()">SAVE · حفظ</button>
 </div>
 <button class="btn-s" onclick="showLogin()">رجوع</button>
 </div>
@@ -316,12 +321,12 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </header>
 <nav class="tabs">
-<div class="tab active" onclick="switchTab('signin')" id="tab-signin">ATTENDANCE</div>
-<div class="tab" onclick="switchTab('break')" id="tab-break">BREAK</div>
-<div class="tab" onclick="switchTab('tasks')" id="tab-tasks">TASKS</div>
-<div class="tab" onclick="switchTab('requests')" id="tab-requests">LEAVE / OT</div>
-<div class="tab" onclick="switchTab('admin')" id="tab-admin" style="display:none">ADMIN</div>
-<div class="tab" onclick="switchTab('settings')" id="tab-settings">SETTINGS</div>
+<div class="tab active" onclick="switchTab('signin')" id="tab-signin">ATTENDANCE · الحضور</div>
+<div class="tab" onclick="switchTab('break')" id="tab-break">BREAK · الاستراحة</div>
+<div class="tab" onclick="switchTab('tasks')" id="tab-tasks">TASKS · المهام</div>
+<div class="tab" onclick="switchTab('requests')" id="tab-requests">REQUESTS · الطلبات</div>
+<div class="tab" onclick="switchTab('admin')" id="tab-admin" style="display:none">ADMIN · الإدارة</div>
+<div class="tab" onclick="switchTab('settings')" id="tab-settings">SETTINGS · الإعدادات</div>
 </nav>
 <div class="tab-content active" id="content-signin">
 <div class="sec-head">
@@ -344,12 +349,12 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="action-row">
-<button class="btn btn-in" id="btnSignIn" onclick="doSignIn()">SIGN IN</button>
-<button class="btn btn-out" id="btnSignOut" onclick="doSignOut()" disabled>SIGN OUT</button>
+<button class="btn btn-in" id="btnSignIn" onclick="doSignIn()">SIGN IN · حضور</button>
+<button class="btn btn-out" id="btnSignOut" onclick="doSignOut()" disabled>SIGN OUT · انصراف</button>
 </div>
 <div class="log-wrap">
 <div class="log-header">
-<span>TODAY LOG</span>
+<span>TODAY LOG · سجل اليوم</span>
 <span id="logDate">-</span>
 </div>
 <div id="signLog">
@@ -367,8 +372,8 @@ textarea{resize:vertical;min-height:76px;}
 <div class="timer-label-ar">مدة الاستراحة الحالية</div>
 <div class="timer-display" id="timerDisplay">00:00:00</div>
 <div class="timer-actions">
-<button class="btn-ts" id="btnBreakStart" onclick="startBreak()">START BREAK</button>
-<button class="btn-te" id="btnBreakStop" onclick="stopBreak()" style="display:none">END BREAK</button>
+<button class="btn-ts" id="btnBreakStart" onclick="startBreak()">START BREAK · بدء الاستراحة</button>
+<button class="btn-te" id="btnBreakStop" onclick="stopBreak()" style="display:none">END BREAK · إنهاء الاستراحة</button>
 </div>
 <div class="sync-status">
 <div class="sync-dot" id="syncDot">
@@ -378,7 +383,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="log-wrap">
 <div class="log-header">
-<span>BREAK HISTORY</span>
+<span>BREAK HISTORY · سجل الاستراحات</span>
 <span id="totalBreak">Total: 00:00:00</span>
 </div>
 <div id="breakLog">
@@ -407,7 +412,7 @@ textarea{resize:vertical;min-height:76px;}
 <textarea id="taskDesc" placeholder="Details...">
 </textarea>
 </div>
-<button class="btn-add" onclick="addTask()">+ START TASK</button>
+<button class="btn-add" onclick="addTask()">+ START TASK · بدء مهمة</button>
 </div>
 <div class="tasks-list" id="tasksList">
 <div class="task-card">
@@ -417,8 +422,8 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="tab-content" id="content-requests">
 <div class="sec-head">
-<div class="sec-title">LEAVE / OT</div>
-<div class="sec-sub">طلبات الاجازة والأوفر تايم — بتحتاج موافقة الأدمن</div>
+<div class="sec-title">REQUESTS</div>
+<div class="sec-sub">الطلبات — كل طلباتك بتحتاج موافقة الأدمن / All your requests need admin approval</div>
 </div>
 <div class="info-grid">
 <div class="info-card">
@@ -449,7 +454,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="leaveReason" placeholder="اكتب السبب..."/>
 </div>
-<button class="btn-add" onclick="submitLeaveRequest()">+ REQUEST LEAVE</button>
+<button class="btn-add" onclick="submitLeaveRequest()">+ REQUEST LEAVE · طلب إجازة</button>
 </div>
 <div class="task-form">
 <div class="settings-label">طلب أوفر تايم مدفوع</div>
@@ -463,7 +468,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="otReason" placeholder="اكتب السبب..."/>
 </div>
-<button class="btn-add" onclick="submitOvertimeRequest()">+ REQUEST OVERTIME</button>
+<button class="btn-add" onclick="submitOvertimeRequest()">+ REQUEST OVERTIME · طلب أوفر تايم</button>
 </div>
 <div class="task-form">
 <div class="settings-label">طلب مستحقات مالية</div>
@@ -477,7 +482,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="finReason" placeholder="اكتب السبب..."/>
 </div>
-<button class="btn-add" onclick="submitFinancialRequest()">+ REQUEST PAYMENT</button>
+<button class="btn-add" onclick="submitFinancialRequest()">+ REQUEST PAYMENT · طلب مستحقات</button>
 </div>
 <div class="task-form">
 <div class="settings-label">طلب ساعات خارج البصمة</div>
@@ -495,7 +500,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="offReason" placeholder="اكتب السبب..."/>
 </div>
-<button class="btn-add" onclick="submitOffclockRequest()">+ REQUEST HOURS</button>
+<button class="btn-add" onclick="submitOffclockRequest()">+ REQUEST HOURS · طلب ساعات</button>
 </div>
 <div class="task-form">
 <div class="settings-label">طلب إذن انصراف <span class="fla">(رصيد ساعتين بالشهر)</span></div>
@@ -518,30 +523,30 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="permReason" placeholder="اكتب السبب..."/>
 </div>
-<button class="btn-add" onclick="submitPermissionRequest()">+ REQUEST PERMISSION</button>
+<button class="btn-add" onclick="submitPermissionRequest()">+ REQUEST PERMISSION · طلب إذن</button>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>OFFICIAL HOLIDAYS THIS MONTH</span></div>
+<div class="log-header"><span>OFFICIAL HOLIDAYS THIS MONTH · الإجازات الرسمية هذا الشهر</span></div>
 <div id="officialHolidaysList"><div class="empty-log">No holidays set</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>MY LEAVE REQUESTS</span></div>
+<div class="log-header"><span>MY LEAVE REQUESTS · طلبات الإجازة</span></div>
 <div id="myLeaveList"><div class="empty-log">No requests yet</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>MY OVERTIME REQUESTS</span></div>
+<div class="log-header"><span>MY OVERTIME REQUESTS · طلبات الأوفر تايم</span></div>
 <div id="myOTList"><div class="empty-log">No requests yet</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>MY FINANCIAL REQUESTS</span></div>
+<div class="log-header"><span>MY FINANCIAL REQUESTS · طلبات المستحقات المالية</span></div>
 <div id="myFinList"><div class="empty-log">No requests yet</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>MY OFF-CLOCK HOUR REQUESTS</span></div>
+<div class="log-header"><span>MY OFF-CLOCK HOUR REQUESTS · طلبات ساعات خارج البصمة</span></div>
 <div id="myOffList"><div class="empty-log">No requests yet</div></div>
 </div>
 <div class="log-wrap">
-<div class="log-header"><span>MY PERMISSION REQUESTS</span></div>
+<div class="log-header"><span>MY PERMISSION REQUESTS · طلبات إذن الانصراف</span></div>
 <div id="myPermList"><div class="empty-log">No requests yet</div></div>
 </div>
 </div>
@@ -551,24 +556,32 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-sub">مراجعة الطلبات وتقارير الموظفين</div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING LEAVE REQUESTS</span></div>
+<div class="log-header"><span>PENDING LEAVE REQUESTS · طلبات إجازة معلقة</span></div>
 <div id="adminLeaveList"><div class="empty-log">No pending requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING OVERTIME REQUESTS</span></div>
+<div class="log-header"><span>PENDING OVERTIME REQUESTS · طلبات أوفر تايم معلقة</span></div>
 <div id="adminOTList"><div class="empty-log">No pending requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING FINANCIAL REQUESTS</span></div>
+<div class="log-header"><span>PENDING FINANCIAL REQUESTS · طلبات مستحقات معلقة</span></div>
 <div id="adminFinList"><div class="empty-log">No pending requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING OFF-CLOCK REQUESTS</span></div>
+<div class="log-header"><span>PENDING OFF-CLOCK REQUESTS · طلبات ساعات خارج البصمة معلقة</span></div>
 <div id="adminOffList"><div class="empty-log">No pending requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING PERMISSION REQUESTS</span></div>
+<div class="log-header"><span>PENDING PERMISSION REQUESTS · الطلبات المعلقة</span></div>
 <div id="adminPermList"><div class="empty-log">No pending requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>APPROVED REQUESTS · الطلبات المقبولة</span></div>
+<div id="adminApprovedList"><div class="empty-log">No approved requests yet</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>REJECTED REQUESTS · الطلبات المرفوضة</span></div>
+<div id="adminRejectedList"><div class="empty-log">No rejected requests yet</div></div>
 </div>
 <div class="task-form">
 <div class="settings-label">إدارة الإجازات الرسمية</div>
@@ -582,7 +595,7 @@ textarea{resize:vertical;min-height:76px;}
 <input type="text" id="holidayLabel" placeholder="مثال: عيد الفطر"/>
 </div>
 </div>
-<button class="btn-add" onclick="addOfficialHoliday()">+ ADD HOLIDAY</button>
+<button class="btn-add" onclick="addOfficialHoliday()">+ ADD HOLIDAY · إضافة إجازة</button>
 <div id="adminHolidaysList" style="margin-top:14px"><div class="empty-log">No holidays this month</div></div>
 </div>
 <div class="task-form">
@@ -604,10 +617,14 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="fg" style="margin:10px 0 0">
+<div class="fl">Work Hours / Day <span class="fla">ساعات العمل اليومية</span></div>
+<input type="number" id="salaryDayHours" min="1" max="24" step="0.5"/>
+</div>
+<div class="fg" style="margin:10px 0 0">
 <div class="fl">Birth Date <span class="fla">تاريخ الميلاد</span></div>
 <input type="date" id="salaryBirthDate"/>
 </div>
-<button class="btn-add" onclick="saveSalarySettings()">SAVE</button>
+<button class="btn-add" onclick="saveSalarySettings()">SAVE / حفظ</button>
 </div>
 <div class="task-form">
 <div class="settings-label">جزاءات (خصم من المرتب)</div>
@@ -631,7 +648,7 @@ textarea{resize:vertical;min-height:76px;}
 <input type="text" id="penaltyReason"/>
 </div>
 </div>
-<button class="btn-add" onclick="addPenalty()">+ ADD PENALTY</button>
+<button class="btn-add" onclick="addPenalty()">+ ADD PENALTY · إضافة جزاء</button>
 </div>
 <div class="task-form">
 <div class="settings-label">Employee Monthly Report</div>
@@ -645,7 +662,7 @@ textarea{resize:vertical;min-height:76px;}
 <input type="month" id="reportMonth"/>
 </div>
 </div>
-<button class="btn-add" onclick="fetchAdminReport()">GET REPORT</button>
+<button class="btn-add" onclick="fetchAdminReport()">GET REPORT · عرض التقرير</button>
 </div>
 <div id="adminReportResult"></div>
 </div>
@@ -667,7 +684,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Birth Date <span class="fla">تاريخ الميلاد</span></div>
 <input type="date" id="myBirthDate" onchange="saveMyBirthDate()"/>
 </div>
-<button class="btn-logout" onclick="doLogout()">LOGOUT</button>
+<button class="btn-logout" onclick="doLogout()">LOGOUT · تسجيل خروج</button>
 </div>
 </div>
 </div>
@@ -676,8 +693,8 @@ textarea{resize:vertical;min-height:76px;}
 <h3 id="modalTitle">Confirm</h3>
 <p id="modalMsg">Are you sure?</p>
 <div class="modal-actions">
-<button class="btn-mc" onclick="closeModal()">Cancel</button>
-<button class="btn-mo" onclick="modalConfirm()">Confirm</button>
+<button class="btn-mc" onclick="closeModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="modalConfirm()">Confirm · تأكيد</button>
 </div>
 </div>
 </div>
@@ -715,6 +732,8 @@ var leaveBalance = { casual: 6, annual: 15 };
 var adminPendingFin = [];
 var adminPendingOff = [];
 var adminPendingPerm = [];
+var adminApprovedAll = [];
+var adminRejectedAll = [];
 var adminHolidaysMonth = [];
 var adminPendingLeave = [];
 var adminPendingOT = [];
@@ -763,12 +782,13 @@ async function doRegister() {
   var pass = document.getElementById("reg-pass").value.trim();
   var title = document.getElementById("reg-title").value.trim();
   var dept = document.getElementById("reg-dept").value;
+  var birthdate = document.getElementById("reg-birthdate").value;
   var sq = document.getElementById("reg-sq").value;
   var sa = document.getElementById("reg-sa").value.trim().toLowerCase();
   var errEl = document.getElementById("registerError");
   errEl.classList.remove("show");
-  if (!name || !phone || !pass || !title || !dept || !sq || !sa) {
-    errEl.textContent = "اكمل جميع البيانات";
+  if (!name || !phone || !pass || !title || !dept || !birthdate || !sq || !sa) {
+    errEl.textContent = "اكمل جميع البيانات / Complete all fields";
     errEl.classList.add("show");
     return;
   }
@@ -776,7 +796,7 @@ async function doRegister() {
   try {
     await apiRequest("/api/register", "POST", {
       name: name, phone: phone, password: pass,
-      title: title, dept: dept,
+      title: title, dept: dept, birth_date: birthdate,
       secret_q: sq, secret_a: sa
     }, false);
     document.getElementById("registerSuccess").classList.add("show");
@@ -1022,9 +1042,9 @@ async function loadLeaveOvertimeData() {
 }
 
 function statusBadge(status) {
-  var map = { pending: ["معلق", "var(--muted)"], approved: ["تمت الموافقة", "#44ff88"], rejected: ["مرفوض", "#ff4444"] };
+  var map = { pending: ["PENDING · معلق", "var(--muted)"], approved: ["APPROVED · تمت الموافقة", "#44ff88"], rejected: ["REJECTED · مرفوض", "#ff4444"] };
   var s = map[status] || [status, "var(--muted)"];
-  return "<span style='color:" + s[1] + ";font-size:10px;letter-spacing:1px;'>" + s[0].toUpperCase() + "</span>";
+  return "<span style='color:" + s[1] + ";font-size:14px;letter-spacing:1px;'>" + s[0].toUpperCase() + "</span>";
 }
 
 function reasonNote(r) {
@@ -1199,14 +1219,32 @@ async function loadAdminData() {
     adminPendingOff = of.requests || [];
     var p = await apiRequest("/api/admin/permission-requests?status=pending", "GET");
     adminPendingPerm = p.requests || [];
+    var appr = await apiRequest("/api/admin/requests?status=approved", "GET");
+    adminApprovedAll = appr.requests || [];
+    var rej = await apiRequest("/api/admin/requests?status=rejected", "GET");
+    adminRejectedAll = rej.requests || [];
     var hol = await apiRequest("/api/admin/official-holidays", "GET");
     adminHolidaysMonth = hol.holidays || [];
     var e = await apiRequest("/api/admin/employees", "GET");
     adminEmployees = e.employees || [];
     renderAdminLists();
+    renderAdminHistory();
     renderAdminHolidays();
     populateEmployeeSelects();
   } catch(e) { /* non-fatal */ }
+}
+
+function renderAdminHistory() {
+  function historyRow(r) {
+    return "<div class='log-entry'><div class='log-type'>" + r.kind.toUpperCase() + "</div>" +
+      "<div class='log-time'>#" + r.emp_code + " " + r.employee_name + " — " + (r.date || "") + "</div>" +
+      "<div class='log-note'>" + r.detail + (r.reason ? " — " + r.reason : "") + "<br/>" +
+      "<span style='opacity:.6'>Decided: " + (r.decided_at || "-") + (r.decided_by_name ? " by " + r.decided_by_name : "") + "</span></div></div>";
+  }
+  var aEl = document.getElementById("adminApprovedList");
+  aEl.innerHTML = adminApprovedAll.length ? adminApprovedAll.map(historyRow).join("") : "<div class='empty-log'>No approved requests yet</div>";
+  var rEl = document.getElementById("adminRejectedList");
+  rEl.innerHTML = adminRejectedAll.length ? adminRejectedAll.map(historyRow).join("") : "<div class='empty-log'>No rejected requests yet</div>";
 }
 
 function renderAdminLists() {
@@ -1217,8 +1255,8 @@ function renderAdminLists() {
     for (var i = 0; i < adminPendingLeave.length; i++) {
       var r = adminPendingLeave[i];
       html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + r.date + "</div><div class='log-note'>#" + r.emp_code + " " + r.employee_name + (r.note ? " — " + r.note : "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('leave'," + r.id + ",'approve')\">APPROVE</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('leave'," + r.id + ",'reject')\">REJECT</button></div>";
+        "<button class='btn-end-task' onclick=\"decideRequest('leave'," + r.id + ",'approve')\">APPROVE · موافقة</button>" +
+        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('leave'," + r.id + ",'reject')\">REJECT · رفض</button></div>";
     }
     lEl.innerHTML = html;
   }
@@ -1229,8 +1267,8 @@ function renderAdminLists() {
     for (var j = 0; j < adminPendingOT.length; j++) {
       var o = adminPendingOT[j];
       html2 += "<div class='log-entry'><div class='log-type'>OT</div><div class='log-time'>" + o.date + "</div><div class='log-note'>#" + o.emp_code + " " + o.employee_name + (o.note ? " — " + o.note : "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('overtime'," + o.id + ",'approve')\">APPROVE</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('overtime'," + o.id + ",'reject')\">REJECT</button></div>";
+        "<button class='btn-end-task' onclick=\"decideRequest('overtime'," + o.id + ",'approve')\">APPROVE · موافقة</button>" +
+        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('overtime'," + o.id + ",'reject')\">REJECT · رفض</button></div>";
     }
     oEl.innerHTML = html2;
   }
@@ -1241,8 +1279,8 @@ function renderAdminLists() {
     for (var k = 0; k < adminPendingFin.length; k++) {
       var f = adminPendingFin[k];
       html3 += "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>#" + f.emp_code + " " + f.employee_name + "</div><div class='log-note'>" + (f.reason || "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('financial'," + f.id + ",'approve')\">APPROVE</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('financial'," + f.id + ",'reject')\">REJECT</button></div>";
+        "<button class='btn-end-task' onclick=\"decideRequest('financial'," + f.id + ",'approve')\">APPROVE · موافقة</button>" +
+        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('financial'," + f.id + ",'reject')\">REJECT · رفض</button></div>";
     }
     fEl.innerHTML = html3;
   }
@@ -1253,8 +1291,8 @@ function renderAdminLists() {
     for (var m = 0; m < adminPendingOff.length; m++) {
       var of2 = adminPendingOff[m];
       html4 += "<div class='log-entry'><div class='log-type'>" + of2.hours + "h</div><div class='log-time'>#" + of2.emp_code + " " + of2.employee_name + " — " + of2.date + "</div><div class='log-note'>" + (of2.reason || "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('offclock'," + of2.id + ",'approve')\">APPROVE</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('offclock'," + of2.id + ",'reject')\">REJECT</button></div>";
+        "<button class='btn-end-task' onclick=\"decideRequest('offclock'," + of2.id + ",'approve')\">APPROVE · موافقة</button>" +
+        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('offclock'," + of2.id + ",'reject')\">REJECT · رفض</button></div>";
     }
     offEl.innerHTML = html4;
   }
@@ -1265,8 +1303,8 @@ function renderAdminLists() {
     for (var n = 0; n < adminPendingPerm.length; n++) {
       var p = adminPendingPerm[n];
       html5 += "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>#" + p.emp_code + " " + p.employee_name + " — " + p.date + "</div><div class='log-note'>" + (p.reason || "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('permission'," + p.id + ",'approve')\">APPROVE</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('permission'," + p.id + ",'reject')\">REJECT</button></div>";
+        "<button class='btn-end-task' onclick=\"decideRequest('permission'," + p.id + ",'approve')\">APPROVE · موافقة</button>" +
+        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('permission'," + p.id + ",'reject')\">REJECT · رفض</button></div>";
     }
     permEl.innerHTML = html5;
   }
@@ -1299,7 +1337,7 @@ function renderAdminHolidays() {
   for (var i = 0; i < adminHolidaysMonth.length; i++) {
     var h = adminHolidaysMonth[i];
     html += "<div class='log-entry'><div class='log-type'>" + h.date + "</div><div class='log-note'>" + (h.label || "") + "</div>" +
-      "<button class='btn-end-task' onclick=\"deleteOfficialHoliday(" + h.id + ")\">DELETE</button></div>";
+      "<button class='btn-end-task' onclick=\"deleteOfficialHoliday(" + h.id + ")\">DELETE · حذف</button></div>";
   }
   el.innerHTML = html;
 }
@@ -1334,6 +1372,7 @@ function fillSalaryForm() {
   if (!emp) return;
   document.getElementById("salaryAmount").value = emp.monthly_salary || "";
   document.getElementById("salaryWorkDays").value = emp.work_days_per_month || 22;
+  document.getElementById("salaryDayHours").value = emp.daily_work_hours || 8;
   document.getElementById("salaryBirthDate").value = emp.birth_date || "";
 }
 
@@ -1343,6 +1382,7 @@ async function saveSalarySettings() {
   var body = {
     monthly_salary: Number(document.getElementById("salaryAmount").value) || 0,
     work_days_per_month: Number(document.getElementById("salaryWorkDays").value) || 22,
+    daily_work_hours: Number(document.getElementById("salaryDayHours").value) || 8,
   };
   var bd = document.getElementById("salaryBirthDate").value;
   if (bd) body.birth_date = bd;
@@ -1425,7 +1465,7 @@ function renderAdminReport(res) {
     "<div class='info-card'><div class='info-card-label'>Permission Bonus</div><div class='info-card-value'>" + x.permission_bonus_hours + " / " + x.permission_monthly_limit + "h</div></div>" +
     "<div class='info-card'><div class='info-card-label'>Penalties (EGP)</div><div class='info-card-value'>" + x.penalties_total_egp + "</div></div>" +
     "</div>";
-  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>DAY BY DAY</span></div>";
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>DAY BY DAY · تفاصيل يومية</span></div>";
   for (var i = 0; i < res.days.length; i++) {
     var d = res.days[i];
     var note = "";
@@ -1572,7 +1612,7 @@ function renderTasks() {
     html += "<div class='task-meta'>Started: " + t.start_time + (t.end_time ? " - Ended: "+t.end_time : " (in progress)") + "</div>";
     if (t.duration) html += "<div class='task-dur'>Duration: " + formatDuration(t.duration) + "</div>";
     if (isActive) {
-      html += "<button class='btn-end-task' data-tid='" + t.id + "' onclick='endTask(this.dataset.tid)'>END TASK</button>";
+      html += "<button class='btn-end-task' data-tid='" + t.id + "' onclick='endTask(this.dataset.tid)'>END TASK · إنهاء المهمة</button>";
     } else {
       html += "<div class='task-dur' style='color:var(--muted)'>Completed</div>";
     }
