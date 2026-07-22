@@ -445,6 +445,10 @@ textarea{resize:vertical;min-height:76px;}
 </select>
 </div>
 </div>
+<div class="fg" style="margin:10px 0 0">
+<div class="fl">Reason <span class="fla">سبب الطلب</span></div>
+<input type="text" id="leaveReason" placeholder="اكتب السبب..."/>
+</div>
 <button class="btn-add" onclick="submitLeaveRequest()">+ REQUEST LEAVE</button>
 </div>
 <div class="task-form">
@@ -455,15 +459,90 @@ textarea{resize:vertical;min-height:76px;}
 <input type="date" id="otDate"/>
 </div>
 </div>
+<div class="fg" style="margin:10px 0 0">
+<div class="fl">Reason <span class="fla">سبب الطلب</span></div>
+<input type="text" id="otReason" placeholder="اكتب السبب..."/>
+</div>
 <button class="btn-add" onclick="submitOvertimeRequest()">+ REQUEST OVERTIME</button>
+</div>
+<div class="task-form">
+<div class="settings-label">طلب مستحقات مالية</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Amount (EGP) <span class="fla">المبلغ بالجنيه</span></div>
+<input type="number" id="finAmount" min="1" step="0.01" placeholder="0.00"/>
+</div>
+</div>
+<div class="fg" style="margin:10px 0 0">
+<div class="fl">Reason <span class="fla">سبب الطلب</span></div>
+<input type="text" id="finReason" placeholder="اكتب السبب..."/>
+</div>
+<button class="btn-add" onclick="submitFinancialRequest()">+ REQUEST PAYMENT</button>
+</div>
+<div class="task-form">
+<div class="settings-label">طلب ساعات خارج البصمة</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="offDate"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Hours <span class="fla">عدد الساعات</span></div>
+<input type="number" id="offHours" min="0.5" step="0.5" placeholder="0"/>
+</div>
+</div>
+<div class="fg" style="margin:10px 0 0">
+<div class="fl">Reason <span class="fla">سبب الطلب</span></div>
+<input type="text" id="offReason" placeholder="اكتب السبب..."/>
+</div>
+<button class="btn-add" onclick="submitOffclockRequest()">+ REQUEST HOURS</button>
+</div>
+<div class="task-form">
+<div class="settings-label">طلب إذن انصراف <span class="fla">(رصيد ساعتين بالشهر)</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="permDate"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Hours <span class="fla">عدد الساعات</span></div>
+<select id="permHours">
+<option value="0.5">نص ساعة</option>
+<option value="1">ساعة</option>
+<option value="1.5">ساعة ونص</option>
+<option value="2">ساعتين</option>
+</select>
+</div>
+</div>
+<div class="fg" style="margin:10px 0 0">
+<div class="fl">Reason <span class="fla">سبب الطلب</span></div>
+<input type="text" id="permReason" placeholder="اكتب السبب..."/>
+</div>
+<button class="btn-add" onclick="submitPermissionRequest()">+ REQUEST PERMISSION</button>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>OFFICIAL HOLIDAYS THIS MONTH</span></div>
+<div id="officialHolidaysList"><div class="empty-log">No holidays set</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>MY LEAVE REQUESTS</span></div>
 <div id="myLeaveList"><div class="empty-log">No requests yet</div></div>
 </div>
-<div class="log-wrap">
+<div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>MY OVERTIME REQUESTS</span></div>
 <div id="myOTList"><div class="empty-log">No requests yet</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>MY FINANCIAL REQUESTS</span></div>
+<div id="myFinList"><div class="empty-log">No requests yet</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>MY OFF-CLOCK HOUR REQUESTS</span></div>
+<div id="myOffList"><div class="empty-log">No requests yet</div></div>
+</div>
+<div class="log-wrap">
+<div class="log-header"><span>MY PERMISSION REQUESTS</span></div>
+<div id="myPermList"><div class="empty-log">No requests yet</div></div>
 </div>
 </div>
 <div class="tab-content" id="content-admin">
@@ -478,6 +557,81 @@ textarea{resize:vertical;min-height:76px;}
 <div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>PENDING OVERTIME REQUESTS</span></div>
 <div id="adminOTList"><div class="empty-log">No pending requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>PENDING FINANCIAL REQUESTS</span></div>
+<div id="adminFinList"><div class="empty-log">No pending requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>PENDING OFF-CLOCK REQUESTS</span></div>
+<div id="adminOffList"><div class="empty-log">No pending requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>PENDING PERMISSION REQUESTS</span></div>
+<div id="adminPermList"><div class="empty-log">No pending requests</div></div>
+</div>
+<div class="task-form">
+<div class="settings-label">إدارة الإجازات الرسمية</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="holidayDate"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Label <span class="fla">اسم المناسبة</span></div>
+<input type="text" id="holidayLabel" placeholder="مثال: عيد الفطر"/>
+</div>
+</div>
+<button class="btn-add" onclick="addOfficialHoliday()">+ ADD HOLIDAY</button>
+<div id="adminHolidaysList" style="margin-top:14px"><div class="empty-log">No holidays this month</div></div>
+</div>
+<div class="task-form">
+<div class="settings-label">إعدادات الراتب لكل موظف</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="salaryEmployee" onchange="fillSalaryForm()"></select>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Monthly Salary (EGP) <span class="fla">المرتب الشهري</span></div>
+<input type="number" id="salaryAmount" min="0" step="0.01"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Work Days / Month <span class="fla">أيام العمل بالشهر</span></div>
+<input type="number" id="salaryWorkDays" min="1" step="1"/>
+</div>
+</div>
+<div class="fg" style="margin:10px 0 0">
+<div class="fl">Birth Date <span class="fla">تاريخ الميلاد</span></div>
+<input type="date" id="salaryBirthDate"/>
+</div>
+<button class="btn-add" onclick="saveSalarySettings()">SAVE</button>
+</div>
+<div class="task-form">
+<div class="settings-label">جزاءات (خصم من المرتب)</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="penaltyEmployee"></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Amount (EGP) <span class="fla">قيمة الجزاء</span></div>
+<input type="number" id="penaltyAmount" min="0" step="0.01"/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="penaltyDate"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Reason <span class="fla">السبب</span></div>
+<input type="text" id="penaltyReason"/>
+</div>
+</div>
+<button class="btn-add" onclick="addPenalty()">+ ADD PENALTY</button>
 </div>
 <div class="task-form">
 <div class="settings-label">Employee Monthly Report</div>
@@ -508,6 +662,10 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="settings-label">Profile</div>
 <div id="profileDisplay">
+</div>
+<div class="fg" style="margin:14px 0 0">
+<div class="fl">Birth Date <span class="fla">تاريخ الميلاد</span></div>
+<input type="date" id="myBirthDate" onchange="saveMyBirthDate()"/>
 </div>
 <button class="btn-logout" onclick="doLogout()">LOGOUT</button>
 </div>
@@ -549,7 +707,15 @@ var todayTasks = [];
 var taskStartTimes = {};
 var myLeaveReqs = [];
 var myOTReqs = [];
-var leaveBalance = { casual: 6, annual: 21 };
+var myFinReqs = [];
+var myOffReqs = [];
+var myPermReqs = [];
+var myHolidays = [];
+var leaveBalance = { casual: 6, annual: 15 };
+var adminPendingFin = [];
+var adminPendingOff = [];
+var adminPendingPerm = [];
+var adminHolidaysMonth = [];
 var adminPendingLeave = [];
 var adminPendingOT = [];
 var adminEmployees = [];
@@ -766,7 +932,10 @@ async function initApp() {
     "<div class='profile-row'><span class='profile-key'>Name</span><span class='profile-val'>" + user.name + "</span></div>" +
     "<div class='profile-row'><span class='profile-key'>Phone</span><span class='profile-val'>" + user.phone + "</span></div>" +
     "<div class='profile-row'><span class='profile-key'>Title</span><span class='profile-val'>" + user.title + "</span></div>" +
-    "<div class='profile-row'><span class='profile-key'>Dept</span><span class='profile-val'>" + user.dept + "</span></div>";
+    "<div class='profile-row'><span class='profile-key'>Dept</span><span class='profile-val'>" + user.dept + "</span></div>" +
+    "<div class='profile-row'><span class='profile-key'>Age</span><span class='profile-val'>" + (user.age != null ? user.age : "-") + "</span></div>";
+  var bdInput = document.getElementById("myBirthDate");
+  if (bdInput && user.birth_date) bdInput.value = user.birth_date;
   if (user.role === "admin") {
     document.getElementById("tab-admin").style.display = "block";
   }
@@ -838,8 +1007,17 @@ async function loadLeaveOvertimeData() {
     leaveBalance = lr.balance || leaveBalance;
     var ot = await apiRequest("/api/overtime-requests/mine", "GET");
     myOTReqs = ot.requests || [];
+    var fin = await apiRequest("/api/financial-requests/mine", "GET");
+    myFinReqs = fin.requests || [];
+    var off = await apiRequest("/api/offclock-requests/mine", "GET");
+    myOffReqs = off.requests || [];
+    var perm = await apiRequest("/api/permission-requests/mine", "GET");
+    myPermReqs = perm.requests || [];
+    var hol = await apiRequest("/api/official-holidays", "GET");
+    myHolidays = hol.holidays || [];
     renderLeaveBalance();
     renderMyRequests();
+    renderOfficialHolidaysEmployee();
   } catch(e) { /* non-fatal */ }
 }
 
@@ -849,9 +1027,25 @@ function statusBadge(status) {
   return "<span style='color:" + s[1] + ";font-size:10px;letter-spacing:1px;'>" + s[0].toUpperCase() + "</span>";
 }
 
+function reasonNote(r) {
+  return r.reason || r.note ? ("<div class='log-note' style='opacity:.7'>" + (r.reason || r.note) + "</div>") : "";
+}
+
 function renderLeaveBalance() {
   document.getElementById("casualBalance").textContent = leaveBalance.casual + " / 6";
-  document.getElementById("annualBalance").textContent = leaveBalance.annual + " / 21";
+  document.getElementById("annualBalance").textContent = leaveBalance.annual + " / 15";
+}
+
+function renderOfficialHolidaysEmployee() {
+  var el = document.getElementById("officialHolidaysList");
+  if (!el) return;
+  if (!myHolidays.length) { el.innerHTML = "<div class='empty-log'>No holidays set</div>"; return; }
+  var html = "";
+  for (var i = 0; i < myHolidays.length; i++) {
+    var h = myHolidays[i];
+    html += "<div class='log-entry'><div class='log-type'>" + h.date + "</div><div class='log-note'>" + (h.label || "") + "</div></div>";
+  }
+  el.innerHTML = html;
 }
 
 function renderMyRequests() {
@@ -861,7 +1055,7 @@ function renderMyRequests() {
     var html = "";
     for (var i = 0; i < myLeaveReqs.length; i++) {
       var r = myLeaveReqs[i];
-      html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + r.date + "</div><div class='log-note'>" + statusBadge(r.status) + "</div></div>";
+      html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + r.date + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + "</div>";
     }
     lEl.innerHTML = html;
   }
@@ -871,20 +1065,52 @@ function renderMyRequests() {
     var html2 = "";
     for (var j = 0; j < myOTReqs.length; j++) {
       var o = myOTReqs[j];
-      html2 += "<div class='log-entry'><div class='log-type'>OT</div><div class='log-time'>" + o.date + "</div><div class='log-note'>" + statusBadge(o.status) + "</div></div>";
+      html2 += "<div class='log-entry'><div class='log-type'>OT</div><div class='log-time'>" + o.date + "</div><div class='log-note'>" + statusBadge(o.status) + "</div>" + reasonNote(o) + "</div>";
     }
     oEl.innerHTML = html2;
+  }
+  var fEl = document.getElementById("myFinList");
+  if (!myFinReqs.length) { fEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
+  else {
+    var html3 = "";
+    for (var k = 0; k < myFinReqs.length; k++) {
+      var f = myFinReqs[k];
+      html3 += "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>" + f.requested_at.slice(0,10) + "</div><div class='log-note'>" + statusBadge(f.status) + "</div>" + reasonNote(f) + "</div>";
+    }
+    fEl.innerHTML = html3;
+  }
+  var oClkEl = document.getElementById("myOffList");
+  if (!myOffReqs.length) { oClkEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
+  else {
+    var html4 = "";
+    for (var m = 0; m < myOffReqs.length; m++) {
+      var of = myOffReqs[m];
+      html4 += "<div class='log-entry'><div class='log-type'>" + of.hours + "h</div><div class='log-time'>" + of.date + "</div><div class='log-note'>" + statusBadge(of.status) + "</div>" + reasonNote(of) + "</div>";
+    }
+    oClkEl.innerHTML = html4;
+  }
+  var pEl = document.getElementById("myPermList");
+  if (!myPermReqs.length) { pEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
+  else {
+    var html5 = "";
+    for (var n = 0; n < myPermReqs.length; n++) {
+      var p = myPermReqs[n];
+      html5 += "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>" + p.date + "</div><div class='log-note'>" + statusBadge(p.status) + "</div>" + reasonNote(p) + "</div>";
+    }
+    pEl.innerHTML = html5;
   }
 }
 
 async function submitLeaveRequest() {
   var date = document.getElementById("leaveDate").value;
   var type = document.getElementById("leaveType").value;
+  var reason = document.getElementById("leaveReason").value.trim();
   if (!date) { showToast("!", "اختار التاريخ"); return; }
   showLoading(true);
   try {
-    await apiRequest("/api/leave-requests", "POST", { date: date, type: type });
+    await apiRequest("/api/leave-requests", "POST", { date: date, type: type, reason: reason });
     showToast("v", "تم ارسال طلب الاجازة");
+    document.getElementById("leaveReason").value = "";
     await loadLeaveOvertimeData();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -892,14 +1118,71 @@ async function submitLeaveRequest() {
 
 async function submitOvertimeRequest() {
   var date = document.getElementById("otDate").value;
+  var reason = document.getElementById("otReason").value.trim();
   if (!date) { showToast("!", "اختار التاريخ"); return; }
   showLoading(true);
   try {
-    await apiRequest("/api/overtime-requests", "POST", { date: date });
+    await apiRequest("/api/overtime-requests", "POST", { date: date, reason: reason });
     showToast("v", "تم ارسال طلب الأوفر تايم");
+    document.getElementById("otReason").value = "";
     await loadLeaveOvertimeData();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
+}
+
+async function submitFinancialRequest() {
+  var amount = document.getElementById("finAmount").value;
+  var reason = document.getElementById("finReason").value.trim();
+  if (!amount || Number(amount) <= 0) { showToast("!", "ادخل مبلغ صحيح"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/financial-requests", "POST", { amount_egp: Number(amount), reason: reason });
+    showToast("v", "تم ارسال طلب المستحقات");
+    document.getElementById("finAmount").value = "";
+    document.getElementById("finReason").value = "";
+    await loadLeaveOvertimeData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function submitOffclockRequest() {
+  var date = document.getElementById("offDate").value;
+  var hours = document.getElementById("offHours").value;
+  var reason = document.getElementById("offReason").value.trim();
+  if (!date || !hours || Number(hours) <= 0) { showToast("!", "ادخل التاريخ وعدد الساعات"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/offclock-requests", "POST", { date: date, hours: Number(hours), reason: reason });
+    showToast("v", "تم ارسال طلب الساعات");
+    document.getElementById("offHours").value = "";
+    document.getElementById("offReason").value = "";
+    await loadLeaveOvertimeData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function submitPermissionRequest() {
+  var date = document.getElementById("permDate").value;
+  var hours = document.getElementById("permHours").value;
+  var reason = document.getElementById("permReason").value.trim();
+  if (!date) { showToast("!", "اختار التاريخ"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/permission-requests", "POST", { date: date, hours: Number(hours), reason: reason });
+    showToast("v", "تم ارسال طلب الإذن");
+    document.getElementById("permReason").value = "";
+    await loadLeaveOvertimeData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function saveMyBirthDate() {
+  var bd = document.getElementById("myBirthDate").value;
+  if (!bd) return;
+  try {
+    await apiRequest("/api/me/profile", "PATCH", { birth_date: bd });
+    showToast("v", "تم الحفظ");
+  } catch(e) { showToast("!", e.message); }
 }
 
 // ---------------- Admin ----------------
@@ -910,10 +1193,19 @@ async function loadAdminData() {
     adminPendingLeave = l.requests || [];
     var o = await apiRequest("/api/admin/overtime-requests?status=pending", "GET");
     adminPendingOT = o.requests || [];
+    var f = await apiRequest("/api/admin/financial-requests?status=pending", "GET");
+    adminPendingFin = f.requests || [];
+    var of = await apiRequest("/api/admin/offclock-requests?status=pending", "GET");
+    adminPendingOff = of.requests || [];
+    var p = await apiRequest("/api/admin/permission-requests?status=pending", "GET");
+    adminPendingPerm = p.requests || [];
+    var hol = await apiRequest("/api/admin/official-holidays", "GET");
+    adminHolidaysMonth = hol.holidays || [];
     var e = await apiRequest("/api/admin/employees", "GET");
     adminEmployees = e.employees || [];
     renderAdminLists();
-    populateReportEmployeeSelect();
+    renderAdminHolidays();
+    populateEmployeeSelects();
   } catch(e) { /* non-fatal */ }
 }
 
@@ -924,7 +1216,7 @@ function renderAdminLists() {
     var html = "";
     for (var i = 0; i < adminPendingLeave.length; i++) {
       var r = adminPendingLeave[i];
-      html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + r.date + "</div><div class='log-note'>#" + r.emp_code + " " + r.employee_name + "</div>" +
+      html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + r.date + "</div><div class='log-note'>#" + r.emp_code + " " + r.employee_name + (r.note ? " — " + r.note : "") + "</div>" +
         "<button class='btn-end-task' onclick=\"decideRequest('leave'," + r.id + ",'approve')\">APPROVE</button>" +
         "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('leave'," + r.id + ",'reject')\">REJECT</button></div>";
     }
@@ -936,18 +1228,62 @@ function renderAdminLists() {
     var html2 = "";
     for (var j = 0; j < adminPendingOT.length; j++) {
       var o = adminPendingOT[j];
-      html2 += "<div class='log-entry'><div class='log-type'>OT</div><div class='log-time'>" + o.date + "</div><div class='log-note'>#" + o.emp_code + " " + o.employee_name + "</div>" +
+      html2 += "<div class='log-entry'><div class='log-type'>OT</div><div class='log-time'>" + o.date + "</div><div class='log-note'>#" + o.emp_code + " " + o.employee_name + (o.note ? " — " + o.note : "") + "</div>" +
         "<button class='btn-end-task' onclick=\"decideRequest('overtime'," + o.id + ",'approve')\">APPROVE</button>" +
         "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('overtime'," + o.id + ",'reject')\">REJECT</button></div>";
     }
     oEl.innerHTML = html2;
   }
+  var fEl = document.getElementById("adminFinList");
+  if (!adminPendingFin.length) { fEl.innerHTML = "<div class='empty-log'>No pending requests</div>"; }
+  else {
+    var html3 = "";
+    for (var k = 0; k < adminPendingFin.length; k++) {
+      var f = adminPendingFin[k];
+      html3 += "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>#" + f.emp_code + " " + f.employee_name + "</div><div class='log-note'>" + (f.reason || "") + "</div>" +
+        "<button class='btn-end-task' onclick=\"decideRequest('financial'," + f.id + ",'approve')\">APPROVE</button>" +
+        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('financial'," + f.id + ",'reject')\">REJECT</button></div>";
+    }
+    fEl.innerHTML = html3;
+  }
+  var offEl = document.getElementById("adminOffList");
+  if (!adminPendingOff.length) { offEl.innerHTML = "<div class='empty-log'>No pending requests</div>"; }
+  else {
+    var html4 = "";
+    for (var m = 0; m < adminPendingOff.length; m++) {
+      var of2 = adminPendingOff[m];
+      html4 += "<div class='log-entry'><div class='log-type'>" + of2.hours + "h</div><div class='log-time'>#" + of2.emp_code + " " + of2.employee_name + " — " + of2.date + "</div><div class='log-note'>" + (of2.reason || "") + "</div>" +
+        "<button class='btn-end-task' onclick=\"decideRequest('offclock'," + of2.id + ",'approve')\">APPROVE</button>" +
+        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('offclock'," + of2.id + ",'reject')\">REJECT</button></div>";
+    }
+    offEl.innerHTML = html4;
+  }
+  var permEl = document.getElementById("adminPermList");
+  if (!adminPendingPerm.length) { permEl.innerHTML = "<div class='empty-log'>No pending requests</div>"; }
+  else {
+    var html5 = "";
+    for (var n = 0; n < adminPendingPerm.length; n++) {
+      var p = adminPendingPerm[n];
+      html5 += "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>#" + p.emp_code + " " + p.employee_name + " — " + p.date + "</div><div class='log-note'>" + (p.reason || "") + "</div>" +
+        "<button class='btn-end-task' onclick=\"decideRequest('permission'," + p.id + ",'approve')\">APPROVE</button>" +
+        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('permission'," + p.id + ",'reject')\">REJECT</button></div>";
+    }
+    permEl.innerHTML = html5;
+  }
 }
+
+var DECIDE_PATHS = {
+  leave: "/api/admin/leave-requests/",
+  overtime: "/api/admin/overtime-requests/",
+  financial: "/api/admin/financial-requests/",
+  offclock: "/api/admin/offclock-requests/",
+  permission: "/api/admin/permission-requests/",
+};
 
 async function decideRequest(kind, id, action) {
   showLoading(true);
   try {
-    var path = kind === "leave" ? "/api/admin/leave-requests/" + id + "/decide" : "/api/admin/overtime-requests/" + id + "/decide";
+    var path = DECIDE_PATHS[kind] + id + "/decide";
     await apiRequest(path, "POST", { action: action });
     showToast("v", action === "approve" ? "تمت الموافقة" : "تم الرفض");
     await loadAdminData();
@@ -955,22 +1291,106 @@ async function decideRequest(kind, id, action) {
   showLoading(false);
 }
 
-function populateReportEmployeeSelect() {
-  var sel = document.getElementById("reportEmployee");
-  if (sel.options.length === adminEmployees.length) return;
-  sel.innerHTML = "";
-  for (var i = 0; i < adminEmployees.length; i++) {
-    var e = adminEmployees[i];
-    var opt = document.createElement("option");
-    opt.value = e.id;
-    opt.textContent = "#" + e.emp_code + " - " + e.name;
-    sel.appendChild(opt);
+function renderAdminHolidays() {
+  var el = document.getElementById("adminHolidaysList");
+  if (!el) return;
+  if (!adminHolidaysMonth.length) { el.innerHTML = "<div class='empty-log'>No holidays this month</div>"; return; }
+  var html = "";
+  for (var i = 0; i < adminHolidaysMonth.length; i++) {
+    var h = adminHolidaysMonth[i];
+    html += "<div class='log-entry'><div class='log-type'>" + h.date + "</div><div class='log-note'>" + (h.label || "") + "</div>" +
+      "<button class='btn-end-task' onclick=\"deleteOfficialHoliday(" + h.id + ")\">DELETE</button></div>";
+  }
+  el.innerHTML = html;
+}
+
+async function addOfficialHoliday() {
+  var date = document.getElementById("holidayDate").value;
+  var label = document.getElementById("holidayLabel").value.trim();
+  if (!date) { showToast("!", "اختار التاريخ"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/official-holidays", "POST", { date: date, label: label });
+    showToast("v", "تم إضافة الإجازة الرسمية");
+    document.getElementById("holidayLabel").value = "";
+    await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function deleteOfficialHoliday(id) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/official-holidays/" + id, "DELETE");
+    showToast("v", "تم الحذف");
+    await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function fillSalaryForm() {
+  var id = document.getElementById("salaryEmployee").value;
+  var emp = adminEmployees.find(function(e) { return String(e.id) === String(id); });
+  if (!emp) return;
+  document.getElementById("salaryAmount").value = emp.monthly_salary || "";
+  document.getElementById("salaryWorkDays").value = emp.work_days_per_month || 22;
+  document.getElementById("salaryBirthDate").value = emp.birth_date || "";
+}
+
+async function saveSalarySettings() {
+  var id = document.getElementById("salaryEmployee").value;
+  if (!id) { showToast("!", "اختار موظف"); return; }
+  var body = {
+    monthly_salary: Number(document.getElementById("salaryAmount").value) || 0,
+    work_days_per_month: Number(document.getElementById("salaryWorkDays").value) || 22,
+  };
+  var bd = document.getElementById("salaryBirthDate").value;
+  if (bd) body.birth_date = bd;
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/employees/" + id + "/salary", "POST", body);
+    showToast("v", "تم الحفظ");
+    await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function addPenalty() {
+  var empId = document.getElementById("penaltyEmployee").value;
+  var amount = document.getElementById("penaltyAmount").value;
+  var date = document.getElementById("penaltyDate").value;
+  var reason = document.getElementById("penaltyReason").value.trim();
+  if (!empId || !amount || !date) { showToast("!", "املا كل الحقول"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/penalties", "POST", { employee_id: empId, amount_egp: Number(amount), date: date, reason: reason });
+    showToast("v", "تم إضافة الجزاء");
+    document.getElementById("penaltyAmount").value = "";
+    document.getElementById("penaltyReason").value = "";
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function populateEmployeeSelects() {
+  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee"];
+  for (var s = 0; s < selectIds.length; s++) {
+    var sel = document.getElementById(selectIds[s]);
+    if (!sel || sel.options.length === adminEmployees.length) continue;
+    sel.innerHTML = "";
+    for (var i = 0; i < adminEmployees.length; i++) {
+      var e = adminEmployees[i];
+      var opt = document.createElement("option");
+      opt.value = e.id;
+      opt.textContent = "#" + e.emp_code + " - " + e.name;
+      sel.appendChild(opt);
+    }
   }
   var monthInput = document.getElementById("reportMonth");
   if (!monthInput.value) {
     var d = new Date();
     monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
   }
+  if (adminEmployees.length) fillSalaryForm();
 }
 
 async function fetchAdminReport() {
@@ -988,13 +1408,22 @@ async function fetchAdminReport() {
 function renderAdminReport(res) {
   var el = document.getElementById("adminReportResult");
   var t = res.totals;
+  var x = res.extras;
   var html = "<div class='info-grid' style='margin-top:18px'>" +
+    "<div class='info-card'><div class='info-card-label'>Age</div><div class='info-card-value'>" + (res.employee.age != null ? res.employee.age : "-") + "</div></div>" +
     "<div class='info-card'><div class='info-card-label'>Counted Hours</div><div class='info-card-value'>" + t.counted_hours + "</div></div>" +
     "<div class='info-card'><div class='info-card-label'>Actual Hours</div><div class='info-card-value'>" + t.actual_hours + "</div></div>" +
     "<div class='info-card'><div class='info-card-label'>Overtime Hours</div><div class='info-card-value'>" + t.overtime_hours + "</div></div>" +
     "<div class='info-card'><div class='info-card-label'>Absent Days</div><div class='info-card-value'>" + t.absent_days + "</div></div>" +
     "<div class='info-card'><div class='info-card-label'>Casual Taken</div><div class='info-card-value'>" + t.leave_days_casual + "</div></div>" +
     "<div class='info-card'><div class='info-card-label'>Annual Taken</div><div class='info-card-value'>" + t.leave_days_annual + "</div></div>" +
+    "<div class='info-card'><div class='info-card-label'>Holiday Bonus (2x)</div><div class='info-card-value'>" + t.holiday_bonus_hours + "</div></div>" +
+    "<div class='info-card'><div class='info-card-label'>Holiday Auto (8h)</div><div class='info-card-value'>" + t.holiday_off_hours + "</div></div>" +
+    "<div class='info-card'><div class='info-card-label'>Hourly Rate (EGP)</div><div class='info-card-value'>" + x.hourly_rate + "</div></div>" +
+    "<div class='info-card'><div class='info-card-label'>Financial (EGP → hrs)</div><div class='info-card-value'>" + x.financial_total_egp + " → " + x.financial_hours + "h</div></div>" +
+    "<div class='info-card'><div class='info-card-label'>Off-clock Hours</div><div class='info-card-value'>" + x.offclock_hours + "</div></div>" +
+    "<div class='info-card'><div class='info-card-label'>Permission Bonus</div><div class='info-card-value'>" + x.permission_bonus_hours + " / " + x.permission_monthly_limit + "h</div></div>" +
+    "<div class='info-card'><div class='info-card-label'>Penalties (EGP)</div><div class='info-card-value'>" + x.penalties_total_egp + "</div></div>" +
     "</div>";
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>DAY BY DAY</span></div>";
   for (var i = 0; i < res.days.length; i++) {
@@ -1004,6 +1433,8 @@ function renderAdminReport(res) {
     else if (d.status === "leave") note = "اجازة " + (d.leave_type === "casual" ? "عارضة" : "اعتيادية") + " - 8h";
     else if (d.status === "absent") note = "غياب";
     else if (d.status === "today_pending") note = "لسه النهارده";
+    else if (d.status === "official_holiday_off") note = "اجازة رسمية (" + (d.holiday_label||"") + ") - 8h تلقائي";
+    else if (d.status === "official_holiday_worked") note = "اشتغل في اجازة رسمية (" + (d.holiday_label||"") + ") - " + formatDuration(d.actual_seconds) + " ×2 = " + formatDuration(d.counted_seconds);
     else if (d.status === "worked") {
       note = "counted: " + formatDuration(d.counted_seconds) + " / actual: " + formatDuration(d.actual_seconds);
       if (d.overtime_approved) note += " (OT approved)";
