@@ -10,7 +10,7 @@ import { createClient } from "@libsql/client/web";
 const TZ = "Africa/Cairo";
 const WORK_DAY_SECONDS = 8 * 3600;
 const CASUAL_YEARLY = 6;
-const ANNUAL_YEARLY = 21;
+const ANNUAL_YEARLY = 15;
 const SESSION_DAYS = 30;
 const PBKDF2_ITER = 100000;
 
@@ -109,6 +109,23 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate(); // month is 1-indexed here
 }
 
+function calcAge(birthDateStr) {
+  if (!birthDateStr) return null;
+  const today = cairoParts(new Date());
+  const [by, bm, bd] = birthDateStr.split("-").map(Number);
+  let age = Number(today.y) - by;
+  const beforeBirthdayThisYear = (Number(today.m) < bm) || (Number(today.m) === bm && Number(today.d) < bd);
+  if (beforeBirthdayThisYear) age--;
+  return age;
+}
+
+function hourlyRate(emp) {
+  const salary = Number(emp.monthly_salary) || 0;
+  const days = Number(emp.work_days_per_month) || 0;
+  if (salary <= 0 || days <= 0) return 0;
+  return salary / (days * 8);
+}
+
 function requireFields(body, fields) {
   for (const f of fields) {
     if (body[f] === undefined || body[f] === null || body[f] === "") {
@@ -137,6 +154,16 @@ function publicEmployee(e) {
     id: e.id, emp_code: e.emp_code, name: e.name, phone: e.phone,
     title: e.title, dept: e.dept, avatar_url: e.avatar_url, role: e.role,
     casual_balance: e.casual_balance, annual_balance: e.annual_balance,
+    birth_date: e.birth_date || null, age: calcAge(e.birth_date),
+  };
+}
+
+function adminEmployeeView(e) {
+  return {
+    ...publicEmployee(e),
+    monthly_salary: Number(e.monthly_salary) || 0,
+    work_days_per_month: Number(e.work_days_per_month) || 0,
+    hourly_rate: +hourlyRate(e).toFixed(2),
   };
 }
 
@@ -172,6 +199,7 @@ export default {
 
       if (path === "/api/me" && method === "GET") return json(publicEmployee(me));
       if (path === "/api/me/avatar" && method === "PATCH") return await updateAvatar(db, me, body);
+      if (path === "/api/me/profile" && method === "PATCH") return await updateProfile(db, me, body);
       if (path === "/api/logout" && method === "POST") return await logout(req, db);
 
       if (path === "/api/attendance/sign-in" && method === "POST") return await signIn(db, me);
@@ -191,6 +219,19 @@ export default {
 
       if (path === "/api/overtime-requests" && method === "POST") return await requestOvertime(db, me, body);
       if (path === "/api/overtime-requests/mine" && method === "GET") return await myOvertimeRequests(db, me);
+
+      if (path === "/api/financial-requests" && method === "POST") return await requestFinancial(db, me, body);
+      if (path === "/api/financial-requests/mine" && method === "GET") return await myFinancialRequests(db, me);
+
+      if (path === "/api/offclock-requests" && method === "POST") return await requestOffclock(db, me, body);
+      if (path === "/api/offclock-requests/mine" && method === "GET") return await myOffclockRequests(db, me);
+
+      if (path === "/api/permission-requests" && method === "POST") return await requestPermission(db, me, body);
+      if (path === "/api/permission-requests/mine" && method === "GET") return await myPermissionRequests(db, me);
+
+      if (path === "/api/official-holidays" && method === "GET") {
+        return await officialHolidays(db, url.searchParams.get("month"));
+      }
 
       if (path === "/api/report/mine" && method === "GET") {
         const month = url.searchParams.get("month"); // YYYY-MM
@@ -299,6 +340,13 @@ async function recoverStep3(db, body) {
 async function updateAvatar(db, me, body) {
   if (!body.avatar_url) return err("Missing avatar_url");
   await db.execute({ sql: "UPDATE employees SET avatar_url = ? WHERE id = ?", args: [body.avatar_url, me.id] });
+  return json({ ok: true });
+}
+
+async function updateProfile(db, me, body) {
+  if (body.birth_date) {
+    await db.execute({ sql: "UPDATE employees SET birth_date = ? WHERE id = ?", args: [body.birth_date, me.id] });
+  }
   return json({ ok: true });
 }
 
@@ -428,7 +476,7 @@ async function requestLeave(db, me, body) {
 
   const res = await db.execute({
     sql: `INSERT INTO leave_requests (employee_id, date, type, note) VALUES (?,?,?,?) RETURNING *`,
-    args: [me.id, body.date, body.type, body.note || null],
+    args: [me.id, body.date, body.type, body.reason || body.note || null],
   });
   return json({ request: res.rows[0] }, 201);
 }
@@ -459,7 +507,7 @@ async function requestOvertime(db, me, body) {
 
   const res = await db.execute({
     sql: `INSERT INTO overtime_requests (employee_id, date, note) VALUES (?,?,?) RETURNING *`,
-    args: [me.id, body.date, body.note || null],
+    args: [me.id, body.date, body.reason || body.note || null],
   });
   return json({ request: res.rows[0] }, 201);
 }
@@ -470,6 +518,100 @@ async function myOvertimeRequests(db, me) {
     args: [me.id],
   });
   return json({ requests: res.rows });
+}
+
+// ---------------------------------------------------------------- financial requests (مستحقات مالية)
+
+async function requestFinancial(db, me, body) {
+  const missing = requireFields(body, ["amount_egp"]);
+  if (missing) return err(`Missing field: ${missing}`);
+  const amount = Number(body.amount_egp);
+  if (!(amount > 0)) return err("المبلغ لازم يكون رقم موجب");
+
+  const res = await db.execute({
+    sql: `INSERT INTO financial_requests (employee_id, amount_egp, reason) VALUES (?,?,?) RETURNING *`,
+    args: [me.id, amount, body.reason || null],
+  });
+  return json({ request: res.rows[0] }, 201);
+}
+
+async function myFinancialRequests(db, me) {
+  const res = await db.execute({
+    sql: "SELECT * FROM financial_requests WHERE employee_id = ? ORDER BY requested_at DESC",
+    args: [me.id],
+  });
+  return json({ requests: res.rows });
+}
+
+// ---------------------------------------------------------------- off-clock hours (ساعات خارج البصمة)
+
+async function requestOffclock(db, me, body) {
+  const missing = requireFields(body, ["date", "hours"]);
+  if (missing) return err(`Missing field: ${missing}`);
+  const hours = Number(body.hours);
+  if (!(hours > 0)) return err("عدد الساعات لازم يكون رقم موجب");
+
+  const res = await db.execute({
+    sql: `INSERT INTO offclock_requests (employee_id, date, hours, reason) VALUES (?,?,?,?) RETURNING *`,
+    args: [me.id, body.date, hours, body.reason || null],
+  });
+  return json({ request: res.rows[0] }, 201);
+}
+
+async function myOffclockRequests(db, me) {
+  const res = await db.execute({
+    sql: "SELECT * FROM offclock_requests WHERE employee_id = ? ORDER BY date DESC",
+    args: [me.id],
+  });
+  return json({ requests: res.rows });
+}
+
+// ---------------------------------------------------------------- permission / early-leave (إذن انصراف)
+
+const PERMISSION_MONTHLY_HOURS = 2;
+
+async function requestPermission(db, me, body) {
+  const missing = requireFields(body, ["date", "hours"]);
+  if (missing) return err(`Missing field: ${missing}`);
+  const hours = Number(body.hours);
+  if (!(hours > 0)) return err("عدد الساعات لازم يكون رقم موجب");
+  if (isWeekendStr(body.date)) return err("اليوم ده اجازة اسبوعية");
+
+  const monthPrefix = body.date.slice(0, 7); // YYYY-MM
+  const used = await db.execute({
+    sql: `SELECT COALESCE(SUM(hours),0) as total FROM permission_requests
+          WHERE employee_id = ? AND date LIKE ? AND status IN ('pending','approved')`,
+    args: [me.id, monthPrefix + "%"],
+  });
+  const usedHours = Number(used.rows[0].total) || 0;
+  if (usedHours + hours > PERMISSION_MONTHLY_HOURS) {
+    return err(`رصيد إذن الانصراف الشهري (${PERMISSION_MONTHLY_HOURS} ساعة) مش كفاية — مستخدم/معلق بالفعل ${usedHours} ساعة`, 409);
+  }
+
+  const res = await db.execute({
+    sql: `INSERT INTO permission_requests (employee_id, date, hours, reason) VALUES (?,?,?,?) RETURNING *`,
+    args: [me.id, body.date, hours, body.reason || null],
+  });
+  return json({ request: res.rows[0] }, 201);
+}
+
+async function myPermissionRequests(db, me) {
+  const res = await db.execute({
+    sql: "SELECT * FROM permission_requests WHERE employee_id = ? ORDER BY date DESC",
+    args: [me.id],
+  });
+  return json({ requests: res.rows });
+}
+
+// ---------------------------------------------------------------- official holidays (read-only for employees)
+
+async function officialHolidays(db, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const res = await db.execute({
+    sql: "SELECT * FROM official_holidays WHERE date LIKE ? ORDER BY date ASC",
+    args: [month + "%"],
+  });
+  return json({ holidays: res.rows });
 }
 
 // ---------------------------------------------------------------- monthly report (core hours logic)
@@ -491,8 +633,9 @@ async function monthlyReport(db, employeeId, monthStr) {
   const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDayNum = daysInMonth(year, month);
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+  const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
 
-  const [attRows, leaveRows, otRows] = await Promise.all([
+  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows] = await Promise.all([
     db.execute({
       sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC",
       args: [employeeId, firstDay, lastDay],
@@ -505,6 +648,26 @@ async function monthlyReport(db, employeeId, monthStr) {
       sql: "SELECT * FROM overtime_requests WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'approved'",
       args: [employeeId, firstDay, lastDay],
     }),
+    db.execute({
+      sql: "SELECT * FROM official_holidays WHERE date BETWEEN ? AND ?",
+      args: [firstDay, lastDay],
+    }),
+    db.execute({
+      sql: "SELECT * FROM financial_requests WHERE employee_id = ? AND status = 'approved' AND requested_at LIKE ?",
+      args: [employeeId, monthPrefix + "%"],
+    }),
+    db.execute({
+      sql: "SELECT * FROM offclock_requests WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'approved'",
+      args: [employeeId, firstDay, lastDay],
+    }),
+    db.execute({
+      sql: "SELECT * FROM permission_requests WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'approved'",
+      args: [employeeId, firstDay, lastDay],
+    }),
+    db.execute({
+      sql: "SELECT * FROM penalties WHERE employee_id = ? AND date BETWEEN ? AND ?",
+      args: [employeeId, firstDay, lastDay],
+    }),
   ]);
 
   const attByDate = {};
@@ -515,21 +678,60 @@ async function monthlyReport(db, employeeId, monthStr) {
   for (const r of leaveRows.rows) leaveByDate[r.date] = r;
   const otByDate = {};
   for (const r of otRows.rows) otByDate[r.date] = r;
+  const holidayByDate = {};
+  for (const r of holidayRows.rows) holidayByDate[r.date] = r;
 
   const todayStr = cairoDateStr();
   const days = [];
   let totalCountedSeconds = 0;
   let totalActualSeconds = 0;
   let totalOvertimeSeconds = 0;
+  let totalHolidayBonusSeconds = 0;  // extra half from doubling worked-holiday hours
+  let totalHolidayOffSeconds = 0;    // auto-granted 8h on unworked holidays
   let absentDays = 0;
   let leaveDaysCasual = 0;
   let leaveDaysAnnual = 0;
+
+  function pairAttendance(entries) {
+    let actualSeconds = 0;
+    let pendingIn = null;
+    for (const e of entries) {
+      if (e.action === "sign_in") pendingIn = e;
+      else if (e.action === "sign_out" && pendingIn) {
+        const inMs = new Date(pendingIn.created_at + "Z").getTime();
+        const outMs = new Date(e.created_at + "Z").getTime();
+        if (outMs > inMs) actualSeconds += Math.floor((outMs - inMs) / 1000);
+        pendingIn = null;
+      }
+    }
+    return actualSeconds;
+  }
 
   for (let d = 1; d <= lastDayNum; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     if (dateStr > todayStr) break; // don't project future days
     if (isWeekendStr(dateStr)) {
       days.push({ date: dateStr, status: "weekend" });
+      continue;
+    }
+
+    const holiday = holidayByDate[dateStr];
+    if (holiday) {
+      const actualSeconds = pairAttendance(attByDate[dateStr] || []);
+      if (actualSeconds > 0) {
+        const countedSeconds = actualSeconds * 2;
+        totalActualSeconds += actualSeconds;
+        totalCountedSeconds += countedSeconds;
+        totalHolidayBonusSeconds += actualSeconds;
+        days.push({
+          date: dateStr, status: "official_holiday_worked", holiday_label: holiday.label,
+          actual_seconds: actualSeconds, counted_seconds: countedSeconds,
+        });
+      } else {
+        totalCountedSeconds += WORK_DAY_SECONDS;
+        totalHolidayOffSeconds += WORK_DAY_SECONDS;
+        days.push({ date: dateStr, status: "official_holiday_off", holiday_label: holiday.label, counted_seconds: WORK_DAY_SECONDS });
+      }
       continue;
     }
 
@@ -542,24 +744,13 @@ async function monthlyReport(db, employeeId, monthStr) {
     }
 
     const entries = attByDate[dateStr] || [];
-    let actualSeconds = 0;
-    let pendingIn = null;
-    for (const e of entries) {
-      if (e.action === "sign_in") pendingIn = e;
-      else if (e.action === "sign_out" && pendingIn) {
-        const inMs = new Date(pendingIn.created_at + "Z").getTime();
-        const outMs = new Date(e.created_at + "Z").getTime();
-        if (outMs > inMs) actualSeconds += Math.floor((outMs - inMs) / 1000);
-        pendingIn = null;
-      }
-    }
-
     if (!entries.length) {
       if (dateStr < todayStr) absentDays++;
       days.push({ date: dateStr, status: dateStr < todayStr ? "absent" : "today_pending", actual_seconds: 0, counted_seconds: 0 });
       continue;
     }
 
+    const actualSeconds = pairAttendance(entries);
     const overtimeApproved = !!otByDate[dateStr];
     let countedSeconds, overtimeSeconds = 0;
     if (overtimeApproved) {
@@ -580,6 +771,21 @@ async function monthlyReport(db, employeeId, monthStr) {
     });
   }
 
+  // ---- extra hour-equivalent components (مستحقات مالية / ساعات خارج بصمة / إذن انصراف) ----
+  const rate = hourlyRate(emp);
+  const financialTotalEGP = finRows.rows.reduce((s, r) => s + Number(r.amount_egp), 0);
+  const financialHours = rate > 0 ? financialTotalEGP / rate : 0;
+
+  const offclockHours = offRows.rows.reduce((s, r) => s + Number(r.hours), 0);
+
+  const permissionUsedHours = permRows.rows.reduce((s, r) => s + Number(r.hours), 0);
+  const permissionBonusHours = Math.max(0, PERMISSION_MONTHLY_HOURS - permissionUsedHours);
+
+  const penaltiesTotalEGP = penaltyRows.rows.reduce((s, r) => s + Number(r.amount_egp), 0);
+
+  const extraSeconds = Math.round((financialHours + offclockHours + permissionBonusHours) * 3600);
+  totalCountedSeconds += extraSeconds;
+
   return json({
     employee: publicEmployee(emp),
     year, month,
@@ -594,6 +800,18 @@ async function monthlyReport(db, employeeId, monthStr) {
       absent_days: absentDays,
       leave_days_casual: leaveDaysCasual,
       leave_days_annual: leaveDaysAnnual,
+      holiday_bonus_hours: +(totalHolidayBonusSeconds / 3600).toFixed(2),
+      holiday_off_hours: +(totalHolidayOffSeconds / 3600).toFixed(2),
+    },
+    extras: {
+      hourly_rate: +rate.toFixed(2),
+      financial_total_egp: +financialTotalEGP.toFixed(2),
+      financial_hours: +financialHours.toFixed(2),
+      offclock_hours: +offclockHours.toFixed(2),
+      permission_monthly_limit: PERMISSION_MONTHLY_HOURS,
+      permission_used_hours: +permissionUsedHours.toFixed(2),
+      permission_bonus_hours: +permissionBonusHours.toFixed(2),
+      penalties_total_egp: +penaltiesTotalEGP.toFixed(2),
     },
     leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance },
   });
@@ -604,7 +822,7 @@ async function monthlyReport(db, employeeId, monthStr) {
 async function handleAdmin(db, admin, path, method, body, url) {
   if (path === "/api/admin/employees" && method === "GET") {
     const res = await db.execute("SELECT * FROM employees ORDER BY emp_code ASC");
-    return json({ employees: res.rows.map(publicEmployee) });
+    return json({ employees: res.rows.map(adminEmployeeView) });
   }
 
   if (path === "/api/admin/leave-requests" && method === "GET") {
@@ -637,6 +855,94 @@ async function handleAdmin(db, admin, path, method, body, url) {
   const otDecideMatch = path.match(/^\/api\/admin\/overtime-requests\/(\d+)\/decide$/);
   if (otDecideMatch && method === "POST") {
     return await decideOvertime(db, admin, Number(otDecideMatch[1]), body);
+  }
+
+  // ---------- financial requests ----------
+  if (path === "/api/admin/financial-requests" && method === "GET") {
+    return await adminListRequests(db, "financial_requests", url.searchParams.get("status") || "pending");
+  }
+  const finDecideMatch = path.match(/^\/api\/admin\/financial-requests\/(\d+)\/decide$/);
+  if (finDecideMatch && method === "POST") {
+    return await decideSimple(db, admin, "financial_requests", Number(finDecideMatch[1]), body);
+  }
+
+  // ---------- off-clock hour requests ----------
+  if (path === "/api/admin/offclock-requests" && method === "GET") {
+    return await adminListRequests(db, "offclock_requests", url.searchParams.get("status") || "pending");
+  }
+  const offDecideMatch = path.match(/^\/api\/admin\/offclock-requests\/(\d+)\/decide$/);
+  if (offDecideMatch && method === "POST") {
+    return await decideSimple(db, admin, "offclock_requests", Number(offDecideMatch[1]), body);
+  }
+
+  // ---------- permission / early-leave requests ----------
+  if (path === "/api/admin/permission-requests" && method === "GET") {
+    return await adminListRequests(db, "permission_requests", url.searchParams.get("status") || "pending");
+  }
+  const permDecideMatch = path.match(/^\/api\/admin\/permission-requests\/(\d+)\/decide$/);
+  if (permDecideMatch && method === "POST") {
+    return await decideSimple(db, admin, "permission_requests", Number(permDecideMatch[1]), body);
+  }
+
+  // ---------- official holidays ----------
+  if (path === "/api/admin/official-holidays" && method === "GET") {
+    return await officialHolidays(db, url.searchParams.get("month"));
+  }
+  if (path === "/api/admin/official-holidays" && method === "POST") {
+    const missing = requireFields(body, ["date"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    try {
+      const res = await db.execute({
+        sql: `INSERT INTO official_holidays (date, label, created_by) VALUES (?,?,?) RETURNING *`,
+        args: [body.date, body.label || null, admin.id],
+      });
+      return json({ holiday: res.rows[0] }, 201);
+    } catch (e) {
+      return err("اليوم ده متسجل كإجازة رسمية بالفعل", 409);
+    }
+  }
+  const holidayDeleteMatch = path.match(/^\/api\/admin\/official-holidays\/(\d+)$/);
+  if (holidayDeleteMatch && method === "DELETE") {
+    await db.execute({ sql: "DELETE FROM official_holidays WHERE id = ?", args: [Number(holidayDeleteMatch[1])] });
+    return json({ ok: true });
+  }
+
+  // ---------- per-employee salary config ----------
+  const salaryMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/salary$/);
+  if (salaryMatch && method === "POST") {
+    const empId = Number(salaryMatch[1]);
+    const fields = [];
+    const args = [];
+    if (body.monthly_salary !== undefined) { fields.push("monthly_salary = ?"); args.push(Number(body.monthly_salary) || 0); }
+    if (body.work_days_per_month !== undefined) { fields.push("work_days_per_month = ?"); args.push(Number(body.work_days_per_month) || 0); }
+    if (body.birth_date !== undefined) { fields.push("birth_date = ?"); args.push(body.birth_date || null); }
+    if (!fields.length) return err("مفيش بيانات للتحديث");
+    args.push(empId);
+    await db.execute({ sql: `UPDATE employees SET ${fields.join(", ")} WHERE id = ?`, args });
+    const res = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [empId] });
+    return json({ employee: adminEmployeeView(res.rows[0]) });
+  }
+
+  // ---------- penalties (جزاءات) ----------
+  if (path === "/api/admin/penalties" && method === "POST") {
+    const missing = requireFields(body, ["employee_id", "amount_egp", "date"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const res = await db.execute({
+      sql: `INSERT INTO penalties (employee_id, amount_egp, reason, date, created_by) VALUES (?,?,?,?,?) RETURNING *`,
+      args: [body.employee_id, Number(body.amount_egp), body.reason || null, body.date, admin.id],
+    });
+    return json({ penalty: res.rows[0] }, 201);
+  }
+  if (path === "/api/admin/penalties" && method === "GET") {
+    const employeeId = url.searchParams.get("employee_id");
+    const month = url.searchParams.get("month");
+    let sql = "SELECT * FROM penalties WHERE 1=1";
+    const args = [];
+    if (employeeId) { sql += " AND employee_id = ?"; args.push(Number(employeeId)); }
+    if (month) { sql += " AND date LIKE ?"; args.push(month + "%"); }
+    sql += " ORDER BY date DESC";
+    const res = await db.execute({ sql, args });
+    return json({ penalties: res.rows });
   }
 
   const reportMatch = path === "/api/admin/report";
@@ -689,6 +995,36 @@ async function decideOvertime(db, admin, requestId, body) {
 
   await db.execute({
     sql: "UPDATE overtime_requests SET status = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?",
+    args: [body.action === "approve" ? "approved" : "rejected", admin.id, requestId],
+  });
+  return json({ ok: true });
+}
+
+// Generic list/decide for financial_requests, offclock_requests, permission_requests —
+// they all share the same shape (employee_id, status, requested_at, decided_at, decided_by).
+const REQUEST_TABLES = new Set(["financial_requests", "offclock_requests", "permission_requests"]);
+
+async function adminListRequests(db, table, status) {
+  if (!REQUEST_TABLES.has(table)) return err("invalid table", 400);
+  const res = await db.execute({
+    sql: `SELECT r.*, e.name as employee_name, e.emp_code FROM ${table} r
+          JOIN employees e ON e.id = r.employee_id
+          WHERE r.status = ? ORDER BY r.requested_at ASC`,
+    args: [status],
+  });
+  return json({ requests: res.rows });
+}
+
+async function decideSimple(db, admin, table, requestId, body) {
+  if (!REQUEST_TABLES.has(table)) return err("invalid table", 400);
+  if (!["approve", "reject"].includes(body.action)) return err("action must be approve or reject");
+  const res = await db.execute({ sql: `SELECT * FROM ${table} WHERE id = ?`, args: [requestId] });
+  const request = res.rows[0];
+  if (!request) return err("Request not found", 404);
+  if (request.status !== "pending") return err("Request already decided", 409);
+
+  await db.execute({
+    sql: `UPDATE ${table} SET status = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?`,
     args: [body.action === "approve" ? "approved" : "rejected", admin.id, requestId],
   });
   return json({ ok: true });
