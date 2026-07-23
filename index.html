@@ -568,7 +568,10 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-sub">مراجعة الطلبات وتقارير الموظفين</div>
 </div>
 
-<div class="settings-label" style="margin-top:6px">REQUESTS · الطلبات</div>
+<div class="settings-label" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
+<span>REQUESTS · الطلبات</span>
+<button class="btn-end-task" style="margin-top:0" onclick="loadAdminData()">↻ REFRESH · تحديث</button>
+</div>
 
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -1052,57 +1055,103 @@ function startClock() {
 
 function parseUTC(s) { return new Date(s.indexOf("Z") > -1 ? s : s + "Z").getTime(); }
 
-async function loadTodayData() {
-  showLoading(true);
-  try {
-    var attRes = await apiRequest("/api/attendance/today", "GET");
-    var brkRes = await apiRequest("/api/breaks/today", "GET");
-    var tskRes = await apiRequest("/api/tasks/today", "GET");
-    todayAttendance = attRes.entries || [];
-    todayBreaks = brkRes.entries || [];
-    todayTasks = tskRes.tasks || [];
+function applyAttendanceState(entries) {
+  todayAttendance = entries || [];
+  var lastIn = null, lastOut = null;
+  for (var i = todayAttendance.length-1; i >= 0; i--) {
+    if (!lastIn && todayAttendance[i].action === "sign_in") lastIn = todayAttendance[i];
+    if (!lastOut && todayAttendance[i].action === "sign_out") lastOut = todayAttendance[i];
+  }
+  if (lastIn && (!lastOut || parseUTC(lastIn.created_at) > parseUTC(lastOut.created_at))) {
+    signedIn = true;
+    signInTime = parseUTC(lastIn.created_at);
+    document.getElementById("signInTime").textContent = lastIn.time;
+    document.getElementById("btnSignIn").disabled = true;
+    document.getElementById("btnSignOut").disabled = false;
+    var pill = document.getElementById("signStatus");
+    pill.className = "status-pill in";
+    pill.innerHTML = "<div class='status-dot pulse'></div><span>SIGNED IN</span>";
+  } else {
+    signedIn = false; signInTime = null;
+    document.getElementById("btnSignIn").disabled = false;
+    document.getElementById("btnSignOut").disabled = true;
+    var pill2 = document.getElementById("signStatus");
+    pill2.className = "status-pill";
+    pill2.innerHTML = "<div class='status-dot'></div><span>NOT SIGNED IN</span>";
+  }
+  renderSignLog();
+}
 
-    var lastIn = null, lastOut = null;
-    for (var i = todayAttendance.length-1; i >= 0; i--) {
-      if (!lastIn && todayAttendance[i].action === "sign_in") lastIn = todayAttendance[i];
-      if (!lastOut && todayAttendance[i].action === "sign_out") lastOut = todayAttendance[i];
+function applyTasksState(tasks) {
+  todayTasks = tasks || [];
+  for (var j = 0; j < todayTasks.length; j++) {
+    if (!todayTasks[j].end_time) {
+      taskStartTimes[todayTasks[j].id] = parseUTC(todayTasks[j].created_at);
     }
-    if (lastIn && (!lastOut || parseUTC(lastIn.created_at) > parseUTC(lastOut.created_at))) {
-      signedIn = true;
-      signInTime = parseUTC(lastIn.created_at);
-      document.getElementById("signInTime").textContent = lastIn.time;
-      document.getElementById("btnSignIn").disabled = true;
-      document.getElementById("btnSignOut").disabled = false;
-      var pill = document.getElementById("signStatus");
-      pill.className = "status-pill in";
-      pill.innerHTML = "<div class='status-dot pulse'></div><span>SIGNED IN</span>";
-    }
+  }
+  renderTasks();
+}
 
-    for (var j = 0; j < todayTasks.length; j++) {
-      if (!todayTasks[j].end_time) {
-        taskStartTimes[todayTasks[j].id] = parseUTC(todayTasks[j].created_at);
-      }
-    }
-
-    for (var k = 0; k < todayBreaks.length; k++) {
-      if (!todayBreaks[k].end_time) {
+function applyBreaksState(entries) {
+  todayBreaks = entries || [];
+  var foundOpen = false;
+  for (var k = 0; k < todayBreaks.length; k++) {
+    if (!todayBreaks[k].end_time) {
+      foundOpen = true;
+      if (activeBreakId !== todayBreaks[k].id) {
         activeBreakId = todayBreaks[k].id;
         breakStartTime = new Date(parseUTC(todayBreaks[k].created_at));
-        document.getElementById("btnBreakStart").style.display = "none";
-        document.getElementById("btnBreakStop").style.display = "inline-block";
-        clearInterval(breakInterval);
+      }
+      document.getElementById("btnBreakStart").style.display = "none";
+      document.getElementById("btnBreakStop").style.display = "inline-block";
+      if (!breakInterval) {
         breakInterval = setInterval(function() {
           var elapsed = Math.floor((Date.now()-breakStartTime)/1000);
           document.getElementById("timerDisplay").textContent = formatDuration(elapsed);
           document.getElementById("timerDisplay").classList.add("running");
         }, 1000);
-        break;
       }
+      break;
     }
+  }
+  if (!foundOpen) {
+    activeBreakId = null; breakStartTime = null;
+    clearInterval(breakInterval); breakInterval = null;
+    document.getElementById("timerDisplay").textContent = "00:00:00";
+    document.getElementById("timerDisplay").classList.remove("running");
+    document.getElementById("btnBreakStart").style.display = "inline-block";
+    document.getElementById("btnBreakStop").style.display = "none";
+  }
+  renderBreakLog();
+}
 
-    renderSignLog(); renderBreakLog(); renderTasks();
-    await loadLeaveOvertimeData();
-    if (user.role === "admin") await loadAdminData();
+async function refreshAttendanceOnly() {
+  try { applyAttendanceState((await apiRequest("/api/attendance/today", "GET")).entries); } catch(e) {}
+}
+async function refreshBreaksOnly() {
+  try { applyBreaksState((await apiRequest("/api/breaks/today", "GET")).entries); } catch(e) {}
+}
+async function refreshTasksOnly() {
+  try { applyTasksState((await apiRequest("/api/tasks/today", "GET")).tasks); } catch(e) {}
+}
+
+async function loadTodayData() {
+  showLoading(true);
+  try {
+    var results = await Promise.all([
+      apiRequest("/api/attendance/today", "GET"),
+      apiRequest("/api/breaks/today", "GET"),
+      apiRequest("/api/tasks/today", "GET"),
+    ]);
+    applyAttendanceState(results[0].entries);
+    applyBreaksState(results[1].entries);
+    applyTasksState(results[2].tasks);
+
+    if (user.role === "admin") {
+      await Promise.all([loadLeaveOvertimeData(), loadAdminData()]);
+    } else {
+      await loadLeaveOvertimeData();
+    }
     setSyncStatus("ok", "Connected");
   } catch(e) {
     setSyncStatus("", "Error");
@@ -1113,19 +1162,21 @@ async function loadTodayData() {
 
 async function loadLeaveOvertimeData() {
   try {
-    var lr = await apiRequest("/api/leave-requests/mine", "GET");
-    myLeaveReqs = lr.requests || [];
-    leaveBalance = lr.balance || leaveBalance;
-    var ot = await apiRequest("/api/overtime-requests/mine", "GET");
-    myOTReqs = ot.requests || [];
-    var fin = await apiRequest("/api/financial-requests/mine", "GET");
-    myFinReqs = fin.requests || [];
-    var off = await apiRequest("/api/offclock-requests/mine", "GET");
-    myOffReqs = off.requests || [];
-    var perm = await apiRequest("/api/permission-requests/mine", "GET");
-    myPermReqs = perm.requests || [];
-    var hol = await apiRequest("/api/official-holidays", "GET");
-    myHolidays = hol.holidays || [];
+    var results = await Promise.all([
+      apiRequest("/api/leave-requests/mine", "GET"),
+      apiRequest("/api/overtime-requests/mine", "GET"),
+      apiRequest("/api/financial-requests/mine", "GET"),
+      apiRequest("/api/offclock-requests/mine", "GET"),
+      apiRequest("/api/permission-requests/mine", "GET"),
+      apiRequest("/api/official-holidays", "GET"),
+    ]);
+    myLeaveReqs = results[0].requests || [];
+    leaveBalance = results[0].balance || leaveBalance;
+    myOTReqs = results[1].requests || [];
+    myFinReqs = results[2].requests || [];
+    myOffReqs = results[3].requests || [];
+    myPermReqs = results[4].requests || [];
+    myHolidays = results[5].holidays || [];
     renderLeaveBalance();
     renderMyRequests();
     renderOfficialHolidaysEmployee();
@@ -1314,19 +1365,27 @@ var REQUEST_STATUSES = ["pending", "approved", "rejected"];
 
 async function loadAdminData() {
   try {
+    var jobs = [];
+    var jobKeys = [];
     for (var i = 0; i < REQUEST_KINDS.length; i++) {
-      var cfg = REQUEST_KINDS[i];
-      adminRequestsData[cfg.kind] = {};
       for (var s = 0; s < REQUEST_STATUSES.length; s++) {
-        var status = REQUEST_STATUSES[s];
-        var res = await apiRequest(cfg.listPath + "?status=" + status, "GET");
-        adminRequestsData[cfg.kind][status] = res.requests || [];
+        jobs.push(apiRequest(REQUEST_KINDS[i].listPath + "?status=" + REQUEST_STATUSES[s], "GET"));
+        jobKeys.push([REQUEST_KINDS[i].kind, REQUEST_STATUSES[s]]);
       }
     }
-    var hol = await apiRequest("/api/admin/official-holidays", "GET");
-    adminHolidaysMonth = hol.holidays || [];
-    var e = await apiRequest("/api/admin/employees", "GET");
-    adminEmployees = e.employees || [];
+    jobs.push(apiRequest("/api/admin/official-holidays", "GET"));
+    jobs.push(apiRequest("/api/admin/employees", "GET"));
+
+    var results = await Promise.all(jobs);
+
+    for (var j = 0; j < jobKeys.length; j++) {
+      var kind = jobKeys[j][0], status = jobKeys[j][1];
+      adminRequestsData[kind] = adminRequestsData[kind] || {};
+      adminRequestsData[kind][status] = results[j].requests || [];
+    }
+    adminHolidaysMonth = results[jobKeys.length].holidays || [];
+    adminEmployees = results[jobKeys.length + 1].employees || [];
+
     populateRequestFilter();
     renderRequestsOverview();
     renderAdminHolidays();
@@ -1458,11 +1517,12 @@ async function decideRequest(kind, id, action) {
 async function refreshRequestKind(kind) {
   var cfg = REQUEST_KINDS.find(function(c) { return c.kind === kind; });
   if (!cfg) return;
+  var results = await Promise.all(REQUEST_STATUSES.map(function(status) {
+    return apiRequest(cfg.listPath + "?status=" + status, "GET");
+  }));
   adminRequestsData[kind] = {};
   for (var s = 0; s < REQUEST_STATUSES.length; s++) {
-    var status = REQUEST_STATUSES[s];
-    var res = await apiRequest(cfg.listPath + "?status=" + status, "GET");
-    adminRequestsData[kind][status] = res.requests || [];
+    adminRequestsData[kind][REQUEST_STATUSES[s]] = results[s].requests || [];
   }
   renderRequestsOverview();
 }
@@ -1826,10 +1886,15 @@ function renderBreakLog() {
   var total = 0;
   var html = "";
   for (var i = 0; i < todayBreaks.length; i++) {
-    total += todayBreaks[i].duration;
-    var over = todayBreaks[i].duration > 1800;
+    var b = todayBreaks[i];
+    if (!b.end_time) {
+      html += "<div class='log-entry'><div class='log-type'>BREAK " + (i+1) + "</div><div class='log-time'>" + b.start_time + "</div><div class='log-note'>ONGOING · جارية الآن</div></div>";
+      continue;
+    }
+    total += b.duration;
+    var over = b.duration > 1800;
     var style = over ? " style='color:#ff4444'" : "";
-    html += "<div class='log-entry'><div class='log-type'>BREAK " + (i+1) + "</div><div class='log-time'" + style + ">" + todayBreaks[i].start_time + "</div><div class='log-note'" + style + ">" + todayBreaks[i].end_time + " - " + formatDuration(todayBreaks[i].duration) + (over ? " (اكثر من 30 دقيقة)" : "") + "</div></div>";
+    html += "<div class='log-entry'><div class='log-type'>BREAK " + (i+1) + "</div><div class='log-time'" + style + ">" + b.start_time + "</div><div class='log-note'" + style + ">" + b.end_time + " - " + formatDuration(b.duration) + (over ? " (اكثر من 30 دقيقة)" : "") + "</div></div>";
   }
   document.getElementById("totalBreak").textContent = "Total: " + formatDuration(total);
   el.innerHTML = html;
@@ -1924,10 +1989,14 @@ function switchTab(name) {
   document.querySelectorAll(".tab-content").forEach(function(c) { c.classList.remove("active"); });
   document.getElementById("tab-"+name).classList.add("active");
   document.getElementById("content-"+name).classList.add("active");
+  if (name === "signin") refreshAttendanceOnly();
+  if (name === "break") refreshBreaksOnly();
+  if (name === "tasks") refreshTasksOnly();
   if (name === "requests") {
     var isoToday = cairoISODate();
     if (!document.getElementById("leaveDate").value) document.getElementById("leaveDate").value = isoToday;
     if (!document.getElementById("otDate").value) document.getElementById("otDate").value = isoToday;
+    loadLeaveOvertimeData();
   }
   if (name === "admin" && user && user.role === "admin") {
     loadAdminData();
