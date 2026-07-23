@@ -209,6 +209,9 @@ export default {
       if (path === "/api/attendance/today" && method === "GET") return await attendanceToday(db, me);
 
       if (path === "/api/breaks" && method === "POST") return await addBreak(db, me, body);
+      if (path === "/api/breaks/start" && method === "POST") return await startBreak(db, me);
+      const breakEndMatch = path.match(/^\/api\/breaks\/(\d+)\/end$/);
+      if (breakEndMatch && method === "PATCH") return await endBreak(db, me, Number(breakEndMatch[1]));
       if (path === "/api/breaks/today" && method === "GET") return await breaksToday(db, me);
 
       if (path === "/api/tasks" && method === "POST") return await addTask(db, me, body);
@@ -418,6 +421,28 @@ async function addBreak(db, me, body) {
   return json({ entry: res.rows[0] }, 201);
 }
 
+async function startBreak(db, me) {
+  const today = cairoDateStr();
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const fn = me.name.split(" ")[0];
+  const res = await db.execute({
+    sql: `INSERT INTO breaks (employee_id, date, start_time, first_name) VALUES (?,?,?,?) RETURNING *`,
+    args: [me.id, today, t, fn],
+  });
+  return json({ entry: res.rows[0] }, 201);
+}
+
+async function endBreak(db, me, breakId) {
+  const rows = await db.execute({ sql: "SELECT * FROM breaks WHERE id = ? AND employee_id = ?", args: [breakId, me.id] });
+  const brk = rows.rows[0];
+  if (!brk) return err("Break not found", 404);
+  if (brk.end_time) return err("Break already ended", 409);
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const dur = Math.max(0, Math.floor((Date.now() - new Date(brk.created_at + "Z").getTime()) / 1000));
+  await db.execute({ sql: "UPDATE breaks SET end_time = ?, duration = ? WHERE id = ?", args: [t, dur, breakId] });
+  return json({ ok: true, entry: { ...brk, end_time: t, duration: dur } });
+}
+
 async function breaksToday(db, me) {
   const today = cairoDateStr();
   const res = await db.execute({
@@ -456,7 +481,7 @@ async function endTask(db, me, taskId, body) {
 async function tasksToday(db, me) {
   const today = cairoDateStr();
   const res = await db.execute({
-    sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at DESC",
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
     args: [me.id, today],
   });
   return json({ tasks: res.rows });
