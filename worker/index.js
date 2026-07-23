@@ -243,7 +243,7 @@ export default {
       // ---------- admin only ----------
       if (path.startsWith("/api/admin/")) {
         if (me.role !== "admin") return err("Forbidden", 403);
-        return await handleAdmin(db, me, path, method, body, url);
+        return await handleAdmin(db, me, path, method, body, url, env);
       }
 
       return err("Not found", 404);
@@ -824,7 +824,7 @@ async function monthlyReport(db, employeeId, monthStr) {
 
 // ---------------------------------------------------------------- admin
 
-async function handleAdmin(db, admin, path, method, body, url) {
+async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/employees" && method === "GET") {
     const res = await db.execute("SELECT * FROM employees ORDER BY emp_code ASC");
     return json({ employees: res.rows.map(adminEmployeeView) });
@@ -972,7 +972,52 @@ async function handleAdmin(db, admin, path, method, body, url) {
     const missing = requireFields(body, ["employee_id", "role"]);
     if (missing) return err(`Missing field: ${missing}`);
     if (!["employee", "admin"].includes(body.role)) return err("invalid role");
+    if (body.role === "employee" && Number(body.employee_id) === admin.id) {
+      return err("منقدرش تشيل صلاحية الأدمن بتاعتك انت نفسك", 400);
+    }
     await db.execute({ sql: "UPDATE employees SET role = ? WHERE id = ?", args: [body.role, body.employee_id] });
+    return json({ ok: true });
+  }
+
+  // ---------- full employee info (no PIN — password/answer are hashed and never included) ----------
+  const fullInfoMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/full$/);
+  if (fullInfoMatch && method === "GET") {
+    const res = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [Number(fullInfoMatch[1])] });
+    const emp = res.rows[0];
+    if (!emp) return err("Employee not found", 404);
+    return json({ employee: { ...adminEmployeeView(emp), created_at: emp.created_at, secret_q: emp.secret_q } });
+  }
+
+  function pinOk(body) {
+    return !!env.ADMIN_PIN && !!body.pin && String(body.pin) === String(env.ADMIN_PIN);
+  }
+
+  // ---------- reset an employee's password (PIN required) ----------
+  const resetPwMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/reset-password$/);
+  if (resetPwMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    if (!body.new_password) return err("ادخل باسورد جديد");
+    const targetId = Number(resetPwMatch[1]);
+    const newHash = await makeSecretHash(body.new_password);
+    await db.execute({ sql: "UPDATE employees SET password_hash = ? WHERE id = ?", args: [newHash, targetId] });
+    await db.execute({ sql: "DELETE FROM sessions WHERE employee_id = ?", args: [targetId] });
+    return json({ ok: true });
+  }
+
+  // ---------- permanently delete an employee and all their data (PIN required) ----------
+  const deleteEmpMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/delete$/);
+  if (deleteEmpMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const targetId = Number(deleteEmpMatch[1]);
+    if (targetId === admin.id) return err("منقدرش تمسح حسابك انت نفسك", 400);
+    const ownedTables = [
+      "sessions", "attendance", "breaks", "tasks", "leave_requests", "overtime_requests",
+      "financial_requests", "offclock_requests", "permission_requests", "penalties",
+    ];
+    for (const t of ownedTables) {
+      await db.execute({ sql: `DELETE FROM ${t} WHERE employee_id = ?`, args: [targetId] });
+    }
+    await db.execute({ sql: "DELETE FROM employees WHERE id = ?", args: [targetId] });
     return json({ ok: true });
   }
 
