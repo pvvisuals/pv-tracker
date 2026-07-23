@@ -72,6 +72,14 @@ select option{background:#111;}
 .sec-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:3px;margin-bottom:2px;}
 .sec-sub{font-family:'Cairo',sans-serif;font-size:15px;color:var(--muted);}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:20px;}
+.kind-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px;}
+.kind-btn{background:var(--card);border:1px solid var(--border);padding:16px;text-align:center;cursor:pointer;transition:all .15s;}
+.kind-btn:hover{border-color:var(--text);}
+.kind-btn.active{background:var(--text);border-color:var(--text);}
+.kind-btn .kind-name{font-size:16px;font-weight:700;letter-spacing:1px;color:var(--text);}
+.kind-btn.active .kind-name{color:#000;}
+.kind-btn .kind-count{font-size:13px;color:var(--muted);margin-top:5px;}
+.kind-btn.active .kind-count{color:#333;}
 @media(max-width:560px){.info-grid{grid-template-columns:1fr;}}
 .info-card{background:var(--card);padding:20px 22px;}
 .info-card-label{font-size:15px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text);margin-bottom:8px;}
@@ -559,70 +567,48 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-sub">مراجعة الطلبات وتقارير الموظفين</div>
 </div>
 
-<div class="settings-label" style="margin-top:6px">PENDING · معلقة</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>LEAVE · إجازة</span></div>
-<div id="adminLeaveList"><div class="empty-log">No pending requests</div></div>
+<div class="settings-label" style="margin-top:6px">REQUESTS · الطلبات</div>
+
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee Filter <span class="fla">فلتر الموظف</span></div>
+<select id="reqFilterEmployee" onchange="onRequestFilterChange()">
+<option value="all">All Employees · كل الموظفين</option>
+</select>
 </div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>OVERTIME · أوفر تايم</span></div>
-<div id="adminOTList"><div class="empty-log">No pending requests</div></div>
-</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>FINANCIAL · مستحقات مالية</span></div>
-<div id="adminFinList"><div class="empty-log">No pending requests</div></div>
-</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>OFF-CLOCK HOURS · ساعات خارج البصمة</span></div>
-<div id="adminOffList"><div class="empty-log">No pending requests</div></div>
-</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PERMISSION · إذن انصراف</span></div>
-<div id="adminPermList"><div class="empty-log">No pending requests</div></div>
 </div>
 
-<div class="settings-label" style="margin-top:22px">APPROVED · مقبولة</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>LEAVE · إجازة</span></div>
-<div id="adminLeaveApprovedList"><div class="empty-log">No approved requests</div></div>
+<div class="info-grid" style="margin:14px 0">
+<div class="info-card">
+<div class="info-card-label">PENDING · معلقة</div>
+<div class="info-card-value" id="countPending">0</div>
 </div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>OVERTIME · أوفر تايم</span></div>
-<div id="adminOTApprovedList"><div class="empty-log">No approved requests</div></div>
+<div class="info-card">
+<div class="info-card-label">APPROVED · مقبولة</div>
+<div class="info-card-value" id="countApproved">0</div>
 </div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>FINANCIAL · مستحقات مالية</span></div>
-<div id="adminFinApprovedList"><div class="empty-log">No approved requests</div></div>
+<div class="info-card">
+<div class="info-card-label">REJECTED · مرفوضة</div>
+<div class="info-card-value" id="countRejected">0</div>
 </div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>OFF-CLOCK HOURS · ساعات خارج البصمة</span></div>
-<div id="adminOffApprovedList"><div class="empty-log">No approved requests</div></div>
-</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PERMISSION · إذن انصراف</span></div>
-<div id="adminPermApprovedList"><div class="empty-log">No approved requests</div></div>
 </div>
 
-<div class="settings-label" style="margin-top:22px">REJECTED · مرفوضة</div>
+<div class="kind-grid" id="reqTypeGrid"></div>
+
+<div id="reqTypePanel" style="display:none">
+<div class="settings-label" id="reqTypePanelTitle" style="margin-top:22px"></div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>LEAVE · إجازة</span></div>
-<div id="adminLeaveRejectedList"><div class="empty-log">No rejected requests</div></div>
+<div class="log-header"><span>PENDING · معلقة</span></div>
+<div id="reqPanelPending"></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>OVERTIME · أوفر تايم</span></div>
-<div id="adminOTRejectedList"><div class="empty-log">No rejected requests</div></div>
+<div class="log-header"><span>APPROVED · مقبولة</span></div>
+<div id="reqPanelApproved"></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>FINANCIAL · مستحقات مالية</span></div>
-<div id="adminFinRejectedList"><div class="empty-log">No rejected requests</div></div>
+<div class="log-header"><span>REJECTED · مرفوضة</span></div>
+<div id="reqPanelRejected"></div>
 </div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>OFF-CLOCK HOURS · ساعات خارج البصمة</span></div>
-<div id="adminOffRejectedList"><div class="empty-log">No rejected requests</div></div>
-</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PERMISSION · إذن انصراف</span></div>
-<div id="adminPermRejectedList"><div class="empty-log">No rejected requests</div></div>
 </div>
 
 <div class="task-form">
@@ -1274,7 +1260,8 @@ async function loadAdminData() {
     adminHolidaysMonth = hol.holidays || [];
     var e = await apiRequest("/api/admin/employees", "GET");
     adminEmployees = e.employees || [];
-    renderAdminLists();
+    populateRequestFilter();
+    renderRequestsOverview();
     renderAdminHolidays();
     populateEmployeeSelects();
   } catch(e) { /* non-fatal */ }
@@ -1296,19 +1283,88 @@ function requestRowHtml(cfg, r, status) {
     "<div class='log-note'>" + note + "</div>" + actions + "</div>";
 }
 
-function renderAdminLists() {
-  var emptyLabel = { pending: "No pending requests", approved: "No approved requests", rejected: "No rejected requests" };
+var KIND_LABELS = {
+  leave: "LEAVE · إجازة", overtime: "OVERTIME · أوفر تايم", financial: "FINANCIAL · مستحقات مالية",
+  offclock: "OFF-CLOCK HOURS · ساعات خارج البصمة", permission: "PERMISSION · إذن انصراف",
+};
+var selectedRequestKind = null;
+
+function populateRequestFilter() {
+  var sel = document.getElementById("reqFilterEmployee");
+  if (!sel) return;
+  if (sel.options.length === adminEmployees.length + 1) return;
+  var currentVal = sel.value || "all";
+  sel.innerHTML = '<option value="all">All Employees · كل الموظفين</option>';
+  for (var i = 0; i < adminEmployees.length; i++) {
+    var e = adminEmployees[i];
+    var opt = document.createElement("option");
+    opt.value = e.id;
+    opt.textContent = "#" + e.emp_code + " - " + e.name;
+    sel.appendChild(opt);
+  }
+  sel.value = currentVal;
+}
+
+function filterByEmployee(rows) {
+  var sel = document.getElementById("reqFilterEmployee");
+  var empId = sel ? sel.value : "all";
+  if (!empId || empId === "all") return rows;
+  return rows.filter(function(r) { return String(r.employee_id) === String(empId); });
+}
+
+function onRequestFilterChange() {
+  renderRequestsOverview();
+}
+
+function renderRequestsOverview() {
+  var totalPending = 0, totalApproved = 0, totalRejected = 0;
+  var kindCounts = {};
   for (var i = 0; i < REQUEST_KINDS.length; i++) {
     var cfg = REQUEST_KINDS[i];
-    for (var s = 0; s < REQUEST_STATUSES.length; s++) {
-      var status = REQUEST_STATUSES[s];
-      var elId = status === "pending" ? cfg.pendingEl : (status === "approved" ? cfg.approvedEl : cfg.rejectedEl);
-      var el = document.getElementById(elId);
-      if (!el) continue;
-      var rows = (adminRequestsData[cfg.kind] && adminRequestsData[cfg.kind][status]) || [];
-      el.innerHTML = rows.length ? rows.map(function(r) { return requestRowHtml(cfg, r, status); }).join("") : "<div class='empty-log'>" + emptyLabel[status] + "</div>";
-    }
+    var data = adminRequestsData[cfg.kind] || {};
+    var pend = filterByEmployee(data.pending || []);
+    var appr = filterByEmployee(data.approved || []);
+    var rej = filterByEmployee(data.rejected || []);
+    kindCounts[cfg.kind] = pend.length;
+    totalPending += pend.length;
+    totalApproved += appr.length;
+    totalRejected += rej.length;
   }
+  document.getElementById("countPending").textContent = totalPending;
+  document.getElementById("countApproved").textContent = totalApproved;
+  document.getElementById("countRejected").textContent = totalRejected;
+
+  var grid = document.getElementById("reqTypeGrid");
+  var html = "";
+  for (var j = 0; j < REQUEST_KINDS.length; j++) {
+    var k = REQUEST_KINDS[j].kind;
+    var active = (selectedRequestKind === k) ? " active" : "";
+    html += "<div class='kind-btn" + active + "' onclick=\"selectRequestKind('" + k + "')\">" +
+      "<div class='kind-name'>" + KIND_LABELS[k] + "</div>" +
+      "<div class='kind-count'>" + kindCounts[k] + " pending · معلق</div></div>";
+  }
+  grid.innerHTML = html;
+
+  if (selectedRequestKind) renderSelectedKindPanel();
+}
+
+function selectRequestKind(kind) {
+  selectedRequestKind = kind;
+  document.getElementById("reqTypePanel").style.display = "block";
+  renderRequestsOverview();
+}
+
+function renderSelectedKindPanel() {
+  var cfg = REQUEST_KINDS.find(function(c) { return c.kind === selectedRequestKind; });
+  if (!cfg) return;
+  document.getElementById("reqTypePanelTitle").textContent = KIND_LABELS[cfg.kind];
+  var data = adminRequestsData[cfg.kind] || {};
+  var pend = filterByEmployee(data.pending || []);
+  var appr = filterByEmployee(data.approved || []);
+  var rej = filterByEmployee(data.rejected || []);
+  document.getElementById("reqPanelPending").innerHTML = pend.length ? pend.map(function(r) { return requestRowHtml(cfg, r, "pending"); }).join("") : "<div class='empty-log'>No pending requests</div>";
+  document.getElementById("reqPanelApproved").innerHTML = appr.length ? appr.map(function(r) { return requestRowHtml(cfg, r, "approved"); }).join("") : "<div class='empty-log'>No approved requests</div>";
+  document.getElementById("reqPanelRejected").innerHTML = rej.length ? rej.map(function(r) { return requestRowHtml(cfg, r, "rejected"); }).join("") : "<div class='empty-log'>No rejected requests</div>";
 }
 
 var DECIDE_PATHS = {
