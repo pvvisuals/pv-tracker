@@ -130,7 +130,8 @@ textarea{resize:vertical;min-height:76px;}
 .task-desc{font-size:16px;color:var(--muted);margin-bottom:5px;line-height:1.5;}
 .task-meta{font-size:13px;color:var(--muted2);letter-spacing:1px;margin-bottom:4px;}
 .task-dur{font-size:15px;color:#fff;letter-spacing:1px;font-family:'Bebas Neue',sans-serif;margin-bottom:4px;}
-.btn-end-task{padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;transition:all 0.2s;margin-top:6px;}
+.btn-end-task{padding:8px 16px;background:#fff;border:1px solid #fff;color:#000;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;transition:opacity 0.2s;margin-top:6px;font-weight:700;}
+.btn-end-task:hover{opacity:0.8;}
 .btn-end-task:hover{border-color:#fff;color:#fff;}
 .settings-section{margin-bottom:24px;}
 .settings-label{font-size:17px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);margin-bottom:12px;}
@@ -1083,6 +1084,22 @@ async function loadTodayData() {
       }
     }
 
+    for (var k = 0; k < todayBreaks.length; k++) {
+      if (!todayBreaks[k].end_time) {
+        activeBreakId = todayBreaks[k].id;
+        breakStartTime = new Date(parseUTC(todayBreaks[k].created_at));
+        document.getElementById("btnBreakStart").style.display = "none";
+        document.getElementById("btnBreakStop").style.display = "inline-block";
+        clearInterval(breakInterval);
+        breakInterval = setInterval(function() {
+          var elapsed = Math.floor((Date.now()-breakStartTime)/1000);
+          document.getElementById("timerDisplay").textContent = formatDuration(elapsed);
+          document.getElementById("timerDisplay").classList.add("running");
+        }, 1000);
+        break;
+      }
+    }
+
     renderSignLog(); renderBreakLog(); renderTasks();
     await loadLeaveOvertimeData();
     if (user.role === "admin") await loadAdminData();
@@ -1543,7 +1560,7 @@ function populateEmployeeSelects() {
     var d = new Date();
     monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
   }
-  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); }
+  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); showEmployeeFullInfo(); }
 }
 
 function showRoleStatus() {
@@ -1724,30 +1741,46 @@ function renderSignLog() {
   el.innerHTML = html;
 }
 
+var activeBreakId = null;
+
 async function startBreak() {
-  breakStartTime = new Date();
-  document.getElementById("btnBreakStart").style.display = "none";
-  document.getElementById("btnBreakStop").style.display = "inline-block";
-  breakInterval = setInterval(function() {
-    var elapsed = Math.floor((Date.now()-breakStartTime)/1000);
-    document.getElementById("timerDisplay").textContent = formatDuration(elapsed);
-    document.getElementById("timerDisplay").classList.add("running");
-  }, 1000);
-  showToast("*", "Break started");
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/breaks/start", "POST", {});
+    var entry = res.entry;
+    activeBreakId = entry.id;
+    breakStartTime = new Date(parseUTC(entry.created_at));
+    todayBreaks.push(entry);
+    document.getElementById("btnBreakStart").style.display = "none";
+    document.getElementById("btnBreakStop").style.display = "inline-block";
+    clearInterval(breakInterval);
+    breakInterval = setInterval(function() {
+      var elapsed = Math.floor((Date.now()-breakStartTime)/1000);
+      document.getElementById("timerDisplay").textContent = formatDuration(elapsed);
+      document.getElementById("timerDisplay").classList.add("running");
+    }, 1000);
+    showToast("*", "Break started");
+  } catch(e) { showToast("!", "Error: " + e.message); }
+  showLoading(false);
 }
 
 async function stopBreak() {
-  clearInterval(breakInterval);
-  var elapsed = Math.floor((Date.now()-breakStartTime)/1000);
-  var startT = breakStartTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true});
-  var endT = timeStr();
+  if (!activeBreakId) return;
   showLoading(true);
   try {
-    await apiRequest("/api/breaks", "POST", {start_time:startT,end_time:endT,duration:elapsed});
-    todayBreaks.push({start_time:startT,end_time:endT,duration:elapsed});
+    var res = await apiRequest("/api/breaks/" + activeBreakId + "/end", "PATCH", {});
+    for (var i = 0; i < todayBreaks.length; i++) {
+      if (todayBreaks[i].id === activeBreakId) {
+        todayBreaks[i].end_time = res.entry.end_time;
+        todayBreaks[i].duration = res.entry.duration;
+        break;
+      }
+    }
+    clearInterval(breakInterval);
     renderBreakLog();
-    showToast("v","Break: " + formatDuration(elapsed));
-  } catch(e) { showToast("!","Error saving break"); }
+    showToast("v","Break: " + formatDuration(res.entry.duration));
+  } catch(e) { showToast("!","Error: " + e.message); }
+  activeBreakId = null;
   breakStartTime = null;
   document.getElementById("timerDisplay").textContent = "00:00:00";
   document.getElementById("timerDisplay").classList.remove("running");
@@ -1781,7 +1814,7 @@ async function addTask() {
   try {
     var res = await apiRequest("/api/tasks", "POST", {project:project,name:name,description:desc});
     var task = res.task;
-    todayTasks.unshift(task);
+    todayTasks.push(task);
     taskStartTimes[task.id] = parseUTC(task.created_at);
     document.getElementById("taskProject").value = "";
     document.getElementById("taskName").value = "";
