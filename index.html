@@ -681,6 +681,56 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-add" onclick="addPenalty()">+ ADD PENALTY · إضافة جزاء</button>
 </div>
 <div class="task-form">
+<div class="settings-label">Manage Admins · إدارة صلاحيات الأدمن</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="roleEmployee" onchange="showRoleStatus()"></select>
+</div>
+</div>
+<div class="fg" style="margin:10px 0">
+<div class="fl">Current Role <span class="fla">الصلاحية الحالية</span></div>
+<div id="roleStatus" style="padding:11px 14px;border:1px solid var(--border);color:var(--text);font-size:16px;">-</div>
+</div>
+<button class="btn-add" onclick="toggleAdminRole()" id="roleToggleBtn">MAKE ADMIN · ترقية لأدمن</button>
+</div>
+<div class="task-form">
+<div class="settings-label">Employee Full Info · بيانات الموظف الكاملة</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="infoEmployee" onchange="showEmployeeFullInfo()"></select>
+</div>
+</div>
+<div id="employeeFullInfoDisplay" style="margin-top:14px"></div>
+
+<div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+<div class="settings-label">Reset Password <span class="fla">إعادة تعيين كلمة المرور</span></div>
+<div class="sec-sub" style="margin-bottom:12px">الباسورد متشفر ومينفعش يتعرض — بس تقدر تحط واحد جديد للموظف</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
+<input type="password" id="resetPwPin" placeholder="****"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">New Password <span class="fla">كلمة مرور جديدة</span></div>
+<input type="text" id="resetPwValue" placeholder="اكتب باسورد جديد"/>
+</div>
+</div>
+<button class="btn-add" onclick="resetEmployeePassword()">RESET PASSWORD · إعادة تعيين</button>
+</div>
+
+<div style="margin-top:24px;padding-top:18px;border-top:1px solid #ff4444;">
+<div class="settings-label" style="color:#ff4444">Delete Employee <span class="fla" style="color:#ff4444">حذف الموظف نهائياً</span></div>
+<div class="sec-sub" style="margin-bottom:12px;color:#ff4444">⚠️ هيمسح كل بيانات الموظف نهائياً (حضور، مهام، طلبات، كل حاجة) — إجراء لا رجعة فيه</div>
+<div class="fg" style="margin:0 0 12px">
+<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
+<input type="password" id="deletePin" placeholder="****"/>
+</div>
+<button class="btn-add" style="background:#ff4444;border-color:#ff4444;color:#fff" onclick="deleteEmployeeConfirm()">DELETE EMPLOYEE · حذف نهائي</button>
+</div>
+</div>
+<div class="task-form">
 <div class="settings-label">Employee Monthly Report</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -1475,7 +1525,7 @@ async function addPenalty() {
 }
 
 function populateEmployeeSelects() {
-  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee"];
+  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee", "roleEmployee", "infoEmployee"];
   for (var s = 0; s < selectIds.length; s++) {
     var sel = document.getElementById(selectIds[s]);
     if (!sel || sel.options.length === adminEmployees.length) continue;
@@ -1493,7 +1543,108 @@ function populateEmployeeSelects() {
     var d = new Date();
     monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
   }
-  if (adminEmployees.length) fillSalaryForm();
+  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); }
+}
+
+function showRoleStatus() {
+  var id = document.getElementById("roleEmployee").value;
+  var emp = adminEmployees.find(function(e) { return String(e.id) === String(id); });
+  var statusEl = document.getElementById("roleStatus");
+  var btnEl = document.getElementById("roleToggleBtn");
+  if (!emp) { statusEl.textContent = "-"; return; }
+  var isAdmin = emp.role === "admin";
+  statusEl.textContent = isAdmin ? "ADMIN · أدمن" : "EMPLOYEE · موظف";
+  statusEl.style.color = isAdmin ? "#44ff88" : "var(--text)";
+  btnEl.textContent = isAdmin ? "REMOVE ADMIN · إلغاء صلاحية الأدمن" : "MAKE ADMIN · ترقية لأدمن";
+}
+
+async function toggleAdminRole() {
+  var id = document.getElementById("roleEmployee").value;
+  var emp = adminEmployees.find(function(e) { return String(e.id) === String(id); });
+  if (!emp) { showToast("!", "اختار موظف"); return; }
+  var newRole = emp.role === "admin" ? "employee" : "admin";
+  if (newRole === "employee" && String(emp.id) === String(user.id)) {
+    showToast("!", "منقدرش تشيل صلاحية الأدمن بتاعتك انت نفسك");
+    return;
+  }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/set-role", "POST", { employee_id: id, role: newRole });
+    showToast("v", newRole === "admin" ? "تمت الترقية لأدمن" : "تم إلغاء صلاحية الأدمن");
+    await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+var SECRET_Q_LABELS = { school: "اسم مدرستك", friend: "اسم اول صديق", pet: "اسم حيوانك الاليف", city: "مدينة ميلادك" };
+
+async function showEmployeeFullInfo() {
+  var id = document.getElementById("infoEmployee").value;
+  if (!id) return;
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/admin/employees/" + id + "/full", "GET");
+    var e = res.employee;
+    var html =
+      "<div class='profile-row'><span class='profile-key'>Emp Code</span><span class='profile-val'>#" + e.emp_code + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Name</span><span class='profile-val'>" + e.name + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Phone</span><span class='profile-val'>" + e.phone + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Title</span><span class='profile-val'>" + e.title + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Department</span><span class='profile-val'>" + e.dept + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Birth Date</span><span class='profile-val'>" + (e.birth_date || "-") + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Age</span><span class='profile-val'>" + (e.age != null ? e.age : "-") + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Role</span><span class='profile-val'>" + e.role + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Registered</span><span class='profile-val'>" + (e.created_at ? e.created_at.slice(0,10) : "-") + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Security Question</span><span class='profile-val'>" + (SECRET_Q_LABELS[e.secret_q] || e.secret_q || "-") + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Monthly Salary</span><span class='profile-val'>" + e.monthly_salary + " EGP</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Work Days / Month</span><span class='profile-val'>" + e.work_days_per_month + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Work Hours / Day</span><span class='profile-val'>" + e.daily_work_hours + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Hourly Rate</span><span class='profile-val'>" + e.hourly_rate + " EGP</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Casual Balance</span><span class='profile-val'>" + e.casual_balance + " / 6</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Annual Balance</span><span class='profile-val'>" + e.annual_balance + " / 15</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Password</span><span class='profile-val' style='opacity:.5'>🔒 مشفر — استخدم Reset تحت</span></div>";
+    document.getElementById("employeeFullInfoDisplay").innerHTML = html;
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function resetEmployeePassword() {
+  var id = document.getElementById("infoEmployee").value;
+  var pin = document.getElementById("resetPwPin").value;
+  var newPw = document.getElementById("resetPwValue").value;
+  if (!id) { showToast("!", "اختار موظف"); return; }
+  if (!pin || !newPw) { showToast("!", "املا كود الأمان والباسورد الجديد"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/employees/" + id + "/reset-password", "POST", { pin: pin, new_password: newPw });
+    showToast("v", "تم تغيير الباسورد بنجاح");
+    document.getElementById("resetPwPin").value = "";
+    document.getElementById("resetPwValue").value = "";
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function deleteEmployeeConfirm() {
+  var id = document.getElementById("infoEmployee").value;
+  var pin = document.getElementById("deletePin").value;
+  if (!id) { showToast("!", "اختار موظف"); return; }
+  if (!pin) { showToast("!", "ادخل كود الأمان"); return; }
+  var emp = adminEmployees.find(function(e) { return String(e.id) === String(id); });
+  openModal("DELETE EMPLOYEE", "متأكد عايز تمسح " + (emp ? emp.name : "الموظف ده") + " نهائياً؟ الإجراء ده لا رجعة فيه ومش هيتقدر يترجع.", function() {
+    deleteEmployeeExecute(id, pin);
+  });
+}
+
+async function deleteEmployeeExecute(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/employees/" + id + "/delete", "POST", { pin: pin });
+    showToast("v", "تم حذف الموظف نهائياً");
+    document.getElementById("deletePin").value = "";
+    document.getElementById("employeeFullInfoDisplay").innerHTML = "";
+    await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
 }
 
 async function fetchAdminReport() {
