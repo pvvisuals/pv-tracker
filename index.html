@@ -558,34 +558,73 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-title">ADMIN</div>
 <div class="sec-sub">مراجعة الطلبات وتقارير الموظفين</div>
 </div>
+
+<div class="settings-label" style="margin-top:6px">PENDING · معلقة</div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING LEAVE REQUESTS · طلبات إجازة معلقة</span></div>
+<div class="log-header"><span>LEAVE · إجازة</span></div>
 <div id="adminLeaveList"><div class="empty-log">No pending requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING OVERTIME REQUESTS · طلبات أوفر تايم معلقة</span></div>
+<div class="log-header"><span>OVERTIME · أوفر تايم</span></div>
 <div id="adminOTList"><div class="empty-log">No pending requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING FINANCIAL REQUESTS · طلبات مستحقات معلقة</span></div>
+<div class="log-header"><span>FINANCIAL · مستحقات مالية</span></div>
 <div id="adminFinList"><div class="empty-log">No pending requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING OFF-CLOCK REQUESTS · طلبات ساعات خارج البصمة معلقة</span></div>
+<div class="log-header"><span>OFF-CLOCK HOURS · ساعات خارج البصمة</span></div>
 <div id="adminOffList"><div class="empty-log">No pending requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>PENDING PERMISSION REQUESTS · الطلبات المعلقة</span></div>
+<div class="log-header"><span>PERMISSION · إذن انصراف</span></div>
 <div id="adminPermList"><div class="empty-log">No pending requests</div></div>
 </div>
+
+<div class="settings-label" style="margin-top:22px">APPROVED · مقبولة</div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>APPROVED REQUESTS · الطلبات المقبولة</span></div>
-<div id="adminApprovedList"><div class="empty-log">No approved requests yet</div></div>
+<div class="log-header"><span>LEAVE · إجازة</span></div>
+<div id="adminLeaveApprovedList"><div class="empty-log">No approved requests</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>REJECTED REQUESTS · الطلبات المرفوضة</span></div>
-<div id="adminRejectedList"><div class="empty-log">No rejected requests yet</div></div>
+<div class="log-header"><span>OVERTIME · أوفر تايم</span></div>
+<div id="adminOTApprovedList"><div class="empty-log">No approved requests</div></div>
 </div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>FINANCIAL · مستحقات مالية</span></div>
+<div id="adminFinApprovedList"><div class="empty-log">No approved requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>OFF-CLOCK HOURS · ساعات خارج البصمة</span></div>
+<div id="adminOffApprovedList"><div class="empty-log">No approved requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>PERMISSION · إذن انصراف</span></div>
+<div id="adminPermApprovedList"><div class="empty-log">No approved requests</div></div>
+</div>
+
+<div class="settings-label" style="margin-top:22px">REJECTED · مرفوضة</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>LEAVE · إجازة</span></div>
+<div id="adminLeaveRejectedList"><div class="empty-log">No rejected requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>OVERTIME · أوفر تايم</span></div>
+<div id="adminOTRejectedList"><div class="empty-log">No rejected requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>FINANCIAL · مستحقات مالية</span></div>
+<div id="adminFinRejectedList"><div class="empty-log">No rejected requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>OFF-CLOCK HOURS · ساعات خارج البصمة</span></div>
+<div id="adminOffRejectedList"><div class="empty-log">No rejected requests</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>PERMISSION · إذن انصراف</span></div>
+<div id="adminPermRejectedList"><div class="empty-log">No rejected requests</div></div>
+</div>
+
 <div class="task-form">
 <div class="settings-label">إدارة الإجازات الرسمية</div>
 <div class="form-row">
@@ -612,20 +651,22 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Monthly Salary (EGP) <span class="fla">المرتب الشهري</span></div>
-<input type="number" id="salaryAmount" min="0" step="0.01"/>
+<input type="number" id="salaryAmount" min="0" step="0.01" oninput="updateHourlyRatePreview()"/>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Work Days / Month <span class="fla">أيام العمل بالشهر</span></div>
-<input type="number" id="salaryWorkDays" min="1" step="1"/>
+<input type="number" id="salaryWorkDays" min="1" step="1" oninput="updateHourlyRatePreview()"/>
 </div>
 </div>
 <div class="fg" style="margin:10px 0 0">
 <div class="fl">Work Hours / Day <span class="fla">ساعات العمل اليومية</span></div>
-<input type="number" id="salaryDayHours" min="1" max="24" step="0.5"/>
+<input type="number" id="salaryDayHours" min="1" max="24" step="0.5" oninput="updateHourlyRatePreview()"/>
 </div>
-<div class="fg" style="margin:10px 0 0">
-<div class="fl">Birth Date <span class="fla">تاريخ الميلاد</span></div>
-<input type="date" id="salaryBirthDate"/>
+<div class="info-grid" style="margin-top:14px">
+<div class="info-card">
+<div class="info-card-label">Hourly Rate <span class="fla">قيمة الساعة</span></div>
+<div class="info-card-value" id="salaryHourlyRatePreview">0 EGP</div>
+</div>
 </div>
 <button class="btn-add" onclick="saveSalarySettings()">SAVE / حفظ</button>
 </div>
@@ -732,14 +773,8 @@ var myOffReqs = [];
 var myPermReqs = [];
 var myHolidays = [];
 var leaveBalance = { casual: 6, annual: 15 };
-var adminPendingFin = [];
-var adminPendingOff = [];
-var adminPendingPerm = [];
-var adminApprovedAll = [];
-var adminRejectedAll = [];
+var adminRequestsData = {};
 var adminHolidaysMonth = [];
-var adminPendingLeave = [];
-var adminPendingOT = [];
 var adminEmployees = [];
 
 async function apiRequest(path, method, body, needsAuth) {
@@ -1210,106 +1245,69 @@ async function saveMyBirthDate() {
 
 // ---------------- Admin ----------------
 
+var REQUEST_KINDS = [
+  { kind: "leave", listPath: "/api/admin/leave-requests", pendingEl: "adminLeaveList", approvedEl: "adminLeaveApprovedList", rejectedEl: "adminLeaveRejectedList",
+    label: function(r) { return r.type === "casual" ? "CASUAL" : "ANNUAL"; }, date: function(r) { return r.date; } },
+  { kind: "overtime", listPath: "/api/admin/overtime-requests", pendingEl: "adminOTList", approvedEl: "adminOTApprovedList", rejectedEl: "adminOTRejectedList",
+    label: function() { return "OT"; }, date: function(r) { return r.date; } },
+  { kind: "financial", listPath: "/api/admin/financial-requests", pendingEl: "adminFinList", approvedEl: "adminFinApprovedList", rejectedEl: "adminFinRejectedList",
+    label: function(r) { return "EGP " + r.amount_egp; }, date: function(r) { return r.requested_at ? r.requested_at.slice(0,10) : ""; } },
+  { kind: "offclock", listPath: "/api/admin/offclock-requests", pendingEl: "adminOffList", approvedEl: "adminOffApprovedList", rejectedEl: "adminOffRejectedList",
+    label: function(r) { return r.hours + "h"; }, date: function(r) { return r.date; } },
+  { kind: "permission", listPath: "/api/admin/permission-requests", pendingEl: "adminPermList", approvedEl: "adminPermApprovedList", rejectedEl: "adminPermRejectedList",
+    label: function(r) { return r.hours + "h"; }, date: function(r) { return r.date; } },
+];
+var REQUEST_STATUSES = ["pending", "approved", "rejected"];
+
 async function loadAdminData() {
   try {
-    var l = await apiRequest("/api/admin/leave-requests?status=pending", "GET");
-    adminPendingLeave = l.requests || [];
-    var o = await apiRequest("/api/admin/overtime-requests?status=pending", "GET");
-    adminPendingOT = o.requests || [];
-    var f = await apiRequest("/api/admin/financial-requests?status=pending", "GET");
-    adminPendingFin = f.requests || [];
-    var of = await apiRequest("/api/admin/offclock-requests?status=pending", "GET");
-    adminPendingOff = of.requests || [];
-    var p = await apiRequest("/api/admin/permission-requests?status=pending", "GET");
-    adminPendingPerm = p.requests || [];
-    var appr = await apiRequest("/api/admin/requests?status=approved", "GET");
-    adminApprovedAll = appr.requests || [];
-    var rej = await apiRequest("/api/admin/requests?status=rejected", "GET");
-    adminRejectedAll = rej.requests || [];
+    for (var i = 0; i < REQUEST_KINDS.length; i++) {
+      var cfg = REQUEST_KINDS[i];
+      adminRequestsData[cfg.kind] = {};
+      for (var s = 0; s < REQUEST_STATUSES.length; s++) {
+        var status = REQUEST_STATUSES[s];
+        var res = await apiRequest(cfg.listPath + "?status=" + status, "GET");
+        adminRequestsData[cfg.kind][status] = res.requests || [];
+      }
+    }
     var hol = await apiRequest("/api/admin/official-holidays", "GET");
     adminHolidaysMonth = hol.holidays || [];
     var e = await apiRequest("/api/admin/employees", "GET");
     adminEmployees = e.employees || [];
     renderAdminLists();
-    renderAdminHistory();
     renderAdminHolidays();
     populateEmployeeSelects();
   } catch(e) { /* non-fatal */ }
 }
 
-function renderAdminHistory() {
-  function historyRow(r) {
-    return "<div class='log-entry'><div class='log-type'>" + r.kind.toUpperCase() + "</div>" +
-      "<div class='log-time'>#" + r.emp_code + " " + r.employee_name + " — " + (r.date || "") + "</div>" +
-      "<div class='log-note'>" + r.detail + (r.reason ? " — " + r.reason : "") + "<br/>" +
-      "<span style='opacity:.6'>Decided: " + (r.decided_at || "-") + (r.decided_by_name ? " by " + r.decided_by_name : "") + "</span></div></div>";
+function requestRowHtml(cfg, r, status) {
+  var reason = r.reason || r.note || "";
+  var note = reason;
+  if (status !== "pending") {
+    note += (note ? "<br/>" : "") + "<span style='opacity:.6'>Decided " + (r.decided_at ? r.decided_at.slice(0,16) : "-") + (r.decided_by_name ? " by " + r.decided_by_name : "") + "</span>";
   }
-  var aEl = document.getElementById("adminApprovedList");
-  aEl.innerHTML = adminApprovedAll.length ? adminApprovedAll.map(historyRow).join("") : "<div class='empty-log'>No approved requests yet</div>";
-  var rEl = document.getElementById("adminRejectedList");
-  rEl.innerHTML = adminRejectedAll.length ? adminRejectedAll.map(historyRow).join("") : "<div class='empty-log'>No rejected requests yet</div>";
+  var actions = "";
+  if (status === "pending") {
+    actions = "<button class='btn-end-task' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'approve')\">APPROVE · موافقة</button>" +
+      "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'reject')\">REJECT · رفض</button>";
+  }
+  return "<div class='log-entry'><div class='log-type'>" + cfg.label(r) + "</div>" +
+    "<div class='log-time'>#" + r.emp_code + " " + r.employee_name + " — " + (cfg.date(r) || "") + "</div>" +
+    "<div class='log-note'>" + note + "</div>" + actions + "</div>";
 }
 
 function renderAdminLists() {
-  var lEl = document.getElementById("adminLeaveList");
-  if (!adminPendingLeave.length) { lEl.innerHTML = "<div class='empty-log'>No pending requests</div>"; }
-  else {
-    var html = "";
-    for (var i = 0; i < adminPendingLeave.length; i++) {
-      var r = adminPendingLeave[i];
-      html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + r.date + "</div><div class='log-note'>#" + r.emp_code + " " + r.employee_name + (r.note ? " — " + r.note : "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('leave'," + r.id + ",'approve')\">APPROVE · موافقة</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('leave'," + r.id + ",'reject')\">REJECT · رفض</button></div>";
+  var emptyLabel = { pending: "No pending requests", approved: "No approved requests", rejected: "No rejected requests" };
+  for (var i = 0; i < REQUEST_KINDS.length; i++) {
+    var cfg = REQUEST_KINDS[i];
+    for (var s = 0; s < REQUEST_STATUSES.length; s++) {
+      var status = REQUEST_STATUSES[s];
+      var elId = status === "pending" ? cfg.pendingEl : (status === "approved" ? cfg.approvedEl : cfg.rejectedEl);
+      var el = document.getElementById(elId);
+      if (!el) continue;
+      var rows = (adminRequestsData[cfg.kind] && adminRequestsData[cfg.kind][status]) || [];
+      el.innerHTML = rows.length ? rows.map(function(r) { return requestRowHtml(cfg, r, status); }).join("") : "<div class='empty-log'>" + emptyLabel[status] + "</div>";
     }
-    lEl.innerHTML = html;
-  }
-  var oEl = document.getElementById("adminOTList");
-  if (!adminPendingOT.length) { oEl.innerHTML = "<div class='empty-log'>No pending requests</div>"; }
-  else {
-    var html2 = "";
-    for (var j = 0; j < adminPendingOT.length; j++) {
-      var o = adminPendingOT[j];
-      html2 += "<div class='log-entry'><div class='log-type'>OT</div><div class='log-time'>" + o.date + "</div><div class='log-note'>#" + o.emp_code + " " + o.employee_name + (o.note ? " — " + o.note : "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('overtime'," + o.id + ",'approve')\">APPROVE · موافقة</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('overtime'," + o.id + ",'reject')\">REJECT · رفض</button></div>";
-    }
-    oEl.innerHTML = html2;
-  }
-  var fEl = document.getElementById("adminFinList");
-  if (!adminPendingFin.length) { fEl.innerHTML = "<div class='empty-log'>No pending requests</div>"; }
-  else {
-    var html3 = "";
-    for (var k = 0; k < adminPendingFin.length; k++) {
-      var f = adminPendingFin[k];
-      html3 += "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>#" + f.emp_code + " " + f.employee_name + "</div><div class='log-note'>" + (f.reason || "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('financial'," + f.id + ",'approve')\">APPROVE · موافقة</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('financial'," + f.id + ",'reject')\">REJECT · رفض</button></div>";
-    }
-    fEl.innerHTML = html3;
-  }
-  var offEl = document.getElementById("adminOffList");
-  if (!adminPendingOff.length) { offEl.innerHTML = "<div class='empty-log'>No pending requests</div>"; }
-  else {
-    var html4 = "";
-    for (var m = 0; m < adminPendingOff.length; m++) {
-      var of2 = adminPendingOff[m];
-      html4 += "<div class='log-entry'><div class='log-type'>" + of2.hours + "h</div><div class='log-time'>#" + of2.emp_code + " " + of2.employee_name + " — " + of2.date + "</div><div class='log-note'>" + (of2.reason || "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('offclock'," + of2.id + ",'approve')\">APPROVE · موافقة</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('offclock'," + of2.id + ",'reject')\">REJECT · رفض</button></div>";
-    }
-    offEl.innerHTML = html4;
-  }
-  var permEl = document.getElementById("adminPermList");
-  if (!adminPendingPerm.length) { permEl.innerHTML = "<div class='empty-log'>No pending requests</div>"; }
-  else {
-    var html5 = "";
-    for (var n = 0; n < adminPendingPerm.length; n++) {
-      var p = adminPendingPerm[n];
-      html5 += "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>#" + p.emp_code + " " + p.employee_name + " — " + p.date + "</div><div class='log-note'>" + (p.reason || "") + "</div>" +
-        "<button class='btn-end-task' onclick=\"decideRequest('permission'," + p.id + ",'approve')\">APPROVE · موافقة</button>" +
-        "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('permission'," + p.id + ",'reject')\">REJECT · رفض</button></div>";
-    }
-    permEl.innerHTML = html5;
   }
 }
 
@@ -1376,7 +1374,15 @@ function fillSalaryForm() {
   document.getElementById("salaryAmount").value = emp.monthly_salary || "";
   document.getElementById("salaryWorkDays").value = emp.work_days_per_month || 22;
   document.getElementById("salaryDayHours").value = emp.daily_work_hours || 8;
-  document.getElementById("salaryBirthDate").value = emp.birth_date || "";
+  updateHourlyRatePreview();
+}
+
+function updateHourlyRatePreview() {
+  var salary = Number(document.getElementById("salaryAmount").value) || 0;
+  var days = Number(document.getElementById("salaryWorkDays").value) || 0;
+  var hours = Number(document.getElementById("salaryDayHours").value) || 0;
+  var rate = (salary > 0 && days > 0 && hours > 0) ? (salary / (days * hours)) : 0;
+  document.getElementById("salaryHourlyRatePreview").textContent = rate.toFixed(2) + " EGP";
 }
 
 async function saveSalarySettings() {
@@ -1387,8 +1393,6 @@ async function saveSalarySettings() {
     work_days_per_month: Number(document.getElementById("salaryWorkDays").value) || 22,
     daily_work_hours: Number(document.getElementById("salaryDayHours").value) || 8,
   };
-  var bd = document.getElementById("salaryBirthDate").value;
-  if (bd) body.birth_date = bd;
   showLoading(true);
   try {
     await apiRequest("/api/admin/employees/" + id + "/salary", "POST", body);
