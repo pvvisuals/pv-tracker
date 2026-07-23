@@ -832,10 +832,12 @@ async function handleAdmin(db, admin, path, method, body, url) {
 
   if (path === "/api/admin/leave-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
+    const orderBy = status === "pending" ? "lr.requested_at ASC" : "lr.decided_at DESC";
     const res = await db.execute({
-      sql: `SELECT lr.*, e.name as employee_name, e.emp_code FROM leave_requests lr
+      sql: `SELECT lr.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM leave_requests lr
             JOIN employees e ON e.id = lr.employee_id
-            WHERE lr.status = ? ORDER BY lr.requested_at ASC`,
+            LEFT JOIN employees a ON a.id = lr.decided_by
+            WHERE lr.status = ? ORDER BY ${orderBy}`,
       args: [status],
     });
     return json({ requests: res.rows });
@@ -848,10 +850,12 @@ async function handleAdmin(db, admin, path, method, body, url) {
 
   if (path === "/api/admin/overtime-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
+    const orderBy = status === "pending" ? "ot.requested_at ASC" : "ot.decided_at DESC";
     const res = await db.execute({
-      sql: `SELECT ot.*, e.name as employee_name, e.emp_code FROM overtime_requests ot
+      sql: `SELECT ot.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM overtime_requests ot
             JOIN employees e ON e.id = ot.employee_id
-            WHERE ot.status = ? ORDER BY ot.requested_at ASC`,
+            LEFT JOIN employees a ON a.id = ot.decided_by
+            WHERE ot.status = ? ORDER BY ${orderBy}`,
       args: [status],
     });
     return json({ requests: res.rows });
@@ -1017,10 +1021,12 @@ const REQUEST_TABLES = new Set(["financial_requests", "offclock_requests", "perm
 
 async function adminListRequests(db, table, status) {
   if (!REQUEST_TABLES.has(table)) return err("invalid table", 400);
+  const orderBy = status === "pending" ? "r.requested_at ASC" : "r.decided_at DESC";
   const res = await db.execute({
-    sql: `SELECT r.*, e.name as employee_name, e.emp_code FROM ${table} r
+    sql: `SELECT r.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM ${table} r
           JOIN employees e ON e.id = r.employee_id
-          WHERE r.status = ? ORDER BY r.requested_at ASC`,
+          LEFT JOIN employees a ON a.id = r.decided_by
+          WHERE r.status = ? ORDER BY ${orderBy}`,
     args: [status],
   });
   return json({ requests: res.rows });
