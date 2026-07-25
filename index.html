@@ -1470,6 +1470,9 @@ function requestRowHtml(cfg, r, status) {
   if (status === "pending") {
     actions = "<button class='btn-end-task' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'approve')\">APPROVE · موافقة</button>" +
       "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'reject')\">REJECT · رفض</button>";
+  } else {
+    var empNameSafe = (r.employee_name || "").replace(/'/g, "");
+    actions = "<button class='btn-end-task' onclick=\"reverseDecisionPrompt('" + cfg.kind + "'," + r.id + ",'" + status + "','" + empNameSafe + "')\">↺ CHANGE DECISION · تغيير القرار</button>";
   }
   return "<div class='log-entry'><div class='log-type'>" + cfg.label(r) + "</div>" +
     "<div class='log-time'>#" + r.emp_code + " " + r.employee_name + " — " + (cfg.date(r) || "") + "</div>" +
@@ -1575,6 +1578,31 @@ async function decideRequest(kind, id, action) {
     await apiRequest(path, "POST", { action: action });
     showToast("v", action === "approve" ? "تمت الموافقة" : "تم الرفض");
     await refreshRequestKind(kind);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function reverseDecisionPrompt(kind, id, currentStatus, empName) {
+  var newAction = currentStatus === "approved" ? "reject" : "approve";
+  var pin = window.prompt("ادخل كود الأمان (Admin PIN) عشان تغيّر القرار:");
+  if (pin === null) return; // cancelled
+  if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+  var actionLabel = newAction === "approve" ? "الموافقة" : "الرفض";
+  var fromLabel = currentStatus === "approved" ? "الموافقة" : "الرفض";
+  openModal(
+    "CHANGE DECISION",
+    "متأكد عايز تغيّر قرار " + (empName || "الموظف ده") + " من \"" + fromLabel + "\" إلى \"" + actionLabel + "\"؟ هيتحدث فوراً في كل حاجة (رصيد الإجازة لو كانت إجازة، التقرير، وشاشة الموظف).",
+    function() { executeRedecide(kind, id, newAction, pin); }
+  );
+}
+
+async function executeRedecide(kind, id, action, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/requests/" + kind + "/" + id + "/redecide", "POST", { action: action, pin: pin });
+    showToast("v", "تم تغيير القرار بنجاح");
+    await refreshRequestKind(kind);
+    if (kind === "leave") await refreshEmployeesOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
