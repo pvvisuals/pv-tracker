@@ -412,7 +412,9 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Project</div>
-<input type="text" id="taskProject" placeholder="Project name"/>
+<select id="taskProject">
+<option value="">اختر المشروع...</option>
+</select>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Task Name</div>
@@ -631,6 +633,18 @@ textarea{resize:vertical;min-height:76px;}
 <div id="adminHolidaysList" style="margin-top:14px"><div class="empty-log">No holidays this month</div></div>
 </div>
 <div class="task-form">
+<div class="settings-label">Manage Projects <span class="fla">إدارة المشاريع</span></div>
+<div class="sec-sub" style="margin-bottom:12px">المشاريع اللي هتظهر للموظفين لما يبدأوا تاسك جديد</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Project Name <span class="fla">اسم المشروع</span></div>
+<input type="text" id="newProjectName" placeholder="مثال: PV Tracker"/>
+</div>
+</div>
+<button class="btn-add" onclick="addProject()">+ ADD PROJECT · إضافة مشروع</button>
+<div id="adminProjectsList" style="margin-top:14px"><div class="empty-log">No projects yet</div></div>
+</div>
+<div class="task-form">
 <div class="settings-label">إعدادات الراتب لكل موظف</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -799,6 +813,8 @@ var signInTime = null;
 var breakStartTime = null;
 var breakInterval = null;
 var clockInterval = null;
+var taskTimerInterval = null;
+var allProjects = [];
 var modalCallback = null;
 var toastTimer = null;
 var recoverUser = null;
@@ -1038,6 +1054,8 @@ async function initApp() {
     document.getElementById("tab-admin").style.display = "block";
   }
   startClock();
+  startTaskTimer();
+  loadProjectsList();
   await loadTodayData();
 }
 
@@ -1053,19 +1071,61 @@ function startClock() {
   clockInterval = setInterval(tick, 1000);
 }
 
+function startTaskTimer() {
+  clearInterval(taskTimerInterval);
+  taskTimerInterval = setInterval(function() {
+    var els = document.querySelectorAll(".task-live-timer");
+    for (var i = 0; i < els.length; i++) {
+      var tid = els[i].getAttribute("data-tid");
+      var st = taskStartTimes[tid];
+      if (st) els[i].textContent = formatDuration(Math.floor((Date.now() - st) / 1000));
+    }
+  }, 1000);
+}
+
+function populateTaskProjectSelect() {
+  var sel = document.getElementById("taskProject");
+  if (!sel) return;
+  var current = sel.value;
+  sel.innerHTML = '<option value="">اختر المشروع...</option>';
+  for (var i = 0; i < allProjects.length; i++) {
+    var opt = document.createElement("option");
+    opt.value = allProjects[i].name;
+    opt.textContent = allProjects[i].name;
+    sel.appendChild(opt);
+  }
+  sel.value = current;
+}
+
+async function loadProjectsList() {
+  try {
+    var res = await apiRequest("/api/projects", "GET");
+    allProjects = res.projects || [];
+    populateTaskProjectSelect();
+  } catch(e) { /* non-fatal */ }
+}
+
 function parseUTC(s) { return new Date(s.indexOf("Z") > -1 ? s : s + "Z").getTime(); }
 
-function applyAttendanceState(entries) {
+function applyAttendanceState(entries, openSession) {
   todayAttendance = entries || [];
   var lastIn = null, lastOut = null;
   for (var i = todayAttendance.length-1; i >= 0; i--) {
     if (!lastIn && todayAttendance[i].action === "sign_in") lastIn = todayAttendance[i];
     if (!lastOut && todayAttendance[i].action === "sign_out") lastOut = todayAttendance[i];
   }
-  if (lastIn && (!lastOut || parseUTC(lastIn.created_at) > parseUTC(lastOut.created_at))) {
+  var effectiveIn = (lastIn && (!lastOut || parseUTC(lastIn.created_at) > parseUTC(lastOut.created_at))) ? lastIn : null;
+  if (!effectiveIn && openSession) {
+    // Signed in before midnight and still hasn't signed out — keep the
+    // SIGNED IN state alive across the day rollover, and show it in the log.
+    effectiveIn = openSession;
+    todayAttendance = [openSession].concat(todayAttendance);
+  }
+
+  if (effectiveIn) {
     signedIn = true;
-    signInTime = parseUTC(lastIn.created_at);
-    document.getElementById("signInTime").textContent = lastIn.time;
+    signInTime = parseUTC(effectiveIn.created_at);
+    document.getElementById("signInTime").textContent = effectiveIn.time;
     document.getElementById("btnSignIn").disabled = true;
     document.getElementById("btnSignOut").disabled = false;
     var pill = document.getElementById("signStatus");
@@ -1126,7 +1186,10 @@ function applyBreaksState(entries) {
 }
 
 async function refreshAttendanceOnly() {
-  try { applyAttendanceState((await apiRequest("/api/attendance/today", "GET")).entries); } catch(e) {}
+  try {
+    var r = await apiRequest("/api/attendance/today", "GET");
+    applyAttendanceState(r.entries, r.open_session);
+  } catch(e) {}
 }
 async function refreshBreaksOnly() {
   try { applyBreaksState((await apiRequest("/api/breaks/today", "GET")).entries); } catch(e) {}
@@ -1143,7 +1206,7 @@ async function loadTodayData() {
       apiRequest("/api/breaks/today", "GET"),
       apiRequest("/api/tasks/today", "GET"),
     ]);
-    applyAttendanceState(results[0].entries);
+    applyAttendanceState(results[0].entries, results[0].open_session);
     applyBreaksState(results[1].entries);
     applyTasksState(results[2].tasks);
 
@@ -1375,6 +1438,7 @@ async function loadAdminData() {
     }
     jobs.push(apiRequest("/api/admin/official-holidays", "GET"));
     jobs.push(apiRequest("/api/admin/employees", "GET"));
+    jobs.push(apiRequest("/api/projects", "GET"));
 
     var results = await Promise.all(jobs);
 
@@ -1385,10 +1449,13 @@ async function loadAdminData() {
     }
     adminHolidaysMonth = results[jobKeys.length].holidays || [];
     adminEmployees = results[jobKeys.length + 1].employees || [];
+    allProjects = results[jobKeys.length + 2].projects || [];
 
     populateRequestFilter();
     renderRequestsOverview();
     renderAdminHolidays();
+    renderAdminProjects();
+    populateTaskProjectSelect();
     populateEmployeeSelects();
   } catch(e) { /* non-fatal */ }
 }
@@ -1532,6 +1599,47 @@ async function refreshHolidaysOnly() {
   var hol = await apiRequest("/api/admin/official-holidays", "GET");
   adminHolidaysMonth = hol.holidays || [];
   renderAdminHolidays();
+}
+
+async function refreshProjectsOnly() {
+  await loadProjectsList();
+  renderAdminProjects();
+}
+
+function renderAdminProjects() {
+  var el = document.getElementById("adminProjectsList");
+  if (!el) return;
+  if (!allProjects.length) { el.innerHTML = "<div class='empty-log'>No projects yet</div>"; return; }
+  var html = "";
+  for (var i = 0; i < allProjects.length; i++) {
+    var p = allProjects[i];
+    html += "<div class='log-entry'><div class='log-type'>" + p.name + "</div><div class='log-note'></div>" +
+      "<button class='btn-end-task' onclick=\"deleteProject(" + p.id + ")\">DELETE · حذف</button></div>";
+  }
+  el.innerHTML = html;
+}
+
+async function addProject() {
+  var name = document.getElementById("newProjectName").value.trim();
+  if (!name) { showToast("!", "اكتب اسم المشروع"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/projects", "POST", { name: name });
+    showToast("v", "تم إضافة المشروع");
+    document.getElementById("newProjectName").value = "";
+    await refreshProjectsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function deleteProject(id) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/projects/" + id, "DELETE");
+    showToast("v", "تم الحذف");
+    await refreshProjectsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
 }
 
 // Re-fetches only the employee list (1 call) instead of everything —
@@ -1804,6 +1912,16 @@ function renderAdminReport(res) {
     html += "<div class='log-entry'><div class='log-type'>" + d.date.slice(-2) + "</div><div class='log-note'>" + note + "</div></div>";
   }
   html += "</div>";
+
+  if (res.project_hours && res.project_hours.length) {
+    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>HOURS BY PROJECT · الساعات لكل مشروع</span></div>";
+    for (var p = 0; p < res.project_hours.length; p++) {
+      var pr = res.project_hours[p];
+      html += "<div class='log-entry'><div class='log-type'>" + pr.project + "</div><div class='log-note'>" + pr.hours + " h — " + pr.task_count + " task(s)</div></div>";
+    }
+    html += "</div>";
+  }
+
   el.innerHTML = html;
 }
 
@@ -1824,10 +1942,14 @@ async function doSignOut() {
 function renderSignLog() {
   var el = document.getElementById("signLog");
   if (!todayAttendance.length) { el.innerHTML = "<div class='empty-log'>No entries yet</div>"; return; }
+  var isoToday = cairoISODate();
   var html = "";
   for (var i = 0; i < todayAttendance.length; i++) {
     var e = todayAttendance[i];
-    html += "<div class='log-entry'><div class='log-type " + (e.action==="sign_in"?"in":"") + "'>" + (e.action==="sign_in"?"SIGN IN":"SIGN OUT") + "</div><div class='log-time'>" + e.time + "</div><div class='log-note'>" + (e.worked ? "worked: "+e.worked : "") + "</div></div>";
+    var crossDay = e.date && e.date !== isoToday;
+    var note = e.worked ? "worked: "+e.worked : "";
+    if (crossDay) note = (note ? note + " · " : "") + "من يوم " + e.date;
+    html += "<div class='log-entry'><div class='log-type " + (e.action==="sign_in"?"in":"") + "'>" + (e.action==="sign_in"?"SIGN IN":"SIGN OUT") + "</div><div class='log-time'>" + e.time + "</div><div class='log-note'>" + note + "</div></div>";
   }
   el.innerHTML = html;
 }
@@ -1955,6 +2077,7 @@ function renderTasks() {
     html += "<div class='task-meta'>Started: " + t.start_time + (t.end_time ? " - Ended: "+t.end_time : " (in progress)") + "</div>";
     if (t.duration) html += "<div class='task-dur'>Duration: " + formatDuration(t.duration) + "</div>";
     if (isActive) {
+      html += "<div class='task-dur task-live-timer' data-tid='" + t.id + "'>00:00:00</div>";
       html += "<button class='btn-end-task' data-tid='" + t.id + "' onclick='endTask(this.dataset.tid)'>END TASK · إنهاء المهمة</button>";
     } else {
       html += "<div class='task-dur' style='color:var(--muted)'>Completed</div>";
