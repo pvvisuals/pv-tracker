@@ -105,6 +105,11 @@ function isWeekendStr(dateStr) {
   const p = cairoParts(d);
   return p.weekday === "Fri" || p.weekday === "Sat";
 }
+function addDaysToDateStr(dateStr, days) {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return cairoDateStr(d);
+}
 function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate(); // month is 1-indexed here
 }
@@ -218,6 +223,8 @@ export default {
       if (path === "/api/tasks/today" && method === "GET") return await tasksToday(db, me);
       const taskEndMatch = path.match(/^\/api\/tasks\/(\d+)\/end$/);
       if (taskEndMatch && method === "PATCH") return await endTask(db, me, Number(taskEndMatch[1]), body);
+
+      if (path === "/api/projects" && method === "GET") return await listProjects(db);
 
       if (path === "/api/leave-requests" && method === "POST") return await requestLeave(db, me, body);
       if (path === "/api/leave-requests/mine" && method === "GET") return await myLeaveRequests(db, me);
@@ -395,11 +402,21 @@ async function signOut(db, me) {
 
 async function attendanceToday(db, me) {
   const today = cairoDateStr();
+  const yesterday = addDaysToDateStr(today, -1);
   const res = await db.execute({
-    sql: "SELECT * FROM attendance WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
-    args: [me.id, today],
+    sql: "SELECT * FROM attendance WHERE employee_id = ? AND date IN (?, ?) ORDER BY created_at ASC",
+    args: [me.id, yesterday, today],
   });
-  return json({ entries: res.rows });
+
+  let pendingIn = null;
+  for (const r of res.rows) {
+    if (r.action === "sign_in") pendingIn = r;
+    else if (r.action === "sign_out") pendingIn = null;
+  }
+  const openFromYesterday = (pendingIn && pendingIn.date !== today) ? pendingIn : null;
+
+  const todayRows = res.rows.filter((r) => r.date === today);
+  return json({ entries: todayRows, open_session: openFromYesterday });
 }
 
 function formatDuration(s) {
@@ -485,6 +502,11 @@ async function tasksToday(db, me) {
     args: [me.id, today],
   });
   return json({ tasks: res.rows });
+}
+
+async function listProjects(db) {
+  const res = await db.execute("SELECT id, name FROM projects ORDER BY name COLLATE NOCASE");
+  return json({ projects: res.rows });
 }
 
 // ---------------------------------------------------------------- leave requests
@@ -665,10 +687,10 @@ async function monthlyReport(db, employeeId, monthStr) {
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
   const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
 
-  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows] = await Promise.all([
+  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows] = await Promise.all([
     db.execute({
       sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC",
-      args: [employeeId, firstDay, lastDay],
+      args: [employeeId, firstDay, addDaysToDateStr(lastDay, 1)],
     }),
     db.execute({
       sql: "SELECT * FROM leave_requests WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'approved'",
@@ -698,12 +720,12 @@ async function monthlyReport(db, employeeId, monthStr) {
       sql: "SELECT * FROM penalties WHERE employee_id = ? AND date BETWEEN ? AND ?",
       args: [employeeId, firstDay, lastDay],
     }),
+    db.execute({
+      sql: "SELECT project, SUM(COALESCE(duration,0)) as total_seconds, COUNT(*) as task_count FROM tasks WHERE employee_id = ? AND date BETWEEN ? AND ? GROUP BY project ORDER BY total_seconds DESC",
+      args: [employeeId, firstDay, lastDay],
+    }),
   ]);
 
-  const attByDate = {};
-  for (const r of attRows.rows) {
-    (attByDate[r.date] = attByDate[r.date] || []).push(r);
-  }
   const leaveByDate = {};
   for (const r of leaveRows.rows) leaveByDate[r.date] = r;
   const otByDate = {};
@@ -722,19 +744,28 @@ async function monthlyReport(db, employeeId, monthStr) {
   let leaveDaysCasual = 0;
   let leaveDaysAnnual = 0;
 
-  function pairAttendance(entries) {
-    let actualSeconds = 0;
+  // Pair sign_in/sign_out chronologically across the WHOLE fetched range (not
+  // grouped by calendar date) so a shift that crosses midnight still counts
+  // as one session, attributed to the date the employee SIGNED IN — not the
+  // date they happened to sign out.
+  const sessionsByDate = {};   // sign-in date -> total actual seconds worked that day
+  const daysWithSignIn = new Set();
+  {
     let pendingIn = null;
-    for (const e of entries) {
-      if (e.action === "sign_in") pendingIn = e;
-      else if (e.action === "sign_out" && pendingIn) {
+    for (const e of attRows.rows) {
+      if (e.action === "sign_in") {
+        pendingIn = e;
+        daysWithSignIn.add(e.date);
+      } else if (e.action === "sign_out" && pendingIn) {
         const inMs = new Date(pendingIn.created_at + "Z").getTime();
         const outMs = new Date(e.created_at + "Z").getTime();
-        if (outMs > inMs) actualSeconds += Math.floor((outMs - inMs) / 1000);
+        if (outMs > inMs) {
+          const secs = Math.floor((outMs - inMs) / 1000);
+          sessionsByDate[pendingIn.date] = (sessionsByDate[pendingIn.date] || 0) + secs;
+        }
         pendingIn = null;
       }
     }
-    return actualSeconds;
   }
 
   for (let d = 1; d <= lastDayNum; d++) {
@@ -747,7 +778,7 @@ async function monthlyReport(db, employeeId, monthStr) {
 
     const holiday = holidayByDate[dateStr];
     if (holiday) {
-      const actualSeconds = pairAttendance(attByDate[dateStr] || []);
+      const actualSeconds = sessionsByDate[dateStr] || 0;
       if (actualSeconds > 0) {
         const countedSeconds = actualSeconds * 2;
         totalActualSeconds += actualSeconds;
@@ -773,14 +804,13 @@ async function monthlyReport(db, employeeId, monthStr) {
       continue;
     }
 
-    const entries = attByDate[dateStr] || [];
-    if (!entries.length) {
+    if (!daysWithSignIn.has(dateStr)) {
       if (dateStr < todayStr) absentDays++;
       days.push({ date: dateStr, status: dateStr < todayStr ? "absent" : "today_pending", actual_seconds: 0, counted_seconds: 0 });
       continue;
     }
 
-    const actualSeconds = pairAttendance(entries);
+    const actualSeconds = sessionsByDate[dateStr] || 0;
     const overtimeApproved = !!otByDate[dateStr];
     let countedSeconds, overtimeSeconds = 0;
     if (overtimeApproved) {
@@ -844,6 +874,11 @@ async function monthlyReport(db, employeeId, monthStr) {
       penalties_total_egp: +penaltiesTotalEGP.toFixed(2),
     },
     leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance },
+    project_hours: projectRows.rows.map((r) => ({
+      project: r.project || "(بدون مشروع)",
+      hours: +((Number(r.total_seconds) || 0) / 3600).toFixed(2),
+      task_count: Number(r.task_count) || 0,
+    })),
   });
 }
 
@@ -983,6 +1018,26 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     sql += " ORDER BY date DESC";
     const res = await db.execute({ sql, args });
     return json({ penalties: res.rows });
+  }
+
+  // ---------- shared projects list (admin manages, everyone can read via /api/projects) ----------
+  if (path === "/api/admin/projects" && method === "POST") {
+    const missing = requireFields(body, ["name"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    try {
+      const res = await db.execute({
+        sql: `INSERT INTO projects (name, created_by) VALUES (?,?) RETURNING *`,
+        args: [body.name.trim(), admin.id],
+      });
+      return json({ project: res.rows[0] }, 201);
+    } catch (e) {
+      return err("المشروع ده مسجل بالفعل", 409);
+    }
+  }
+  const projectDeleteMatch = path.match(/^\/api\/admin\/projects\/(\d+)$/);
+  if (projectDeleteMatch && method === "DELETE") {
+    await db.execute({ sql: "DELETE FROM projects WHERE id = ?", args: [Number(projectDeleteMatch[1])] });
+    return json({ ok: true });
   }
 
   const reportMatch = path === "/api/admin/report";
