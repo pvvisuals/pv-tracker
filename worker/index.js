@@ -1101,6 +1101,14 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ ok: true });
   }
 
+  // ---------- reverse an already-decided request: approved<->rejected (PIN required) ----------
+  const redecideMatch = path.match(/^\/api\/admin\/requests\/(leave|overtime|financial|offclock|permission)\/(\d+)\/redecide$/);
+  if (redecideMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    if (!["approve", "reject"].includes(body.action)) return err("action must be approve or reject");
+    return await redecideRequest(db, admin, redecideMatch[1], Number(redecideMatch[2]), body.action);
+  }
+
   return err("Not found", 404);
 }
 
@@ -1122,6 +1130,48 @@ async function decideLeave(db, admin, requestId, body) {
   await db.execute({
     sql: "UPDATE leave_requests SET status = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?",
     args: [body.action === "approve" ? "approved" : "rejected", admin.id, requestId],
+  });
+  return json({ ok: true });
+}
+
+const REQUEST_TABLE_BY_KIND = {
+  leave: "leave_requests", overtime: "overtime_requests", financial: "financial_requests",
+  offclock: "offclock_requests", permission: "permission_requests",
+};
+
+// Reverses an ALREADY-decided request (approved<->rejected). Only leave
+// requests have a persisted side effect (the balance counter) that needs
+// correcting — every other kind is computed fresh from the status column
+// each time a report or list is fetched, so just flipping the status is
+// enough to make it correct everywhere (admin lists, employee view, reports).
+async function redecideRequest(db, admin, kind, requestId, action) {
+  const table = REQUEST_TABLE_BY_KIND[kind];
+  if (!table) return err("invalid kind", 400);
+  const newStatus = action === "approve" ? "approved" : "rejected";
+
+  const res = await db.execute({ sql: `SELECT * FROM ${table} WHERE id = ?`, args: [requestId] });
+  const request = res.rows[0];
+  if (!request) return err("Request not found", 404);
+  if (request.status === "pending") return err("الطلب لسه معلق — استخدم زرار الموافقة/الرفض العادي", 400);
+  if (request.status === newStatus) return json({ ok: true, unchanged: true });
+
+  if (kind === "leave") {
+    const field = request.type === "casual" ? "casual_balance" : "annual_balance";
+    if (request.status === "approved" && newStatus === "rejected") {
+      // was approved (day already deducted) → now reversed to rejected: give the day back
+      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} + 1 WHERE id = ?`, args: [request.employee_id] });
+    } else if (request.status === "rejected" && newStatus === "approved") {
+      // was rejected (no day deducted) → now approved: deduct the day, but check balance first
+      const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [request.employee_id] });
+      const emp = empRes.rows[0];
+      if (Number(emp[field]) <= 0) return err("رصيد الاجازة خلص لهذا الموظف", 409);
+      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} - 1 WHERE id = ?`, args: [request.employee_id] });
+    }
+  }
+
+  await db.execute({
+    sql: `UPDATE ${table} SET status = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?`,
+    args: [newStatus, admin.id, requestId],
   });
   return json({ ok: true });
 }
