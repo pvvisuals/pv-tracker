@@ -428,11 +428,29 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <button class="btn-add" onclick="addTask()">+ START TASK · بدء مهمة</button>
 </div>
+
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>ACTIVE TASKS NOW · التاسكات الشغالة دلوقتي</span></div>
+<div class="tasks-list" id="activeTasksList">
+<div class="task-card"><div class="empty-log" style="width:100%;padding:18px 0;">No active tasks</div></div>
+</div>
+</div>
+
+<div class="task-form">
+<div class="settings-label">Browse Day <span class="fla">تصفّح أيام الشهر</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="taskBrowseDate" onchange="loadTasksForBrowsedDate()"/>
+</div>
+</div>
+</div>
 <div class="tasks-list" id="tasksList">
 <div class="task-card">
 <div class="empty-log" style="width:100%;padding:18px 0;">No tasks yet</div>
 </div>
 </div>
+
 </div>
 <div class="tab-content" id="content-requests">
 <div class="sec-head">
@@ -820,7 +838,6 @@ var toastTimer = null;
 var recoverUser = null;
 var todayAttendance = [];
 var todayBreaks = [];
-var todayTasks = [];
 var taskStartTimes = {};
 var myLeaveReqs = [];
 var myOTReqs = [];
@@ -1056,6 +1073,7 @@ async function initApp() {
   startClock();
   startTaskTimer();
   loadProjectsList();
+  setupTaskBrowseMonthBounds();
   await loadTodayData();
 }
 
@@ -1142,16 +1160,6 @@ function applyAttendanceState(entries, openSession) {
   renderSignLog();
 }
 
-function applyTasksState(tasks) {
-  todayTasks = tasks || [];
-  for (var j = 0; j < todayTasks.length; j++) {
-    if (!todayTasks[j].end_time) {
-      taskStartTimes[todayTasks[j].id] = parseUTC(todayTasks[j].created_at);
-    }
-  }
-  renderTasks();
-}
-
 function applyBreaksState(entries) {
   todayBreaks = entries || [];
   var foundOpen = false;
@@ -1195,7 +1203,9 @@ async function refreshBreaksOnly() {
   try { applyBreaksState((await apiRequest("/api/breaks/today", "GET")).entries); } catch(e) {}
 }
 async function refreshTasksOnly() {
-  try { applyTasksState((await apiRequest("/api/tasks/today", "GET")).tasks); } catch(e) {}
+  await loadActiveTasks();
+  setupTaskBrowseMonthBounds();
+  await loadTasksForBrowsedDate();
 }
 
 async function loadTodayData() {
@@ -1204,11 +1214,10 @@ async function loadTodayData() {
     var results = await Promise.all([
       apiRequest("/api/attendance/today", "GET"),
       apiRequest("/api/breaks/today", "GET"),
-      apiRequest("/api/tasks/today", "GET"),
     ]);
     applyAttendanceState(results[0].entries, results[0].open_session);
     applyBreaksState(results[1].entries);
-    applyTasksState(results[2].tasks);
+    await loadActiveTasks();
 
     if (user.role === "admin") {
       await Promise.all([loadLeaveOvertimeData(), loadAdminData()]);
@@ -2056,16 +2065,20 @@ async function addTask() {
   var desc = document.getElementById("taskDesc").value.trim();
   if (!project || !name) { showToast("!", "ادخل المشروع والمهمة"); return; }
   showLoading(true);
-  var startT = timeStr();
   try {
     var res = await apiRequest("/api/tasks", "POST", {project:project,name:name,description:desc});
     var task = res.task;
-    todayTasks.push(task);
+    activeTasksArr.push(task);
     taskStartTimes[task.id] = parseUTC(task.created_at);
     document.getElementById("taskProject").value = "";
     document.getElementById("taskName").value = "";
     document.getElementById("taskDesc").value = "";
-    renderTasks();
+    renderActiveTasks();
+    var browseInput = document.getElementById("taskBrowseDate");
+    if (browseInput && browseInput.value === task.date) {
+      browsedTasks.push(task);
+      renderBrowsedTasks();
+    }
     showToast("v","Task started!");
   } catch(e) { showToast("!","Error: " + e.message); }
   showLoading(false);
@@ -2075,43 +2088,90 @@ async function endTask(taskId) {
   showLoading(true);
   try {
     var res = await apiRequest("/api/tasks/" + taskId + "/end", "PATCH", {});
-    for (var i = 0; i < todayTasks.length; i++) {
-      if (todayTasks[i].id == taskId) {
-        todayTasks[i].end_time = res.end_time;
-        todayTasks[i].duration = res.duration;
+    activeTasksArr = activeTasksArr.filter(function(t) { return String(t.id) !== String(taskId); });
+    for (var i = 0; i < browsedTasks.length; i++) {
+      if (String(browsedTasks[i].id) === String(taskId)) {
+        browsedTasks[i].end_time = res.end_time;
+        browsedTasks[i].duration = res.duration;
         break;
       }
     }
     delete taskStartTimes[taskId];
-    renderTasks();
+    renderActiveTasks();
+    renderBrowsedTasks();
     showToast("v","Done! " + formatDuration(res.duration));
   } catch(e) { showToast("!","Error ending task"); }
   showLoading(false);
 }
 
-function renderTasks() {
-  var el = document.getElementById("tasksList");
-  if (!todayTasks.length) { el.innerHTML = "<div class='task-card'><div class='empty-log' style='width:100%;padding:18px 0;'>No tasks yet</div></div>"; return; }
-  var html = "";
-  for (var i = 0; i < todayTasks.length; i++) {
-    var t = todayTasks[i];
-    var isActive = !t.end_time;
-    html += "<div class='task-card" + (isActive?" active-task":"") + "'>";
-    html += "<div class='task-num'>" + String(i+1).padStart(2,"0") + "</div>";
-    html += "<div class='task-info'>";
-    html += "<div class='task-project'>" + t.project + "</div>";
-    html += "<div class='task-name'>" + t.name + "</div>";
-    if (t.description) html += "<div class='task-desc'>" + t.description + "</div>";
-    html += "<div class='task-meta'>Started: " + t.start_time + (t.end_time ? " - Ended: "+t.end_time : " (in progress)") + "</div>";
-    if (t.duration) html += "<div class='task-dur'>Duration: " + formatDuration(t.duration) + "</div>";
-    if (isActive) {
-      html += "<div class='task-dur task-live-timer' data-tid='" + t.id + "'>00:00:00</div>";
-      html += "<button class='btn-end-task' data-tid='" + t.id + "' onclick='endTask(this.dataset.tid)'>END TASK · إنهاء المهمة</button>";
-    } else {
-      html += "<div class='task-dur' style='color:var(--muted)'>Completed</div>";
+var activeTasksArr = [];
+var browsedTasks = [];
+
+function setupTaskBrowseMonthBounds() {
+  var input = document.getElementById("taskBrowseDate");
+  if (!input) return;
+  var iso = cairoISODate(); // YYYY-MM-DD
+  var ym = iso.slice(0, 7); // YYYY-MM
+  input.min = ym + "-01";
+  var lastDay = new Date(Number(ym.slice(0,4)), Number(ym.slice(5,7)), 0).getDate();
+  input.max = ym + "-" + String(lastDay).padStart(2, "0");
+  if (!input.value) input.value = iso;
+}
+
+async function loadActiveTasks() {
+  try {
+    var res = await apiRequest("/api/tasks/active", "GET");
+    activeTasksArr = res.tasks || [];
+    for (var i = 0; i < activeTasksArr.length; i++) {
+      taskStartTimes[activeTasksArr[i].id] = parseUTC(activeTasksArr[i].created_at);
     }
-    html += "</div></div>";
+    renderActiveTasks();
+  } catch(e) { /* non-fatal */ }
+}
+
+async function loadTasksForBrowsedDate() {
+  var dateVal = document.getElementById("taskBrowseDate").value;
+  if (!dateVal) return;
+  try {
+    var res = await apiRequest("/api/tasks/list?date=" + dateVal, "GET");
+    browsedTasks = res.tasks || [];
+    renderBrowsedTasks();
+  } catch(e) { /* non-fatal */ }
+}
+
+function taskCardHtml(t, index) {
+  var isActive = !t.end_time;
+  var html = "<div class='task-card" + (isActive?" active-task":"") + "'>";
+  html += "<div class='task-num'>" + String(index+1).padStart(2,"0") + "</div>";
+  html += "<div class='task-info'>";
+  html += "<div class='task-project'>" + t.project + "</div>";
+  html += "<div class='task-name'>" + t.name + "</div>";
+  if (t.description) html += "<div class='task-desc'>" + t.description + "</div>";
+  html += "<div class='task-meta'>Started: " + t.start_time + (t.end_time ? " - Ended: "+t.end_time : " (" + t.date + ")") + "</div>";
+  if (t.duration) html += "<div class='task-dur'>Duration: " + formatDuration(t.duration) + "</div>";
+  if (isActive) {
+    html += "<div class='task-dur task-live-timer' data-tid='" + t.id + "'>00:00:00</div>";
+    html += "<button class='btn-end-task' data-tid='" + t.id + "' onclick='endTask(this.dataset.tid)'>END TASK · إنهاء المهمة</button>";
+  } else {
+    html += "<div class='task-dur' style='color:var(--muted)'>Completed</div>";
   }
+  html += "</div></div>";
+  return html;
+}
+
+function renderActiveTasks() {
+  var el = document.getElementById("activeTasksList");
+  if (!activeTasksArr.length) { el.innerHTML = "<div class='task-card'><div class='empty-log' style='width:100%;padding:18px 0;'>No active tasks</div></div>"; return; }
+  var html = "";
+  for (var i = 0; i < activeTasksArr.length; i++) html += taskCardHtml(activeTasksArr[i], i);
+  el.innerHTML = html;
+}
+
+function renderBrowsedTasks() {
+  var el = document.getElementById("tasksList");
+  if (!browsedTasks.length) { el.innerHTML = "<div class='task-card'><div class='empty-log' style='width:100%;padding:18px 0;'>No tasks yet</div></div>"; return; }
+  var html = "";
+  for (var i = 0; i < browsedTasks.length; i++) html += taskCardHtml(browsedTasks[i], i);
   el.innerHTML = html;
 }
 
