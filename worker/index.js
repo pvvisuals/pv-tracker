@@ -221,6 +221,8 @@ export default {
 
       if (path === "/api/tasks" && method === "POST") return await addTask(db, me, body);
       if (path === "/api/tasks/today" && method === "GET") return await tasksToday(db, me);
+      if (path === "/api/tasks/list" && method === "GET") return await tasksByDate(db, me, url.searchParams.get("date") || cairoDateStr());
+      if (path === "/api/tasks/active" && method === "GET") return await activeTasks(db, me);
       const taskEndMatch = path.match(/^\/api\/tasks\/(\d+)\/end$/);
       if (taskEndMatch && method === "PATCH") return await endTask(db, me, Number(taskEndMatch[1]), body);
 
@@ -500,6 +502,24 @@ async function tasksToday(db, me) {
   const res = await db.execute({
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
     args: [me.id, today],
+  });
+  return json({ tasks: res.rows });
+}
+
+async function tasksByDate(db, me, dateStr) {
+  const res = await db.execute({
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
+    args: [me.id, dateStr],
+  });
+  return json({ tasks: res.rows });
+}
+
+// Any task the employee hasn't ended yet, no matter which day it started —
+// so an overnight/multi-day task never silently disappears from view.
+async function activeTasks(db, me) {
+  const res = await db.execute({
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL ORDER BY created_at ASC",
+    args: [me.id],
   });
   return json({ tasks: res.rows });
 }
