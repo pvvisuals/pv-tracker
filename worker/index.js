@@ -161,6 +161,7 @@ function publicEmployee(e) {
     title: e.title, dept: e.dept, avatar_url: e.avatar_url, role: e.role,
     casual_balance: e.casual_balance, annual_balance: e.annual_balance,
     birth_date: e.birth_date || null, age: calcAge(e.birth_date),
+    is_probation: !!e.is_probation,
   };
 }
 
@@ -441,7 +442,25 @@ async function addBreak(db, me, body) {
   return json({ entry: res.rows[0] }, 201);
 }
 
+async function isCurrentlySignedIn(db, employeeId) {
+  const today = cairoDateStr();
+  const yesterday = addDaysToDateStr(today, -1);
+  const res = await db.execute({
+    sql: "SELECT * FROM attendance WHERE employee_id = ? AND date IN (?, ?) ORDER BY created_at ASC",
+    args: [employeeId, yesterday, today],
+  });
+  let pendingIn = null;
+  for (const r of res.rows) {
+    if (r.action === "sign_in") pendingIn = r;
+    else if (r.action === "sign_out") pendingIn = null;
+  }
+  return !!pendingIn;
+}
+
 async function startBreak(db, me) {
+  if (!(await isCurrentlySignedIn(db, me.id))) {
+    return err("لازم تسجل حضور الأول قبل ما تبدأ استراحة", 400);
+  }
   const today = cairoDateStr();
   const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
@@ -533,6 +552,7 @@ async function listProjects(db) {
 // ---------------------------------------------------------------- leave requests
 
 async function requestLeave(db, me, body) {
+  if (me.is_probation) return err("لسه في فترة الاختبار — الإجازات مش متاحة حالياً", 403);
   const missing = requireFields(body, ["date", "type"]);
   if (missing) return err(`Missing field: ${missing}`);
   if (!["casual", "annual"].includes(body.type)) return err("type must be casual or annual");
@@ -1095,6 +1115,16 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       return err("منقدرش تشيل صلاحية الأدمن بتاعتك انت نفسك", 400);
     }
     await db.execute({ sql: "UPDATE employees SET role = ? WHERE id = ?", args: [body.role, body.employee_id] });
+    return json({ ok: true });
+  }
+
+  // ---------- probation -> permanent (unlocks leave requests) — PIN required ----------
+  if (path === "/api/admin/set-probation" && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const missing = requireFields(body, ["employee_id"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const isProbation = body.is_probation ? 1 : 0;
+    await db.execute({ sql: "UPDATE employees SET is_probation = ? WHERE id = ?", args: [isProbation, body.employee_id] });
     return json({ ok: true });
   }
 
