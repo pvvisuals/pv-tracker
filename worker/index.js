@@ -246,6 +246,7 @@ export default {
       if (path === "/api/official-holidays" && method === "GET") {
         return await officialHolidays(db, url.searchParams.get("month"));
       }
+      if (path === "/api/penalties/mine" && method === "GET") return await myPenalties(db, me);
 
       if (path === "/api/report/mine" && method === "GET") {
         const month = url.searchParams.get("month"); // YYYY-MM
@@ -683,6 +684,14 @@ async function officialHolidays(db, monthStr) {
   return json({ holidays: res.rows });
 }
 
+async function myPenalties(db, me) {
+  const res = await db.execute({
+    sql: "SELECT * FROM penalties WHERE employee_id = ? ORDER BY date DESC",
+    args: [me.id],
+  });
+  return json({ penalties: res.rows });
+}
+
 // ---------------------------------------------------------------- monthly report (core hours logic)
 
 async function monthlyReport(db, employeeId, monthStr) {
@@ -910,6 +919,10 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ employees: res.rows.map(adminEmployeeView) });
   }
 
+  if (path === "/api/admin/employees/status" && method === "GET") {
+    return await adminEmployeesStatus(db);
+  }
+
   if (path === "/api/admin/leave-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
     const orderBy = status === "pending" ? "lr.requested_at ASC" : "lr.decided_at DESC";
@@ -1020,11 +1033,17 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- penalties (جزاءات) ----------
   if (path === "/api/admin/penalties" && method === "POST") {
-    const missing = requireFields(body, ["employee_id", "amount_egp", "date"]);
+    const missing = requireFields(body, ["employee_id", "days", "date"]);
     if (missing) return err(`Missing field: ${missing}`);
+    const days = Number(body.days);
+    if (!(days > 0)) return err("عدد الأيام لازم يكون رقم موجب");
+    const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [body.employee_id] });
+    const emp = empRes.rows[0];
+    if (!emp) return err("Employee not found", 404);
+    const amountEGP = days * 8 * hourlyRate(emp);
     const res = await db.execute({
-      sql: `INSERT INTO penalties (employee_id, amount_egp, reason, date, created_by) VALUES (?,?,?,?,?) RETURNING *`,
-      args: [body.employee_id, Number(body.amount_egp), body.reason || null, body.date, admin.id],
+      sql: `INSERT INTO penalties (employee_id, amount_egp, days, reason, date, created_by) VALUES (?,?,?,?,?,?) RETURNING *`,
+      args: [body.employee_id, amountEGP, days, body.reason || null, body.date, admin.id],
     });
     return json({ penalty: res.rows[0] }, 201);
   }
@@ -1213,6 +1232,66 @@ async function decideOvertime(db, admin, requestId, body) {
 // Generic list/decide for financial_requests, offclock_requests, permission_requests —
 // they all share the same shape (employee_id, status, requested_at, decided_at, decided_by).
 const REQUEST_TABLES = new Set(["financial_requests", "offclock_requests", "permission_requests"]);
+
+async function adminEmployeesStatus(db) {
+  const today = cairoDateStr();
+  const yesterday = addDaysToDateStr(today, -1);
+
+  const [attRes, brkRes, empRes] = await Promise.all([
+    db.execute({ sql: "SELECT * FROM attendance WHERE date IN (?, ?) ORDER BY employee_id ASC, created_at ASC", args: [yesterday, today] }),
+    db.execute({ sql: "SELECT * FROM breaks WHERE date = ? ORDER BY employee_id ASC, created_at ASC", args: [today] }),
+    db.execute("SELECT id, emp_code, name FROM employees ORDER BY emp_code ASC"),
+  ]);
+
+  const attByEmp = {};
+  for (const r of attRes.rows) (attByEmp[r.employee_id] = attByEmp[r.employee_id] || []).push(r);
+  const brkByEmp = {};
+  for (const r of brkRes.rows) (brkByEmp[r.employee_id] = brkByEmp[r.employee_id] || []).push(r);
+
+  const statuses = empRes.rows.map((emp) => {
+    const attRows = attByEmp[emp.id] || [];
+    const brkRows = brkByEmp[emp.id] || [];
+
+    let openBreak = null;
+    for (const b of brkRows) if (!b.end_time) openBreak = b;
+
+    let pendingIn = null;
+    for (const a of attRows) {
+      if (a.action === "sign_in") pendingIn = a;
+      else if (a.action === "sign_out") pendingIn = null;
+    }
+
+    let lastSignOutToday = null;
+    for (let i = attRows.length - 1; i >= 0; i--) {
+      if (attRows[i].action === "sign_out" && attRows[i].date === today) { lastSignOutToday = attRows[i]; break; }
+    }
+
+    const base = { id: emp.id, emp_code: emp.emp_code, name: emp.name };
+
+    if (openBreak) {
+      return { ...base, status: "break", since: openBreak.created_at, break_start_time: openBreak.start_time };
+    }
+    if (pendingIn) {
+      return { ...base, status: "signed_in", since: pendingIn.created_at, sign_in_time: pendingIn.time };
+    }
+    if (lastSignOutToday) {
+      let totalSecs = 0, pin = null;
+      for (const a of attRows) {
+        if (a.action === "sign_in") pin = a;
+        else if (a.action === "sign_out" && pin) {
+          const inMs = new Date(pin.created_at + "Z").getTime();
+          const outMs = new Date(a.created_at + "Z").getTime();
+          if (outMs > inMs) totalSecs += Math.floor((outMs - inMs) / 1000);
+          pin = null;
+        }
+      }
+      return { ...base, status: "signed_out", sign_out_time: lastSignOutToday.time, worked_seconds: totalSecs };
+    }
+    return { ...base, status: "not_signed_in" };
+  });
+
+  return json({ statuses });
+}
 
 async function adminListRequests(db, table, status) {
   if (!REQUEST_TABLES.has(table)) return err("invalid table", 400);
