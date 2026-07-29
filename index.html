@@ -87,6 +87,16 @@ select option{background:#111;}
 .status-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--border);font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:18px;color:var(--muted);}
 .status-pill.in{border-color:rgba(255,255,255,0.3);color:#fff;}
 .status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+.emp-status-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-left:10px;flex-shrink:0;border:1px solid rgba(255,255,255,0.3);}
+.emp-status-dot.dot-white{background:#fff;}
+.emp-status-dot.dot-green{background:#44ff88;box-shadow:0 0 6px #44ff88;}
+.emp-status-dot.dot-yellow{background:#ffd54a;box-shadow:0 0 6px #ffd54a;}
+.emp-status-dot.dot-red{background:#ff4444;box-shadow:0 0 6px #ff4444;}
+.emp-status-row{display:flex;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border2);}
+.emp-status-row:last-child{border-bottom:none;}
+.emp-status-name{font-weight:700;font-size:16px;min-width:170px;}
+.emp-status-detail{color:var(--muted);font-size:14px;flex:1;}
+.emp-status-timer{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;}
 .status-dot.pulse{animation:pulse 1.5s infinite;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.2;}}
 .action-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
@@ -130,9 +140,8 @@ textarea{resize:vertical;min-height:76px;}
 .task-desc{font-size:16px;color:var(--muted);margin-bottom:5px;line-height:1.5;}
 .task-meta{font-size:13px;color:var(--muted2);letter-spacing:1px;margin-bottom:4px;}
 .task-dur{font-size:15px;color:#fff;letter-spacing:1px;font-family:'Bebas Neue',sans-serif;margin-bottom:4px;}
-.btn-end-task{padding:8px 16px;background:#fff;border:1px solid #fff;color:#000;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;transition:opacity 0.2s;margin-top:6px;font-weight:700;}
-.btn-end-task:hover{opacity:0.8;}
-.btn-end-task:hover{border-color:#fff;color:#fff;}
+.btn-end-task{padding:8px 16px;background:#fff;border:1px solid #fff;color:#000;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;transition:all 0.2s;margin-top:6px;font-weight:700;}
+.btn-end-task:hover{background:#666;border-color:#666;color:#fff;}
 .settings-section{margin-bottom:24px;}
 .settings-label{font-size:17px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);margin-bottom:12px;}
 .avatar-upload{text-align:center;margin-bottom:20px;}
@@ -562,6 +571,10 @@ textarea{resize:vertical;min-height:76px;}
 <div id="officialHolidaysList"><div class="empty-log">No holidays set</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>DEDUCTIONS · الخصومات <span class="fla">(للاطلاع فقط)</span></span></div>
+<div id="myPenaltiesList"><div class="empty-log">No deductions</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>MY LEAVE REQUESTS · طلبات الإجازة</span></div>
 <div id="myLeaveList"><div class="empty-log">No requests yet</div></div>
 </div>
@@ -586,6 +599,11 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-head">
 <div class="sec-title">ADMIN</div>
 <div class="sec-sub">مراجعة الطلبات وتقارير الموظفين</div>
+</div>
+
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>EMPLOYEE STATUS NOW · حالة الموظفين الآن</span></div>
+<div id="empStatusList"><div class="empty-log">Loading...</div></div>
 </div>
 
 <div class="settings-label" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
@@ -697,11 +715,11 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
-<select id="penaltyEmployee"></select>
+<select id="penaltyEmployee" onchange="updatePenaltyPreview()"></select>
 </div>
 <div class="fg" style="margin:0">
-<div class="fl">Amount (EGP) <span class="fla">قيمة الجزاء</span></div>
-<input type="number" id="penaltyAmount" min="0" step="0.01"/>
+<div class="fl">Days <span class="fla">عدد الأيام</span></div>
+<input type="number" id="penaltyDays" min="0.25" step="0.25" oninput="updatePenaltyPreview()"/>
 </div>
 </div>
 <div class="form-row">
@@ -714,6 +732,7 @@ textarea{resize:vertical;min-height:76px;}
 <input type="text" id="penaltyReason"/>
 </div>
 </div>
+<div class="sec-sub" style="margin:8px 0 4px" id="penaltyPreview">المعادلة: عدد الأيام × 8 ساعات × قيمة الساعة = 0.00 EGP</div>
 <button class="btn-add" onclick="addPenalty()">+ ADD PENALTY · إضافة جزاء</button>
 </div>
 <div class="task-form">
@@ -845,9 +864,11 @@ var myFinReqs = [];
 var myOffReqs = [];
 var myPermReqs = [];
 var myHolidays = [];
+var myPenalties = [];
 var leaveBalance = { casual: 6, annual: 15 };
 var adminRequestsData = {};
 var adminHolidaysMonth = [];
+var empStatuses = [];
 var adminEmployees = [];
 
 async function apiRequest(path, method, body, needsAuth) {
@@ -1072,6 +1093,7 @@ async function initApp() {
   }
   startClock();
   startTaskTimer();
+  startEmpStatusTimer();
   loadProjectsList();
   setupTaskBrowseMonthBounds();
   await loadTodayData();
@@ -1241,6 +1263,7 @@ async function loadLeaveOvertimeData() {
       apiRequest("/api/offclock-requests/mine", "GET"),
       apiRequest("/api/permission-requests/mine", "GET"),
       apiRequest("/api/official-holidays", "GET"),
+      apiRequest("/api/penalties/mine", "GET"),
     ]);
     myLeaveReqs = results[0].requests || [];
     leaveBalance = results[0].balance || leaveBalance;
@@ -1249,10 +1272,27 @@ async function loadLeaveOvertimeData() {
     myOffReqs = results[3].requests || [];
     myPermReqs = results[4].requests || [];
     myHolidays = results[5].holidays || [];
+    myPenalties = results[6].penalties || [];
     renderLeaveBalance();
     renderMyRequests();
     renderOfficialHolidaysEmployee();
+    renderMyPenalties();
   } catch(e) { /* non-fatal */ }
+}
+
+function renderMyPenalties() {
+  var el = document.getElementById("myPenaltiesList");
+  if (!el) return;
+  if (!myPenalties.length) { el.innerHTML = "<div class='empty-log'>No deductions</div>"; return; }
+  var html = "";
+  for (var i = 0; i < myPenalties.length; i++) {
+    var p = myPenalties[i];
+    var days = p.days != null ? p.days : "-";
+    html += "<div class='log-entry'><div class='log-type' style='color:#ff4444'>" + days + " يوم</div>" +
+      "<div class='log-time'>" + p.date + "</div>" +
+      "<div class='log-note'>" + (p.reason || "") + "</div></div>";
+  }
+  el.innerHTML = html;
 }
 
 function statusBadge(status) {
@@ -1448,6 +1488,7 @@ async function loadAdminData() {
     jobs.push(apiRequest("/api/admin/official-holidays", "GET"));
     jobs.push(apiRequest("/api/admin/employees", "GET"));
     jobs.push(apiRequest("/api/projects", "GET"));
+    jobs.push(apiRequest("/api/admin/employees/status", "GET"));
 
     var results = await Promise.all(jobs);
 
@@ -1459,11 +1500,13 @@ async function loadAdminData() {
     adminHolidaysMonth = results[jobKeys.length].holidays || [];
     adminEmployees = results[jobKeys.length + 1].employees || [];
     allProjects = results[jobKeys.length + 2].projects || [];
+    empStatuses = results[jobKeys.length + 3].statuses || [];
 
     populateRequestFilter();
     renderRequestsOverview();
     renderAdminHolidays();
     renderAdminProjects();
+    renderEmpStatus();
     populateTaskProjectSelect();
     populateEmployeeSelects();
   } catch(e) { /* non-fatal */ }
@@ -1689,6 +1732,47 @@ async function refreshEmployeesOnly() {
   showEmployeeFullInfo();
 }
 
+function renderEmpStatus() {
+  var el = document.getElementById("empStatusList");
+  if (!empStatuses.length) { el.innerHTML = "<div class='empty-log'>No employees</div>"; return; }
+  var html = "";
+  for (var i = 0; i < empStatuses.length; i++) {
+    var s = empStatuses[i];
+    var dotClass = "dot-white", label = "لسه مسجلش حضور · Not signed in", timerHtml = "";
+    if (s.status === "signed_in") {
+      dotClass = "dot-green";
+      label = "حاضر من " + s.sign_in_time + " · Signed in";
+      timerHtml = "<span class='emp-status-timer' data-kind='live' data-since='" + s.since + "'>00:00:00</span>";
+    } else if (s.status === "break") {
+      dotClass = "dot-yellow";
+      label = "في استراحة من " + s.break_start_time + " · On break";
+      timerHtml = "<span class='emp-status-timer' data-kind='live' data-since='" + s.since + "'>00:00:00</span>";
+    } else if (s.status === "signed_out") {
+      dotClass = "dot-red";
+      label = "انصرف الساعة " + s.sign_out_time + " · Signed out";
+      timerHtml = "<span class='emp-status-timer'>" + formatDuration(s.worked_seconds || 0) + "</span>";
+    }
+    html += "<div class='emp-status-row'>" +
+      "<span class='emp-status-dot " + dotClass + "'></span>" +
+      "<span class='emp-status-name'>#" + s.emp_code + " " + s.name + "</span>" +
+      "<span class='emp-status-detail'>" + label + "</span>" +
+      timerHtml + "</div>";
+  }
+  el.innerHTML = html;
+}
+
+var empStatusTimerInterval = null;
+function startEmpStatusTimer() {
+  clearInterval(empStatusTimerInterval);
+  empStatusTimerInterval = setInterval(function() {
+    var els = document.querySelectorAll(".emp-status-timer[data-kind='live']");
+    for (var i = 0; i < els.length; i++) {
+      var since = parseUTC(els[i].getAttribute("data-since"));
+      els[i].textContent = formatDuration(Math.floor((Date.now() - since) / 1000));
+    }
+  }, 1000);
+}
+
 function renderAdminHolidays() {
   var el = document.getElementById("adminHolidaysList");
   if (!el) return;
@@ -1761,18 +1845,29 @@ async function saveSalarySettings() {
   showLoading(false);
 }
 
+function updatePenaltyPreview() {
+  var empId = document.getElementById("penaltyEmployee").value;
+  var days = Number(document.getElementById("penaltyDays").value) || 0;
+  var emp = adminEmployees.find(function(e) { return String(e.id) === String(empId); });
+  var rate = emp ? (Number(emp.hourly_rate) || 0) : 0;
+  var amount = days * 8 * rate;
+  document.getElementById("penaltyPreview").textContent =
+    "المعادلة: " + days + " يوم × 8 ساعات × " + rate.toFixed(2) + " ج.م/ساعة = " + amount.toFixed(2) + " EGP";
+}
+
 async function addPenalty() {
   var empId = document.getElementById("penaltyEmployee").value;
-  var amount = document.getElementById("penaltyAmount").value;
+  var days = document.getElementById("penaltyDays").value;
   var date = document.getElementById("penaltyDate").value;
   var reason = document.getElementById("penaltyReason").value.trim();
-  if (!empId || !amount || !date) { showToast("!", "املا كل الحقول"); return; }
+  if (!empId || !days || !date) { showToast("!", "املا كل الحقول"); return; }
   showLoading(true);
   try {
-    await apiRequest("/api/admin/penalties", "POST", { employee_id: empId, amount_egp: Number(amount), date: date, reason: reason });
+    await apiRequest("/api/admin/penalties", "POST", { employee_id: empId, days: Number(days), date: date, reason: reason });
     showToast("v", "تم إضافة الجزاء");
-    document.getElementById("penaltyAmount").value = "";
+    document.getElementById("penaltyDays").value = "";
     document.getElementById("penaltyReason").value = "";
+    updatePenaltyPreview();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -1796,7 +1891,7 @@ function populateEmployeeSelects() {
     var d = new Date();
     monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
   }
-  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); showEmployeeFullInfo(); }
+  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); showEmployeeFullInfo(); updatePenaltyPreview(); }
 }
 
 function showRoleStatus() {
