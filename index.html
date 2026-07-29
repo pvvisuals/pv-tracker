@@ -155,6 +155,9 @@ textarea{resize:vertical;min-height:76px;}
 .btn-logout{margin-top:14px;padding:9px 20px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1.5px;cursor:pointer;transition:all 0.2s;}
 .btn-logout:hover{border-color:rgba(255,255,255,0.25);color:#fff;}
 .modal-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.88);display:none;align-items:center;justify-content:center;padding:20px;}
+#scrollTopBtn{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;background:#fff;color:#000;border:none;font-size:22px;font-weight:700;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.5);z-index:500;transition:opacity 0.2s;}
+#scrollTopBtn.show{display:flex;}
+#scrollTopBtn:hover{opacity:0.8;}
 .modal-overlay.active{display:flex;}
 .modal{background:var(--card);border:1px solid var(--border);padding:28px;max-width:400px;width:100%;animation:cardIn 0.2s ease;}
 .modal h3{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;margin-bottom:8px;}
@@ -466,6 +469,11 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-title">REQUESTS</div>
 <div class="sec-sub">الطلبات — كل طلباتك بتحتاج موافقة الأدمن / All your requests need admin approval</div>
 </div>
+<div id="leaveProbationNotice" class="task-form" style="display:none;border-color:#ffd54a;">
+<div class="settings-label" style="color:#ffd54a">Probation Period <span class="fla" style="color:#ffd54a">فترة الاختبار</span></div>
+<div class="sec-sub">لسه في فترة الاختبار — الإجازات مش متاحة حالياً. باقي أنواع الطلبات (أوفرتايم، مستحقات، ساعات خارج البصمة، إذن انصراف) متاحة عادي.</div>
+</div>
+<div id="leaveBalanceAndForm">
 <div class="info-grid">
 <div class="info-card">
 <div class="info-card-label">Casual Leave / عارضة</div>
@@ -496,6 +504,7 @@ textarea{resize:vertical;min-height:76px;}
 <input type="text" id="leaveReason" placeholder="اكتب السبب..."/>
 </div>
 <button class="btn-add" onclick="submitLeaveRequest()">+ REQUEST LEAVE · طلب إجازة</button>
+</div>
 </div>
 <div class="task-form">
 <div class="settings-label">طلب أوفر تايم مدفوع</div>
@@ -750,6 +759,21 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-add" onclick="toggleAdminRole()" id="roleToggleBtn">MAKE ADMIN · ترقية لأدمن</button>
 </div>
 <div class="task-form">
+<div class="settings-label">Probation Status <span class="fla">فترة الاختبار</span></div>
+<div class="sec-sub" style="margin-bottom:12px">تحويل الموظف من تحت الاختبار لأساسي بيفتح له الإجازات — محتاج كود الأمان</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="probationEmployee" onchange="showProbationStatus()"></select>
+</div>
+</div>
+<div class="fg" style="margin:10px 0">
+<div class="fl">Current Status <span class="fla">الحالة الحالية</span></div>
+<div id="probationStatus" style="padding:11px 14px;border:1px solid var(--border);color:var(--text);font-size:16px;">-</div>
+</div>
+<button class="btn-add" onclick="toggleProbationPrompt()" id="probationToggleBtn">MAKE PERMANENT · تثبيت الموظف</button>
+</div>
+<div class="task-form">
 <div class="settings-label">Employee Full Info · بيانات الموظف الكاملة</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -833,6 +857,18 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="pinModalOverlay">
+<div class="modal">
+<h3 id="pinModalTitle">Admin PIN</h3>
+<p id="pinModalMsg">ادخل كود الأمان</p>
+<input type="password" id="pinModalInput" placeholder="****" style="margin:14px 0"/>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closePinModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="pinModalConfirm()">Confirm · تأكيد</button>
+</div>
+</div>
+</div>
+<button id="scrollTopBtn" onclick="scrollToTop()" title="Back to top">↑</button>
 <div class="loading-overlay" id="loadingOverlay">
 <div class="loading-spinner">LOADING...</div>
 </div>
@@ -1091,6 +1127,7 @@ async function initApp() {
   if (user.role === "admin") {
     document.getElementById("tab-admin").style.display = "block";
   }
+  applyProbationUI();
   startClock();
   startTaskTimer();
   startEmpStatusTimer();
@@ -1179,6 +1216,8 @@ function applyAttendanceState(entries, openSession) {
     pill2.className = "status-pill";
     pill2.innerHTML = "<div class='status-dot'></div><span>NOT SIGNED IN</span>";
   }
+  var breakStartBtn = document.getElementById("btnBreakStart");
+  if (breakStartBtn && !activeBreakId) breakStartBtn.disabled = !signedIn;
   renderSignLog();
 }
 
@@ -1303,6 +1342,19 @@ function statusBadge(status) {
 
 function reasonNote(r) {
   return r.reason || r.note ? ("<div class='log-note' style='opacity:.7'>" + (r.reason || r.note) + "</div>") : "";
+}
+
+function applyProbationUI() {
+  var notice = document.getElementById("leaveProbationNotice");
+  var formWrap = document.getElementById("leaveBalanceAndForm");
+  if (!notice || !formWrap) return;
+  if (user.is_probation) {
+    notice.style.display = "block";
+    formWrap.style.display = "none";
+  } else {
+    notice.style.display = "none";
+    formWrap.style.display = "block";
+  }
 }
 
 function renderLeaveBalance() {
@@ -1636,15 +1688,15 @@ async function decideRequest(kind, id, action) {
 
 function reverseDecisionPrompt(kind, id, currentStatus, empName) {
   var newAction = currentStatus === "approved" ? "reject" : "approve";
-  var pin = window.prompt("ادخل كود الأمان (Admin PIN) عشان تغيّر القرار:");
-  if (pin === null) return; // cancelled
-  if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
   var actionLabel = newAction === "approve" ? "الموافقة" : "الرفض";
   var fromLabel = currentStatus === "approved" ? "الموافقة" : "الرفض";
-  openModal(
-    "CHANGE DECISION",
-    "متأكد عايز تغيّر قرار " + (empName || "الموظف ده") + " من \"" + fromLabel + "\" إلى \"" + actionLabel + "\"؟ هيتحدث فوراً في كل حاجة (رصيد الإجازة لو كانت إجازة، التقرير، وشاشة الموظف).",
-    function() { executeRedecide(kind, id, newAction, pin); }
+  openPinModal(
+    "CHANGE DECISION · تغيير القرار",
+    "متأكد عايز تغيّر قرار " + (empName || "الموظف ده") + " من \"" + fromLabel + "\" إلى \"" + actionLabel + "\"؟ هيتحدث فوراً في كل حاجة. ادخل كود الأمان للتأكيد:",
+    function(pin) {
+      if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+      executeRedecide(kind, id, newAction, pin);
+    }
   );
 }
 
@@ -1873,7 +1925,7 @@ async function addPenalty() {
 }
 
 function populateEmployeeSelects() {
-  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee", "roleEmployee", "infoEmployee"];
+  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee", "roleEmployee", "infoEmployee", "probationEmployee"];
   for (var s = 0; s < selectIds.length; s++) {
     var sel = document.getElementById(selectIds[s]);
     if (!sel || sel.options.length === adminEmployees.length) continue;
@@ -1891,7 +1943,7 @@ function populateEmployeeSelects() {
     var d = new Date();
     monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
   }
-  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); showEmployeeFullInfo(); updatePenaltyPreview(); }
+  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); showEmployeeFullInfo(); updatePenaltyPreview(); showProbationStatus(); }
 }
 
 function showRoleStatus() {
@@ -1919,6 +1971,44 @@ async function toggleAdminRole() {
   try {
     await apiRequest("/api/admin/set-role", "POST", { employee_id: id, role: newRole });
     showToast("v", newRole === "admin" ? "تمت الترقية لأدمن" : "تم إلغاء صلاحية الأدمن");
+    await refreshEmployeesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function showProbationStatus() {
+  var id = document.getElementById("probationEmployee").value;
+  var emp = adminEmployees.find(function(e) { return String(e.id) === String(id); });
+  var statusEl = document.getElementById("probationStatus");
+  var btnEl = document.getElementById("probationToggleBtn");
+  if (!emp) { statusEl.textContent = "-"; return; }
+  var isProbation = !!emp.is_probation;
+  statusEl.textContent = isProbation ? "PROBATION · تحت الاختبار" : "PERMANENT · أساسي";
+  statusEl.style.color = isProbation ? "#ffd54a" : "#44ff88";
+  btnEl.textContent = isProbation ? "MAKE PERMANENT · تثبيت الموظف" : "REVERT TO PROBATION · إرجاع لتحت الاختبار";
+}
+
+function toggleProbationPrompt() {
+  var id = document.getElementById("probationEmployee").value;
+  var emp = adminEmployees.find(function(e) { return String(e.id) === String(id); });
+  if (!emp) { showToast("!", "اختار موظف"); return; }
+  var newIsProbation = !emp.is_probation;
+  var actionLabel = newIsProbation ? "إرجاعه لتحت الاختبار (تقفيل الإجازات)" : "تثبيته (فتح الإجازات ليه)";
+  openPinModal(
+    "PROBATION STATUS · فترة الاختبار",
+    "متأكد عايز " + actionLabel + " لـ " + emp.name + "؟ ادخل كود الأمان للتأكيد:",
+    function(pin) {
+      if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+      executeProbationToggle(id, newIsProbation, pin);
+    }
+  );
+}
+
+async function executeProbationToggle(id, newIsProbation, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/set-probation", "POST", { employee_id: id, is_probation: newIsProbation, pin: pin });
+    showToast("v", newIsProbation ? "تم إرجاعه لتحت الاختبار" : "تم تثبيت الموظف — الإجازات بقت متاحة له");
     await refreshEmployeesOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -2089,6 +2179,7 @@ function renderSignLog() {
 var activeBreakId = null;
 
 async function startBreak() {
+  if (!signedIn) { showToast("!", "لازم تسجل حضور الأول قبل ما تبدأ استراحة"); return; }
   showLoading(true);
   try {
     var res = await apiRequest("/api/breaks/start", "POST", {});
@@ -2322,6 +2413,33 @@ function openModal(title, msg, cb) {
 }
 function closeModal() { document.getElementById("modalOverlay").classList.remove("active"); modalCallback = null; }
 function modalConfirm() { var cb = modalCallback; closeModal(); if (cb) cb(); }
+
+var pinModalCallback = null;
+function openPinModal(title, msg, cb) {
+  document.getElementById("pinModalTitle").textContent = title;
+  document.getElementById("pinModalMsg").textContent = msg;
+  document.getElementById("pinModalInput").value = "";
+  pinModalCallback = cb;
+  document.getElementById("pinModalOverlay").classList.add("active");
+  setTimeout(function() {
+    var el = document.getElementById("pinModalInput");
+    if (el) el.focus();
+  }, 60);
+}
+function closePinModal() { document.getElementById("pinModalOverlay").classList.remove("active"); pinModalCallback = null; }
+function pinModalConfirm() {
+  var val = document.getElementById("pinModalInput").value;
+  var cb = pinModalCallback;
+  closePinModal();
+  if (cb) cb(val);
+}
+
+function scrollToTop() { window.scrollTo({ top: 0, behavior: "smooth" }); }
+window.addEventListener("scroll", function() {
+  var btn = document.getElementById("scrollTopBtn");
+  if (!btn) return;
+  if (window.scrollY > 260) btn.classList.add("show"); else btn.classList.remove("show");
+});
 
 function showToast(icon, msg) {
   clearTimeout(toastTimer);
