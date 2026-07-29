@@ -1357,6 +1357,16 @@ function applyProbationUI() {
   }
 }
 
+async function refreshMyProbationStatus() {
+  try {
+    var fresh = await apiRequest("/api/me", "GET");
+    user.is_probation = fresh.is_probation;
+    user.casual_balance = fresh.casual_balance;
+    user.annual_balance = fresh.annual_balance;
+    applyProbationUI();
+  } catch(e) { /* non-fatal */ }
+}
+
 function renderLeaveBalance() {
   document.getElementById("casualBalance").textContent = leaveBalance.casual + " / 6";
   document.getElementById("annualBalance").textContent = leaveBalance.annual + " / 15";
@@ -1782,6 +1792,8 @@ async function refreshEmployeesOnly() {
   fillSalaryForm();
   showRoleStatus();
   showEmployeeFullInfo();
+  showProbationStatus();
+  updatePenaltyPreview();
 }
 
 function renderEmpStatus() {
@@ -2393,6 +2405,7 @@ function switchTab(name) {
     var isoToday = cairoISODate();
     if (!document.getElementById("leaveDate").value) document.getElementById("leaveDate").value = isoToday;
     if (!document.getElementById("otDate").value) document.getElementById("otDate").value = isoToday;
+    refreshMyProbationStatus();
     loadLeaveOvertimeData();
   }
   if (name === "admin" && user && user.role === "admin") {
