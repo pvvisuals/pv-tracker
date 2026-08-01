@@ -229,6 +229,11 @@ textarea{resize:vertical;min-height:76px;}
 <div class="card-title">REGISTER</div>
 <div class="card-sub">سجّل بياناتك للمرة الاولى</div>
 <div class="fg">
+<div class="fl">Employee ID <span class="fla">كود الموظف (اختاره بنفسك)</span>
+</div>
+<input type="text" id="reg-empcode" placeholder="مثال: PV01"/>
+</div>
+<div class="fg">
 <div class="fl">Full Name <span class="fla">الاسم الكامل</span>
 </div>
 <input type="text" id="reg-name" placeholder="Your full name"/>
@@ -824,6 +829,18 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-add" onclick="fetchAdminReport()">GET REPORT · عرض التقرير</button>
 </div>
 <div id="adminReportResult"></div>
+<div class="task-form">
+<div class="settings-label">Projects Report <span class="fla">تقرير المشاريع (كل الموظفين)</span></div>
+<div class="sec-sub" style="margin-bottom:12px">إجمالي ساعات كل مشروع، مجمّعة من كل الموظفين اللي اشتغلوا فيه</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Month</div>
+<input type="month" id="projectsReportMonth"/>
+</div>
+</div>
+<button class="btn-add" onclick="fetchProjectsReport()">GET PROJECTS REPORT · عرض تقرير المشاريع</button>
+</div>
+<div id="projectsReportResult"></div>
 </div>
 <div class="tab-content" id="content-settings">
 <div class="sec-head">
@@ -914,7 +931,22 @@ async function apiRequest(path, method, body, needsAuth) {
   if (needsAuth && token) headers["Authorization"] = "Bearer " + token;
   var opts = { method: method, headers: headers };
   if (body) opts.body = JSON.stringify(body);
-  var res = await fetch(API_BASE + path, opts);
+
+  var controller = new AbortController();
+  opts.signal = controller.signal;
+  var timedOut = false;
+  var timer = setTimeout(function() { timedOut = true; controller.abort(); }, 15000);
+
+  var res;
+  try {
+    res = await fetch(API_BASE + path, opts);
+  } catch(networkErr) {
+    if (timedOut) throw new Error("الاتصال بالسيرفر بطيء أوي — حاول تاني");
+    throw new Error("مشكلة في الاتصال بالإنترنت — حاول تاني");
+  } finally {
+    clearTimeout(timer);
+  }
+
   var t = await res.text();
   var data = t ? JSON.parse(t) : null;
   if (!res.ok) {
@@ -945,6 +977,7 @@ async function doLogin() {
 }
 
 async function doRegister() {
+  var empCode = document.getElementById("reg-empcode").value.trim();
   var name = document.getElementById("reg-name").value.trim();
   var phone = document.getElementById("reg-phone").value.trim();
   var pass = document.getElementById("reg-pass").value.trim();
@@ -955,7 +988,7 @@ async function doRegister() {
   var sa = document.getElementById("reg-sa").value.trim().toLowerCase();
   var errEl = document.getElementById("registerError");
   errEl.classList.remove("show");
-  if (!name || !phone || !pass || !title || !dept || !birthdate || !sq || !sa) {
+  if (!empCode || !name || !phone || !pass || !title || !dept || !birthdate || !sq || !sa) {
     errEl.textContent = "اكمل جميع البيانات / Complete all fields";
     errEl.classList.add("show");
     return;
@@ -963,7 +996,7 @@ async function doRegister() {
   showLoading(true);
   try {
     await apiRequest("/api/register", "POST", {
-      name: name, phone: phone, password: pass,
+      emp_code: empCode, name: name, phone: phone, password: pass,
       title: title, dept: dept, birth_date: birthdate,
       secret_q: sq, secret_a: sa
     }, false);
@@ -2109,31 +2142,101 @@ async function fetchAdminReport() {
   showLoading(false);
 }
 
+async function fetchProjectsReport() {
+  var monthInput = document.getElementById("projectsReportMonth");
+  if (!monthInput.value) {
+    var d = new Date();
+    monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/admin/projects-report?month=" + monthInput.value, "GET");
+    renderProjectsReport(res);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function renderProjectsReport(res) {
+  var el = document.getElementById("projectsReportResult");
+  if (!res.projects || !res.projects.length) {
+    el.innerHTML = "<div class='log-wrap' style='margin-top:14px'><div class='empty-log'>No project hours this month</div></div>";
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < res.projects.length; i++) {
+    var p = res.projects[i];
+    html += "<div class='log-wrap' style='margin-top:14px'>";
+    html += "<div class='log-header'><span>" + p.project + "</span><span>" + p.hours + " h total</span></div>";
+    for (var j = 0; j < p.employees.length; j++) {
+      var emp = p.employees[j];
+      html += "<div class='log-entry'><div class='log-type'>#" + emp.emp_code + "</div><div class='log-time'>" + emp.name + "</div><div class='log-note'>" + emp.hours + " h — " + emp.task_count + " task(s)</div></div>";
+    }
+    html += "</div>";
+  }
+  el.innerHTML = html;
+}
+
 function renderAdminReport(res) {
   var el = document.getElementById("adminReportResult");
   var t = res.totals;
   var x = res.extras;
-  var html = "<div class='info-grid' style='margin-top:18px'>" +
-    "<div class='info-card'><div class='info-card-label'>Age</div><div class='info-card-value'>" + (res.employee.age != null ? res.employee.age : "-") + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Counted Hours</div><div class='info-card-value'>" + t.counted_hours + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Actual Hours</div><div class='info-card-value'>" + t.actual_hours + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Overtime Hours</div><div class='info-card-value'>" + t.overtime_hours + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Absent Days</div><div class='info-card-value'>" + t.absent_days + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Casual Taken</div><div class='info-card-value'>" + t.leave_days_casual + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Annual Taken</div><div class='info-card-value'>" + t.leave_days_annual + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Holiday Bonus (2x)</div><div class='info-card-value'>" + t.holiday_bonus_hours + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Holiday Auto (8h)</div><div class='info-card-value'>" + t.holiday_off_hours + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Hourly Rate (EGP)</div><div class='info-card-value'>" + x.hourly_rate + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Financial (EGP → hrs)</div><div class='info-card-value'>" + x.financial_total_egp + " → " + x.financial_hours + "h</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Off-clock Hours</div><div class='info-card-value'>" + x.offclock_hours + "</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Permission Bonus</div><div class='info-card-value'>" + x.permission_bonus_hours + " / " + x.permission_monthly_limit + "h</div></div>" +
-    "<div class='info-card'><div class='info-card-label'>Penalties (EGP)</div><div class='info-card-value'>" + x.penalties_total_egp + "</div></div>" +
-    "</div>";
+  var s = res.salary;
+  var e = res.employee;
+  var monthName = new Date(res.year, res.month - 1, 1).toLocaleString("en-US", { month: "long" });
+
+  var html = "";
+
+  // ---- Employee header ----
+  html += "<div class='task-form' style='margin-top:18px'>";
+  html += "<div class='settings-label'>" + e.name + " · #" + e.emp_code + "</div>";
+  html += "<div class='sec-sub'>" + (e.title||"") + " — " + (e.dept||"") + " · العمر: " + (e.age!=null?e.age:"-") + " · التقرير عن: " + monthName + " " + res.year + "</div>";
+  html += "</div>";
+
+  // ---- Salary summary (the headline) ----
+  var diffColor = s.hours_diff >= 0 ? "#44ff88" : "#ff4444";
+  var diffSign = s.hours_diff >= 0 ? "+" : "";
+  html += "<div class='task-form' style='border-color:#fff;'>";
+  html += "<div class='settings-label'>SALARY SUMMARY · ملخص المرتب</div>";
+  html += "<div class='info-grid'>";
+  html += infoCard("Base Salary", s.base_salary + " EGP");
+  html += infoCard("Hourly Rate", s.hourly_rate + " EGP");
+  html += infoCard("Required Hours", s.required_hours + " h");
+  html += infoCard("Counted Hours", s.counted_hours + " h");
+  html += infoCard("Hours Diff", "<span style='color:" + diffColor + "'>" + diffSign + s.hours_diff + " h</span>");
+  html += infoCard("Salary Adjustment", "<span style='color:" + diffColor + "'>" + diffSign + s.salary_adjustment + " EGP</span>");
+  html += infoCard("Penalties", "<span style='color:#ff4444'>-" + s.penalties_total_egp + " EGP</span>");
+  html += "</div>";
+  html += "<div style='text-align:center;padding:18px;border:1px solid var(--border);margin-top:4px;'>";
+  html += "<div style='font-size:15px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;'>FINAL SALARY · صافي المرتب</div>";
+  html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:44px;color:#fff;margin-top:6px;'>" + s.final_salary.toLocaleString() + " EGP</div>";
+  html += "</div></div>";
+
+  // ---- Hours breakdown ----
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>HOURS BREAKDOWN · تفصيل الساعات</span></div>";
+  html += logRow("Regular Worked", t.actual_hours + " h actual → " + (t.counted_hours - t.overtime_hours - t.holiday_bonus_hours - t.holiday_off_hours - t.weekend_bonus_hours - x.financial_hours - x.offclock_hours - x.permission_bonus_hours).toFixed(2) + " h counted");
+  html += logRow("Overtime · أوفر تايم", t.overtime_hours + " h");
+  html += logRow("Official Holiday (worked ×2) · إجازة رسمية اشتغل فيها", t.holiday_bonus_hours + " h");
+  html += logRow("Official Holiday (auto 8h) · إجازة رسمية تلقائي", t.holiday_off_hours + " h");
+  html += logRow("Weekend Worked ×2 · جمعة/سبت اشتغل فيهم", t.weekend_bonus_hours + " h");
+  html += logRow("Financial Requests → Hours · مستحقات مالية", x.financial_total_egp + " EGP → " + x.financial_hours + " h");
+  html += logRow("Off-clock Hours · ساعات خارج البصمة", x.offclock_hours + " h");
+  html += logRow("Unused Permission → Bonus · إذن انصراف غير مستخدم", x.permission_bonus_hours + " / " + x.permission_monthly_limit + " h");
+  html += "</div>";
+
+  // ---- Attendance summary ----
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>ATTENDANCE SUMMARY · ملخص الحضور</span></div>";
+  html += logRow("Absent Days · أيام غياب", t.absent_days);
+  html += logRow("Casual Leave Taken · عارضة مستخدمة", t.leave_days_casual + " (رصيد متبقي: " + res.leave_balance.casual + "/6)");
+  html += logRow("Annual Leave Taken · اعتيادية مستخدمة", t.leave_days_annual + " (رصيد متبقي: " + res.leave_balance.annual + "/15)");
+  html += "</div>";
+
+  // ---- Day by day ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>DAY BY DAY · تفاصيل يومية</span></div>";
   for (var i = 0; i < res.days.length; i++) {
     var d = res.days[i];
     var note = "";
     if (d.status === "weekend") note = "اجازة اسبوعية";
+    else if (d.status === "weekend_worked") note = "اشتغل في يوم إجازة أسبوعية — " + formatDuration(d.actual_seconds) + " ×2 = " + formatDuration(d.counted_seconds);
     else if (d.status === "leave") note = "اجازة " + (d.leave_type === "casual" ? "عارضة" : "اعتيادية") + " - 8h";
     else if (d.status === "absent") note = "غياب";
     else if (d.status === "today_pending") note = "لسه النهارده";
@@ -2148,7 +2251,7 @@ function renderAdminReport(res) {
   html += "</div>";
 
   if (res.project_hours && res.project_hours.length) {
-    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>HOURS BY PROJECT · الساعات لكل مشروع</span></div>";
+    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>HOURS BY PROJECT (THIS EMPLOYEE) · ساعات المشاريع لهذا الموظف</span></div>";
     for (var p = 0; p < res.project_hours.length; p++) {
       var pr = res.project_hours[p];
       html += "<div class='log-entry'><div class='log-type'>" + pr.project + "</div><div class='log-note'>" + pr.hours + " h — " + pr.task_count + " task(s)</div></div>";
@@ -2157,6 +2260,13 @@ function renderAdminReport(res) {
   }
 
   el.innerHTML = html;
+}
+
+function infoCard(label, value) {
+  return "<div class='info-card'><div class='info-card-label'>" + label + "</div><div class='info-card-value'>" + value + "</div></div>";
+}
+function logRow(label, value) {
+  return "<div class='log-entry'><div class='log-type'>" + label + "</div><div class='log-note'>" + value + "</div></div>";
 }
 
 async function doSignIn() {
@@ -2192,6 +2302,9 @@ var activeBreakId = null;
 
 async function startBreak() {
   if (!signedIn) { showToast("!", "لازم تسجل حضور الأول قبل ما تبدأ استراحة"); return; }
+  var btn = document.getElementById("btnBreakStart");
+  if (btn.disabled) return; // already in flight, ignore extra clicks
+  btn.disabled = true;
   showLoading(true);
   try {
     var res = await apiRequest("/api/breaks/start", "POST", {});
@@ -2209,11 +2322,14 @@ async function startBreak() {
     }, 1000);
     showToast("*", "Break started");
   } catch(e) { showToast("!", "Error: " + e.message); }
-  showLoading(false);
+  finally { btn.disabled = false; showLoading(false); }
 }
 
 async function stopBreak() {
   if (!activeBreakId) return;
+  var btn = document.getElementById("btnBreakStop");
+  if (btn.disabled) return; // already in flight, ignore extra clicks
+  btn.disabled = true;
   showLoading(true);
   try {
     var res = await apiRequest("/api/breaks/" + activeBreakId + "/end", "PATCH", {});
@@ -2225,16 +2341,20 @@ async function stopBreak() {
       }
     }
     clearInterval(breakInterval);
+    breakInterval = null;
     renderBreakLog();
     showToast("v","Break: " + formatDuration(res.entry.duration));
+    // Only clear the "on break" state once the server confirms it ended —
+    // if the request failed/timed out, we stay on break so the user can
+    // just try again, instead of silently losing track of an open break.
+    activeBreakId = null;
+    breakStartTime = null;
+    document.getElementById("timerDisplay").textContent = "00:00:00";
+    document.getElementById("timerDisplay").classList.remove("running");
+    document.getElementById("btnBreakStart").style.display = "inline-block";
+    document.getElementById("btnBreakStop").style.display = "none";
   } catch(e) { showToast("!","Error: " + e.message); }
-  activeBreakId = null;
-  breakStartTime = null;
-  document.getElementById("timerDisplay").textContent = "00:00:00";
-  document.getElementById("timerDisplay").classList.remove("running");
-  document.getElementById("btnBreakStart").style.display = "inline-block";
-  document.getElementById("btnBreakStop").style.display = "none";
-  showLoading(false);
+  finally { btn.disabled = false; showLoading(false); }
 }
 
 function renderBreakLog() {
