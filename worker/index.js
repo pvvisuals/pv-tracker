@@ -270,15 +270,20 @@ export default {
 // ---------------------------------------------------------------- auth handlers
 
 async function register(db, body) {
-  const missing = requireFields(body, ["name", "phone", "password", "title", "dept", "secret_q", "secret_a", "birth_date"]);
+  const missing = requireFields(body, ["emp_code", "name", "phone", "password", "title", "dept", "secret_q", "secret_a", "birth_date"]);
   if (missing) return err(`Missing field: ${missing}`);
 
-  const existing = await db.execute({ sql: "SELECT id FROM employees WHERE phone = ?", args: [body.phone] });
-  if (existing.rows.length) return err("رقم الموبايل مسجل مسبقا", 409);
+  const empCode = String(body.emp_code).trim();
+  if (!empCode) return err("لازم تدخل رقم كود موظف");
+
+  const existingPhone = await db.execute({ sql: "SELECT id FROM employees WHERE phone = ?", args: [body.phone] });
+  if (existingPhone.rows.length) return err("رقم الموبايل مسجل مسبقا", 409);
+
+  const existingCode = await db.execute({ sql: "SELECT id FROM employees WHERE emp_code = ?", args: [empCode] });
+  if (existingCode.rows.length) return err("كود الموظف ده مستخدم بالفعل — اختار كود تاني", 409);
 
   const countRes = await db.execute("SELECT COUNT(*) as c FROM employees");
   const isFirst = Number(countRes.rows[0].c) === 0;
-  const empCode = String(Number(countRes.rows[0].c) + 1).padStart(2, "0");
 
   const passwordHash = await makeSecretHash(body.password);
   const secretAHash = await makeSecretHash(String(body.secret_a).trim().toLowerCase());
@@ -462,6 +467,18 @@ async function startBreak(db, me) {
     return err("لازم تسجل حضور الأول قبل ما تبدأ استراحة", 400);
   }
   const today = cairoDateStr();
+
+  // Guard against duplicate opens (e.g. a retried click after a network
+  // hiccup) — if there's already an unfinished break today, just return it
+  // instead of creating a second one that would never get closed properly.
+  const openRes = await db.execute({
+    sql: "SELECT * FROM breaks WHERE employee_id = ? AND date = ? AND end_time IS NULL ORDER BY created_at DESC LIMIT 1",
+    args: [me.id, today],
+  });
+  if (openRes.rows.length) {
+    return json({ entry: openRes.rows[0] }, 200);
+  }
+
   const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
   const res = await db.execute({
@@ -789,6 +806,8 @@ async function monthlyReport(db, employeeId, monthStr) {
   let totalOvertimeSeconds = 0;
   let totalHolidayBonusSeconds = 0;  // extra half from doubling worked-holiday hours
   let totalHolidayOffSeconds = 0;    // auto-granted 8h on unworked holidays
+  let totalWeekendBonusSeconds = 0;  // extra half from doubling worked-weekend hours
+  let requiredSeconds = 0;           // baseline hours the employee was expected to work this month so far
   let absentDays = 0;
   let leaveDaysCasual = 0;
   let leaveDaysAnnual = 0;
@@ -821,7 +840,18 @@ async function monthlyReport(db, employeeId, monthStr) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     if (dateStr > todayStr) break; // don't project future days
     if (isWeekendStr(dateStr)) {
-      days.push({ date: dateStr, status: "weekend" });
+      // Weekly off day — not required. But if the employee actually worked
+      // that day anyway, pay it double, same treatment as an official holiday.
+      const actualSeconds = sessionsByDate[dateStr] || 0;
+      if (actualSeconds > 0) {
+        const countedSeconds = actualSeconds * 2;
+        totalActualSeconds += actualSeconds;
+        totalCountedSeconds += countedSeconds;
+        totalWeekendBonusSeconds += actualSeconds;
+        days.push({ date: dateStr, status: "weekend_worked", actual_seconds: actualSeconds, counted_seconds: countedSeconds });
+      } else {
+        days.push({ date: dateStr, status: "weekend" });
+      }
       continue;
     }
 
@@ -852,6 +882,10 @@ async function monthlyReport(db, employeeId, monthStr) {
       days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds });
       continue;
     }
+
+    // A regular required work day (not weekend/holiday/leave) — counts toward
+    // the "required hours so far this month" baseline regardless of outcome.
+    requiredSeconds += daySeconds;
 
     if (!daysWithSignIn.has(dateStr)) {
       if (dateStr < todayStr) absentDays++;
@@ -895,13 +929,20 @@ async function monthlyReport(db, employeeId, monthStr) {
   const extraSeconds = Math.round((financialHours + offclockHours + permissionBonusHours) * 3600);
   totalCountedSeconds += extraSeconds;
 
+  const requiredHours = +(requiredSeconds / 3600).toFixed(2);
+  const countedHoursFinal = +(totalCountedSeconds / 3600).toFixed(2);
+  const hoursDiff = +(countedHoursFinal - requiredHours).toFixed(2);
+  const baseSalary = Number(emp.monthly_salary) || 0;
+  const salaryAdjustment = +(hoursDiff * rate).toFixed(2);
+  const finalSalary = +(baseSalary + salaryAdjustment - penaltiesTotalEGP).toFixed(2);
+
   return json({
     employee: publicEmployee(emp),
     year, month,
     days,
     totals: {
       counted_seconds: totalCountedSeconds,
-      counted_hours: +(totalCountedSeconds / 3600).toFixed(2),
+      counted_hours: countedHoursFinal,
       actual_seconds: totalActualSeconds,
       actual_hours: +(totalActualSeconds / 3600).toFixed(2),
       overtime_seconds: totalOvertimeSeconds,
@@ -911,6 +952,8 @@ async function monthlyReport(db, employeeId, monthStr) {
       leave_days_annual: leaveDaysAnnual,
       holiday_bonus_hours: +(totalHolidayBonusSeconds / 3600).toFixed(2),
       holiday_off_hours: +(totalHolidayOffSeconds / 3600).toFixed(2),
+      weekend_bonus_hours: +(totalWeekendBonusSeconds / 3600).toFixed(2),
+      required_hours: requiredHours,
     },
     extras: {
       hourly_rate: +rate.toFixed(2),
@@ -922,6 +965,18 @@ async function monthlyReport(db, employeeId, monthStr) {
       permission_bonus_hours: +permissionBonusHours.toFixed(2),
       penalties_total_egp: +penaltiesTotalEGP.toFixed(2),
     },
+    salary: {
+      base_salary: baseSalary,
+      work_days_per_month: Number(emp.work_days_per_month) || 0,
+      daily_work_hours: dayHours,
+      hourly_rate: +rate.toFixed(2),
+      required_hours: requiredHours,
+      counted_hours: countedHoursFinal,
+      hours_diff: hoursDiff,
+      salary_adjustment: salaryAdjustment,
+      penalties_total_egp: +penaltiesTotalEGP.toFixed(2),
+      final_salary: finalSalary,
+    },
     leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance },
     project_hours: projectRows.rows.map((r) => ({
       project: r.project || "(بدون مشروع)",
@@ -929,6 +984,50 @@ async function monthlyReport(db, employeeId, monthStr) {
       task_count: Number(r.task_count) || 0,
     })),
   });
+}
+
+// Company-wide project hours — sums task time across ALL employees for the
+// given month, with a per-employee breakdown inside each project.
+async function projectsReport(db, monthStr) {
+  const now = new Date();
+  let year, month;
+  if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
+    [year, month] = monthStr.split("-").map(Number);
+  } else {
+    const p = cairoParts(now);
+    year = Number(p.y); month = Number(p.m);
+  }
+  const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDayNum = daysInMonth(year, month);
+  const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+
+  const res = await db.execute({
+    sql: `SELECT t.project, t.employee_id, e.name as employee_name, e.emp_code,
+                 SUM(COALESCE(t.duration,0)) as total_seconds, COUNT(*) as task_count
+          FROM tasks t JOIN employees e ON e.id = t.employee_id
+          WHERE t.date BETWEEN ? AND ?
+          GROUP BY t.project, t.employee_id
+          ORDER BY t.project COLLATE NOCASE ASC, total_seconds DESC`,
+    args: [firstDay, lastDay],
+  });
+
+  const byProject = {};
+  for (const r of res.rows) {
+    const key = r.project || "(بدون مشروع)";
+    if (!byProject[key]) byProject[key] = { project: key, total_seconds: 0, employees: [] };
+    byProject[key].total_seconds += Number(r.total_seconds) || 0;
+    byProject[key].employees.push({
+      employee_id: r.employee_id, emp_code: r.emp_code, name: r.employee_name,
+      hours: +((Number(r.total_seconds) || 0) / 3600).toFixed(2),
+      task_count: Number(r.task_count) || 0,
+    });
+  }
+
+  const projects = Object.values(byProject)
+    .map((p) => ({ project: p.project, hours: +(p.total_seconds / 3600).toFixed(2), employees: p.employees }))
+    .sort((a, b) => b.hours - a.hours);
+
+  return json({ year, month, projects });
 }
 
 // ---------------------------------------------------------------- admin
@@ -1105,6 +1204,10 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const month = url.searchParams.get("month");
     if (!employeeId) return err("employee_id required");
     return await monthlyReport(db, Number(employeeId), month);
+  }
+
+  if (path === "/api/admin/projects-report" && method === "GET") {
+    return await projectsReport(db, url.searchParams.get("month"));
   }
 
   if (path === "/api/admin/set-role" && method === "POST") {
