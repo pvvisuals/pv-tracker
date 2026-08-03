@@ -230,24 +230,25 @@ export default {
       if (path === "/api/projects" && method === "GET") return await listProjects(db);
 
       if (path === "/api/leave-requests" && method === "POST") return await requestLeave(db, me, body);
-      if (path === "/api/leave-requests/mine" && method === "GET") return await myLeaveRequests(db, me);
+      if (path === "/api/leave-requests/mine" && method === "GET") return await myLeaveRequests(db, me, url.searchParams.get("month"));
 
       if (path === "/api/overtime-requests" && method === "POST") return await requestOvertime(db, me, body);
-      if (path === "/api/overtime-requests/mine" && method === "GET") return await myOvertimeRequests(db, me);
+      if (path === "/api/overtime-requests/mine" && method === "GET") return await myOvertimeRequests(db, me, url.searchParams.get("month"));
 
       if (path === "/api/financial-requests" && method === "POST") return await requestFinancial(db, me, body);
-      if (path === "/api/financial-requests/mine" && method === "GET") return await myFinancialRequests(db, me);
+      if (path === "/api/financial-requests/mine" && method === "GET") return await myFinancialRequests(db, me, url.searchParams.get("month"));
 
       if (path === "/api/offclock-requests" && method === "POST") return await requestOffclock(db, me, body);
-      if (path === "/api/offclock-requests/mine" && method === "GET") return await myOffclockRequests(db, me);
+      if (path === "/api/offclock-requests/mine" && method === "GET") return await myOffclockRequests(db, me, url.searchParams.get("month"));
 
       if (path === "/api/permission-requests" && method === "POST") return await requestPermission(db, me, body);
-      if (path === "/api/permission-requests/mine" && method === "GET") return await myPermissionRequests(db, me);
+      if (path === "/api/permission-requests/mine" && method === "GET") return await myPermissionRequests(db, me, url.searchParams.get("month"));
 
       if (path === "/api/official-holidays" && method === "GET") {
         return await officialHolidays(db, url.searchParams.get("month"));
       }
-      if (path === "/api/penalties/mine" && method === "GET") return await myPenalties(db, me);
+      if (path === "/api/penalties/mine" && method === "GET") return await myPenalties(db, me, url.searchParams.get("month"));
+      if (path === "/api/notices/mine" && method === "GET") return await myNotices(db, me, url.searchParams.get("month"));
 
       if (path === "/api/report/mine" && method === "GET") {
         const month = url.searchParams.get("month"); // YYYY-MM
@@ -588,10 +589,11 @@ async function requestLeave(db, me, body) {
   return json({ request: res.rows[0] }, 201);
 }
 
-async function myLeaveRequests(db, me) {
+async function myLeaveRequests(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
   const res = await db.execute({
-    sql: "SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY date DESC",
-    args: [me.id],
+    sql: "SELECT * FROM leave_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
+    args: [me.id, month + "%"],
   });
   return json({
     requests: res.rows,
@@ -619,10 +621,11 @@ async function requestOvertime(db, me, body) {
   return json({ request: res.rows[0] }, 201);
 }
 
-async function myOvertimeRequests(db, me) {
+async function myOvertimeRequests(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
   const res = await db.execute({
-    sql: "SELECT * FROM overtime_requests WHERE employee_id = ? ORDER BY date DESC",
-    args: [me.id],
+    sql: "SELECT * FROM overtime_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
+    args: [me.id, month + "%"],
   });
   return json({ requests: res.rows });
 }
@@ -642,10 +645,11 @@ async function requestFinancial(db, me, body) {
   return json({ request: res.rows[0] }, 201);
 }
 
-async function myFinancialRequests(db, me) {
+async function myFinancialRequests(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
   const res = await db.execute({
-    sql: "SELECT * FROM financial_requests WHERE employee_id = ? ORDER BY requested_at DESC",
-    args: [me.id],
+    sql: "SELECT * FROM financial_requests WHERE employee_id = ? AND requested_at LIKE ? ORDER BY requested_at DESC",
+    args: [me.id, month + "%"],
   });
   return json({ requests: res.rows });
 }
@@ -665,10 +669,11 @@ async function requestOffclock(db, me, body) {
   return json({ request: res.rows[0] }, 201);
 }
 
-async function myOffclockRequests(db, me) {
+async function myOffclockRequests(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
   const res = await db.execute({
-    sql: "SELECT * FROM offclock_requests WHERE employee_id = ? ORDER BY date DESC",
-    args: [me.id],
+    sql: "SELECT * FROM offclock_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
+    args: [me.id, month + "%"],
   });
   return json({ requests: res.rows });
 }
@@ -702,10 +707,11 @@ async function requestPermission(db, me, body) {
   return json({ request: res.rows[0] }, 201);
 }
 
-async function myPermissionRequests(db, me) {
+async function myPermissionRequests(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
   const res = await db.execute({
-    sql: "SELECT * FROM permission_requests WHERE employee_id = ? ORDER BY date DESC",
-    args: [me.id],
+    sql: "SELECT * FROM permission_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
+    args: [me.id, month + "%"],
   });
   return json({ requests: res.rows });
 }
@@ -721,12 +727,26 @@ async function officialHolidays(db, monthStr) {
   return json({ holidays: res.rows });
 }
 
-async function myPenalties(db, me) {
+async function myPenalties(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
   const res = await db.execute({
-    sql: "SELECT * FROM penalties WHERE employee_id = ? ORDER BY date DESC",
-    args: [me.id],
+    sql: `SELECT p.*, a.name as deleted_by_name FROM penalties p
+          LEFT JOIN employees a ON a.id = p.deleted_by
+          WHERE p.employee_id = ? AND p.date LIKE ? ORDER BY p.date DESC`,
+    args: [me.id, month + "%"],
   });
   return json({ penalties: res.rows });
+}
+
+async function myNotices(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const res = await db.execute({
+    sql: `SELECT n.*, a.name as deleted_by_name FROM notices n
+          LEFT JOIN employees a ON a.id = n.deleted_by
+          WHERE n.employee_id = ? AND n.date LIKE ? ORDER BY n.date DESC`,
+    args: [me.id, month + "%"],
+  });
+  return json({ notices: res.rows });
 }
 
 // ---------------------------------------------------------------- monthly report (core hours logic)
@@ -783,7 +803,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
-      sql: "SELECT * FROM penalties WHERE employee_id = ? AND date BETWEEN ? AND ?",
+      sql: "SELECT * FROM penalties WHERE employee_id = ? AND date BETWEEN ? AND ? AND deleted_at IS NULL",
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
@@ -1044,13 +1064,14 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   if (path === "/api/admin/leave-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
+    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
     const orderBy = status === "pending" ? "lr.requested_at ASC" : "lr.decided_at DESC";
     const res = await db.execute({
       sql: `SELECT lr.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM leave_requests lr
             JOIN employees e ON e.id = lr.employee_id
             LEFT JOIN employees a ON a.id = lr.decided_by
-            WHERE lr.status = ? ORDER BY ${orderBy}`,
-      args: [status],
+            WHERE lr.status = ? AND lr.date LIKE ? ORDER BY ${orderBy}`,
+      args: [status, month + "%"],
     });
     return json({ requests: res.rows });
   }
@@ -1062,13 +1083,14 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   if (path === "/api/admin/overtime-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
+    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
     const orderBy = status === "pending" ? "ot.requested_at ASC" : "ot.decided_at DESC";
     const res = await db.execute({
       sql: `SELECT ot.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM overtime_requests ot
             JOIN employees e ON e.id = ot.employee_id
             LEFT JOIN employees a ON a.id = ot.decided_by
-            WHERE ot.status = ? ORDER BY ${orderBy}`,
-      args: [status],
+            WHERE ot.status = ? AND ot.date LIKE ? ORDER BY ${orderBy}`,
+      args: [status, month + "%"],
     });
     return json({ requests: res.rows });
   }
@@ -1085,7 +1107,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- financial requests ----------
   if (path === "/api/admin/financial-requests" && method === "GET") {
-    return await adminListRequests(db, "financial_requests", url.searchParams.get("status") || "pending");
+    return await adminListRequests(db, "financial_requests", url.searchParams.get("status") || "pending", url.searchParams.get("month"));
   }
   const finDecideMatch = path.match(/^\/api\/admin\/financial-requests\/(\d+)\/decide$/);
   if (finDecideMatch && method === "POST") {
@@ -1094,7 +1116,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- off-clock hour requests ----------
   if (path === "/api/admin/offclock-requests" && method === "GET") {
-    return await adminListRequests(db, "offclock_requests", url.searchParams.get("status") || "pending");
+    return await adminListRequests(db, "offclock_requests", url.searchParams.get("status") || "pending", url.searchParams.get("month"));
   }
   const offDecideMatch = path.match(/^\/api\/admin\/offclock-requests\/(\d+)\/decide$/);
   if (offDecideMatch && method === "POST") {
@@ -1103,7 +1125,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- permission / early-leave requests ----------
   if (path === "/api/admin/permission-requests" && method === "GET") {
-    return await adminListRequests(db, "permission_requests", url.searchParams.get("status") || "pending");
+    return await adminListRequests(db, "permission_requests", url.searchParams.get("status") || "pending", url.searchParams.get("month"));
   }
   const permDecideMatch = path.match(/^\/api\/admin\/permission-requests\/(\d+)\/decide$/);
   if (permDecideMatch && method === "POST") {
@@ -1168,14 +1190,66 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   }
   if (path === "/api/admin/penalties" && method === "GET") {
     const employeeId = url.searchParams.get("employee_id");
-    const month = url.searchParams.get("month");
-    let sql = "SELECT * FROM penalties WHERE 1=1";
-    const args = [];
-    if (employeeId) { sql += " AND employee_id = ?"; args.push(Number(employeeId)); }
-    if (month) { sql += " AND date LIKE ?"; args.push(month + "%"); }
-    sql += " ORDER BY date DESC";
+    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    let sql = `SELECT p.*, c.name as created_by_name, d.name as deleted_by_name FROM penalties p
+               LEFT JOIN employees c ON c.id = p.created_by
+               LEFT JOIN employees d ON d.id = p.deleted_by
+               WHERE p.date LIKE ?`;
+    const args = [month + "%"];
+    if (employeeId) { sql += " AND p.employee_id = ?"; args.push(Number(employeeId)); }
+    sql += " ORDER BY p.date DESC";
     const res = await db.execute({ sql, args });
     return json({ penalties: res.rows });
+  }
+  const penaltyDeleteMatch = path.match(/^\/api\/admin\/penalties\/(\d+)\/delete$/);
+  if (penaltyDeleteMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const pid = Number(penaltyDeleteMatch[1]);
+    const res = await db.execute({ sql: "SELECT * FROM penalties WHERE id = ?", args: [pid] });
+    if (!res.rows[0]) return err("Penalty not found", 404);
+    if (res.rows[0].deleted_at) return err("الجزاء ده اتحذف بالفعل", 409);
+    await db.execute({
+      sql: "UPDATE penalties SET deleted_at = datetime('now'), deleted_by = ? WHERE id = ?",
+      args: [admin.id, pid],
+    });
+    return json({ ok: true });
+  }
+
+  // ---------- notices (لفت نظر) — same idea as penalties, informational only ----------
+  if (path === "/api/admin/notices" && method === "POST") {
+    const missing = requireFields(body, ["employee_id", "date"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const res = await db.execute({
+      sql: `INSERT INTO notices (employee_id, reason, date, created_by) VALUES (?,?,?,?) RETURNING *`,
+      args: [body.employee_id, body.reason || null, body.date, admin.id],
+    });
+    return json({ notice: res.rows[0] }, 201);
+  }
+  if (path === "/api/admin/notices" && method === "GET") {
+    const employeeId = url.searchParams.get("employee_id");
+    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    let sql = `SELECT n.*, c.name as created_by_name, d.name as deleted_by_name FROM notices n
+               LEFT JOIN employees c ON c.id = n.created_by
+               LEFT JOIN employees d ON d.id = n.deleted_by
+               WHERE n.date LIKE ?`;
+    const args = [month + "%"];
+    if (employeeId) { sql += " AND n.employee_id = ?"; args.push(Number(employeeId)); }
+    sql += " ORDER BY n.date DESC";
+    const res = await db.execute({ sql, args });
+    return json({ notices: res.rows });
+  }
+  const noticeDeleteMatch = path.match(/^\/api\/admin\/notices\/(\d+)\/delete$/);
+  if (noticeDeleteMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const nid = Number(noticeDeleteMatch[1]);
+    const res = await db.execute({ sql: "SELECT * FROM notices WHERE id = ?", args: [nid] });
+    if (!res.rows[0]) return err("Notice not found", 404);
+    if (res.rows[0].deleted_at) return err("لفت النظر ده اتحذف بالفعل", 409);
+    await db.execute({
+      sql: "UPDATE notices SET deleted_at = datetime('now'), deleted_by = ? WHERE id = ?",
+      args: [admin.id, nid],
+    });
+    return json({ ok: true });
   }
 
   // ---------- shared projects list (admin manages, everyone can read via /api/projects) ----------
@@ -1234,10 +1308,37 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   // ---------- full employee info (no PIN — password/answer are hashed and never included) ----------
   const fullInfoMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/full$/);
   if (fullInfoMatch && method === "GET") {
-    const res = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [Number(fullInfoMatch[1])] });
+    const empId = Number(fullInfoMatch[1]);
+    const res = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [empId] });
     const emp = res.rows[0];
     if (!emp) return err("Employee not found", 404);
-    return json({ employee: { ...adminEmployeeView(emp), created_at: emp.created_at, secret_q: emp.secret_q } });
+
+    const [penRes, notRes] = await Promise.all([
+      db.execute({
+        sql: `SELECT p.*, c.name as created_by_name, d.name as deleted_by_name FROM penalties p
+              LEFT JOIN employees c ON c.id = p.created_by
+              LEFT JOIN employees d ON d.id = p.deleted_by
+              WHERE p.employee_id = ? ORDER BY p.date DESC`,
+        args: [empId],
+      }),
+      db.execute({
+        sql: `SELECT n.*, c.name as created_by_name, d.name as deleted_by_name FROM notices n
+              LEFT JOIN employees c ON c.id = n.created_by
+              LEFT JOIN employees d ON d.id = n.deleted_by
+              WHERE n.employee_id = ? ORDER BY n.date DESC`,
+        args: [empId],
+      }),
+    ]);
+    const activePenalties = penRes.rows.filter((p) => !p.deleted_at);
+    const activeNotices = notRes.rows.filter((n) => !n.deleted_at);
+
+    return json({
+      employee: { ...adminEmployeeView(emp), created_at: emp.created_at, secret_q: emp.secret_q },
+      penalties: penRes.rows,
+      penalties_active_count: activePenalties.length,
+      notices: notRes.rows,
+      notices_active_count: activeNotices.length,
+    });
   }
 
   function pinOk(body) {
@@ -1264,7 +1365,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (targetId === admin.id) return err("منقدرش تمسح حسابك انت نفسك", 400);
     const ownedTables = [
       "sessions", "attendance", "breaks", "tasks", "leave_requests", "overtime_requests",
-      "financial_requests", "offclock_requests", "permission_requests", "penalties",
+      "financial_requests", "offclock_requests", "permission_requests", "penalties", "notices",
     ];
     for (const t of ownedTables) {
       await db.execute({ sql: `DELETE FROM ${t} WHERE employee_id = ?`, args: [targetId] });
@@ -1426,15 +1527,17 @@ async function adminEmployeesStatus(db) {
   return json({ statuses });
 }
 
-async function adminListRequests(db, table, status) {
+async function adminListRequests(db, table, status, monthStr) {
   if (!REQUEST_TABLES.has(table)) return err("invalid table", 400);
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const dateCol = table === "financial_requests" ? "r.requested_at" : "r.date";
   const orderBy = status === "pending" ? "r.requested_at ASC" : "r.decided_at DESC";
   const res = await db.execute({
     sql: `SELECT r.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM ${table} r
           JOIN employees e ON e.id = r.employee_id
           LEFT JOIN employees a ON a.id = r.decided_by
-          WHERE r.status = ? ORDER BY ${orderBy}`,
-    args: [status],
+          WHERE r.status = ? AND ${dateCol} LIKE ? ORDER BY ${orderBy}`,
+    args: [status, month + "%"],
   });
   return json({ requests: res.rows });
 }
