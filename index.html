@@ -474,6 +474,10 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-title">REQUESTS</div>
 <div class="sec-sub">الطلبات — كل طلباتك بتحتاج موافقة الأدمن / All your requests need admin approval</div>
 </div>
+<div class="fg">
+<div class="fl">Month <span class="fla">فلتر الشهر</span></div>
+<input type="month" id="myRequestsMonth" onchange="loadLeaveOvertimeData()"/>
+</div>
 <div id="leaveProbationNotice" class="task-form" style="display:none;border-color:#ffd54a;">
 <div class="settings-label" style="color:#ffd54a">Probation Period <span class="fla" style="color:#ffd54a">فترة الاختبار</span></div>
 <div class="sec-sub">لسه في فترة الاختبار — الإجازات مش متاحة حالياً. باقي أنواع الطلبات (أوفرتايم، مستحقات، ساعات خارج البصمة، إذن انصراف) متاحة عادي.</div>
@@ -589,6 +593,10 @@ textarea{resize:vertical;min-height:76px;}
 <div id="myPenaltiesList"><div class="empty-log">No deductions</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>NOTICES · لفت النظر <span class="fla">(للاطلاع فقط)</span></span></div>
+<div id="myNoticesList"><div class="empty-log">No notices</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>MY LEAVE REQUESTS · طلبات الإجازة</span></div>
 <div id="myLeaveList"><div class="empty-log">No requests yet</div></div>
 </div>
@@ -631,6 +639,10 @@ textarea{resize:vertical;min-height:76px;}
 <select id="reqFilterEmployee" onchange="onRequestFilterChange()">
 <option value="all">All Employees · كل الموظفين</option>
 </select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Month Filter <span class="fla">فلتر الشهر</span></div>
+<input type="month" id="reqFilterMonth" onchange="loadAdminData()"/>
 </div>
 </div>
 
@@ -748,6 +760,26 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="sec-sub" style="margin:8px 0 4px" id="penaltyPreview">المعادلة: عدد الأيام × 8 ساعات × قيمة الساعة = 0.00 EGP</div>
 <button class="btn-add" onclick="addPenalty()">+ ADD PENALTY · إضافة جزاء</button>
+<div id="adminPenaltiesList" style="margin-top:14px"><div class="empty-log">No penalties this month</div></div>
+</div>
+<div class="task-form">
+<div class="settings-label">لفت النظر <span class="fla">(للاطلاع فقط — من غير خصم)</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="noticeEmployee"></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="noticeDate"/>
+</div>
+</div>
+<div class="fg" style="margin:10px 0 0">
+<div class="fl">Reason <span class="fla">السبب</span></div>
+<input type="text" id="noticeReason"/>
+</div>
+<button class="btn-add" onclick="addNotice()">+ ADD NOTICE · إضافة لفت نظر</button>
+<div id="adminNoticesList" style="margin-top:14px"><div class="empty-log">No notices this month</div></div>
 </div>
 <div class="task-form">
 <div class="settings-label">Manage Admins · إدارة صلاحيات الأدمن</div>
@@ -918,10 +950,13 @@ var myOffReqs = [];
 var myPermReqs = [];
 var myHolidays = [];
 var myPenalties = [];
+var myNotices = [];
 var leaveBalance = { casual: 6, annual: 15 };
 var adminRequestsData = {};
 var adminHolidaysMonth = [];
 var empStatuses = [];
+var adminPenaltiesMonth = [];
+var adminNoticesMonth = [];
 var adminEmployees = [];
 
 async function apiRequest(path, method, body, needsAuth) {
@@ -1256,6 +1291,15 @@ function applyAttendanceState(entries, openSession) {
 
 function applyBreaksState(entries) {
   todayBreaks = entries || [];
+  // Defensive reset: no matter what left these stuck (a race, a failed
+  // request, anything) — every time we sync break state from the server,
+  // both buttons become clickable again. This makes the button self-heal
+  // on the next tab-switch/refresh instead of requiring a full page reload.
+  var startBtnEl = document.getElementById("btnBreakStart");
+  var stopBtnEl = document.getElementById("btnBreakStop");
+  if (startBtnEl) startBtnEl.disabled = false;
+  if (stopBtnEl) stopBtnEl.disabled = false;
+
   var foundOpen = false;
   for (var k = 0; k < todayBreaks.length; k++) {
     if (!todayBreaks[k].end_time) {
@@ -1327,15 +1371,23 @@ async function loadTodayData() {
 }
 
 async function loadLeaveOvertimeData() {
+  var monthInput = document.getElementById("myRequestsMonth");
+  if (monthInput && !monthInput.value) {
+    var d = new Date();
+    monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+  var m = monthInput ? monthInput.value : "";
+  var qs = m ? ("?month=" + m) : "";
   try {
     var results = await Promise.all([
-      apiRequest("/api/leave-requests/mine", "GET"),
-      apiRequest("/api/overtime-requests/mine", "GET"),
-      apiRequest("/api/financial-requests/mine", "GET"),
-      apiRequest("/api/offclock-requests/mine", "GET"),
-      apiRequest("/api/permission-requests/mine", "GET"),
-      apiRequest("/api/official-holidays", "GET"),
-      apiRequest("/api/penalties/mine", "GET"),
+      apiRequest("/api/leave-requests/mine" + qs, "GET"),
+      apiRequest("/api/overtime-requests/mine" + qs, "GET"),
+      apiRequest("/api/financial-requests/mine" + qs, "GET"),
+      apiRequest("/api/offclock-requests/mine" + qs, "GET"),
+      apiRequest("/api/permission-requests/mine" + qs, "GET"),
+      apiRequest("/api/official-holidays" + qs, "GET"),
+      apiRequest("/api/penalties/mine" + qs, "GET"),
+      apiRequest("/api/notices/mine" + qs, "GET"),
     ]);
     myLeaveReqs = results[0].requests || [];
     leaveBalance = results[0].balance || leaveBalance;
@@ -1345,11 +1397,28 @@ async function loadLeaveOvertimeData() {
     myPermReqs = results[4].requests || [];
     myHolidays = results[5].holidays || [];
     myPenalties = results[6].penalties || [];
+    myNotices = results[7].notices || [];
     renderLeaveBalance();
     renderMyRequests();
     renderOfficialHolidaysEmployee();
     renderMyPenalties();
+    renderMyNotices();
   } catch(e) { /* non-fatal */ }
+}
+
+function renderMyNotices() {
+  var el = document.getElementById("myNoticesList");
+  if (!el) return;
+  if (!myNotices.length) { el.innerHTML = "<div class='empty-log'>No notices</div>"; return; }
+  var html = "";
+  for (var i = 0; i < myNotices.length; i++) {
+    var n = myNotices[i];
+    var deletedNote = n.deleted_at ? ("<br/><span style='opacity:.6'>تم إلغاؤه بواسطة " + (n.deleted_by_name||"-") + " في " + n.deleted_at.slice(0,10) + "</span>") : "";
+    html += "<div class='log-entry'><div class='log-type' style='color:" + (n.deleted_at?"var(--muted)":"#ffd54a") + (n.deleted_at?";text-decoration:line-through":"") + "'>لفت نظر</div>" +
+      "<div class='log-time'>" + n.date + "</div>" +
+      "<div class='log-note'>" + (n.reason || "") + deletedNote + "</div></div>";
+  }
+  el.innerHTML = html;
 }
 
 function renderMyPenalties() {
@@ -1572,11 +1641,18 @@ var REQUEST_STATUSES = ["pending", "approved", "rejected"];
 
 async function loadAdminData() {
   try {
+    var monthInput = document.getElementById("reqFilterMonth");
+    if (monthInput && !monthInput.value) {
+      var d = new Date();
+      monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+    }
+    var reqMonth = monthInput ? monthInput.value : "";
+
     var jobs = [];
     var jobKeys = [];
     for (var i = 0; i < REQUEST_KINDS.length; i++) {
       for (var s = 0; s < REQUEST_STATUSES.length; s++) {
-        jobs.push(apiRequest(REQUEST_KINDS[i].listPath + "?status=" + REQUEST_STATUSES[s], "GET"));
+        jobs.push(apiRequest(REQUEST_KINDS[i].listPath + "?status=" + REQUEST_STATUSES[s] + "&month=" + reqMonth, "GET"));
         jobKeys.push([REQUEST_KINDS[i].kind, REQUEST_STATUSES[s]]);
       }
     }
@@ -1584,6 +1660,8 @@ async function loadAdminData() {
     jobs.push(apiRequest("/api/admin/employees", "GET"));
     jobs.push(apiRequest("/api/projects", "GET"));
     jobs.push(apiRequest("/api/admin/employees/status", "GET"));
+    jobs.push(apiRequest("/api/admin/penalties?month=" + reqMonth, "GET"));
+    jobs.push(apiRequest("/api/admin/notices?month=" + reqMonth, "GET"));
 
     var results = await Promise.all(jobs);
 
@@ -1596,12 +1674,16 @@ async function loadAdminData() {
     adminEmployees = results[jobKeys.length + 1].employees || [];
     allProjects = results[jobKeys.length + 2].projects || [];
     empStatuses = results[jobKeys.length + 3].statuses || [];
+    adminPenaltiesMonth = results[jobKeys.length + 4].penalties || [];
+    adminNoticesMonth = results[jobKeys.length + 5].notices || [];
 
     populateRequestFilter();
     renderRequestsOverview();
     renderAdminHolidays();
     renderAdminProjects();
     renderEmpStatus();
+    renderAdminPenalties();
+    renderAdminNotices();
     populateTaskProjectSelect();
     populateEmployeeSelects();
   } catch(e) { /* non-fatal */ }
@@ -1759,8 +1841,10 @@ async function executeRedecide(kind, id, action, pin) {
 async function refreshRequestKind(kind) {
   var cfg = REQUEST_KINDS.find(function(c) { return c.kind === kind; });
   if (!cfg) return;
+  var monthInput = document.getElementById("reqFilterMonth");
+  var reqMonth = monthInput ? monthInput.value : "";
   var results = await Promise.all(REQUEST_STATUSES.map(function(status) {
-    return apiRequest(cfg.listPath + "?status=" + status, "GET");
+    return apiRequest(cfg.listPath + "?status=" + status + "&month=" + reqMonth, "GET");
   }));
   adminRequestsData[kind] = {};
   for (var s = 0; s < REQUEST_STATUSES.length; s++) {
@@ -1965,12 +2049,124 @@ async function addPenalty() {
     document.getElementById("penaltyDays").value = "";
     document.getElementById("penaltyReason").value = "";
     updatePenaltyPreview();
+    await refreshPenaltiesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function refreshPenaltiesOnly() {
+  var monthInput = document.getElementById("reqFilterMonth");
+  var reqMonth = monthInput ? monthInput.value : "";
+  var res = await apiRequest("/api/admin/penalties?month=" + reqMonth, "GET");
+  adminPenaltiesMonth = res.penalties || [];
+  renderAdminPenalties();
+}
+
+function renderAdminPenalties() {
+  var el = document.getElementById("adminPenaltiesList");
+  if (!el) return;
+  if (!adminPenaltiesMonth.length) { el.innerHTML = "<div class='empty-log'>No penalties this month</div>"; return; }
+  var html = "";
+  for (var i = 0; i < adminPenaltiesMonth.length; i++) {
+    var p = adminPenaltiesMonth[i];
+    var isDeleted = !!p.deleted_at;
+    var note = "#" + p.emp_code + " " + (p.employee_name||"") + " — " + p.days + " يوم (" + p.amount_egp + " EGP) — " + (p.reason||"") +
+      "<br/><span style='opacity:.6'>أضافه " + (p.created_by_name||"-") + " في " + (p.created_at?p.created_at.slice(0,16):"-") + "</span>";
+    if (isDeleted) {
+      note += "<br/><span style='color:#ff4444'>تم الحذف بواسطة " + (p.deleted_by_name||"-") + " في " + p.deleted_at.slice(0,16) + "</span>";
+    }
+    var actions = isDeleted ? "" : "<button class='btn-end-task' onclick=\"deletePenaltyPrompt(" + p.id + ")\">DELETE · حذف</button>";
+    html += "<div class='log-entry'><div class='log-type' style='" + (isDeleted?"color:var(--muted);text-decoration:line-through":"color:#ff4444") + "'>" + p.date + "</div><div class='log-note'>" + note + "</div>" + actions + "</div>";
+  }
+  el.innerHTML = html;
+}
+
+function deletePenaltyPrompt(id) {
+  openPinModal(
+    "DELETE PENALTY · حذف الجزاء",
+    "متأكد عايز تحذف الجزاء ده؟ هيفضل ظاهر في السجل كـ'محذوف' مع تاريخه ومين حذفه. ادخل كود الأمان:",
+    function(pin) {
+      if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+      executeDeletePenalty(id, pin);
+    }
+  );
+}
+async function executeDeletePenalty(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/penalties/" + id + "/delete", "POST", { pin: pin });
+    showToast("v", "تم حذف الجزاء");
+    await refreshPenaltiesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+// ---------------- Notices (لفت نظر) ----------------
+
+async function addNotice() {
+  var empId = document.getElementById("noticeEmployee").value;
+  var date = document.getElementById("noticeDate").value;
+  var reason = document.getElementById("noticeReason").value.trim();
+  if (!empId || !date) { showToast("!", "املا الموظف والتاريخ"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/notices", "POST", { employee_id: empId, date: date, reason: reason });
+    showToast("v", "تم إضافة لفت النظر");
+    document.getElementById("noticeReason").value = "";
+    await refreshNoticesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function refreshNoticesOnly() {
+  var monthInput = document.getElementById("reqFilterMonth");
+  var reqMonth = monthInput ? monthInput.value : "";
+  var res = await apiRequest("/api/admin/notices?month=" + reqMonth, "GET");
+  adminNoticesMonth = res.notices || [];
+  renderAdminNotices();
+}
+
+function renderAdminNotices() {
+  var el = document.getElementById("adminNoticesList");
+  if (!el) return;
+  if (!adminNoticesMonth.length) { el.innerHTML = "<div class='empty-log'>No notices this month</div>"; return; }
+  var html = "";
+  for (var i = 0; i < adminNoticesMonth.length; i++) {
+    var n = adminNoticesMonth[i];
+    var isDeleted = !!n.deleted_at;
+    var note = "#" + n.emp_code + " " + (n.employee_name||"") + " — " + (n.reason||"") +
+      "<br/><span style='opacity:.6'>أضافه " + (n.created_by_name||"-") + " في " + (n.created_at?n.created_at.slice(0,16):"-") + "</span>";
+    if (isDeleted) {
+      note += "<br/><span style='color:#ff4444'>تم الحذف بواسطة " + (n.deleted_by_name||"-") + " في " + n.deleted_at.slice(0,16) + "</span>";
+    }
+    var actions = isDeleted ? "" : "<button class='btn-end-task' onclick=\"deleteNoticePrompt(" + n.id + ")\">DELETE · حذف</button>";
+    html += "<div class='log-entry'><div class='log-type' style='" + (isDeleted?"color:var(--muted);text-decoration:line-through":"color:#ffd54a") + "'>" + n.date + "</div><div class='log-note'>" + note + "</div>" + actions + "</div>";
+  }
+  el.innerHTML = html;
+}
+
+function deleteNoticePrompt(id) {
+  openPinModal(
+    "DELETE NOTICE · حذف لفت النظر",
+    "متأكد عايز تحذف لفت النظر ده؟ هيفضل ظاهر في السجل كـ'محذوف' مع تاريخه ومين حذفه. ادخل كود الأمان:",
+    function(pin) {
+      if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+      executeDeleteNotice(id, pin);
+    }
+  );
+}
+async function executeDeleteNotice(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/notices/" + id + "/delete", "POST", { pin: pin });
+    showToast("v", "تم حذف لفت النظر");
+    await refreshNoticesOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
 
 function populateEmployeeSelects() {
-  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee", "roleEmployee", "infoEmployee", "probationEmployee"];
+  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee", "roleEmployee", "infoEmployee", "probationEmployee", "noticeEmployee"];
   for (var s = 0; s < selectIds.length; s++) {
     var sel = document.getElementById(selectIds[s]);
     if (!sel || sel.options.length === adminEmployees.length) continue;
@@ -2085,7 +2281,27 @@ async function showEmployeeFullInfo() {
       "<div class='profile-row'><span class='profile-key'>Hourly Rate</span><span class='profile-val'>" + e.hourly_rate + " EGP</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Casual Balance</span><span class='profile-val'>" + e.casual_balance + " / 6</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Annual Balance</span><span class='profile-val'>" + e.annual_balance + " / 15</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Active Penalties</span><span class='profile-val' style='color:#ff4444'>" + res.penalties_active_count + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Active Notices</span><span class='profile-val' style='color:#ffd54a'>" + res.notices_active_count + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Password</span><span class='profile-val' style='opacity:.5'>🔒 مشفر — استخدم Reset تحت</span></div>";
+
+    if (res.penalties && res.penalties.length) {
+      html += "<div class='settings-label' style='margin-top:16px;font-size:15px'>Penalty History · سجل الجزاءات</div>";
+      for (var i = 0; i < res.penalties.length; i++) {
+        var p = res.penalties[i];
+        var pDeleted = !!p.deleted_at;
+        html += "<div class='profile-row" + (pDeleted?"" : "") + "'><span class='profile-key' style='" + (pDeleted?"text-decoration:line-through;color:var(--muted)":"color:#ff4444") + "'>" + p.date + "</span><span class='profile-val' style='font-size:13px'>" + p.days + "d (" + p.amount_egp + " EGP) — " + (p.reason||"") + (pDeleted ? " — محذوف بواسطة " + (p.deleted_by_name||"-") : "") + "</span></div>";
+      }
+    }
+    if (res.notices && res.notices.length) {
+      html += "<div class='settings-label' style='margin-top:16px;font-size:15px'>Notice History · سجل لفت النظر</div>";
+      for (var j = 0; j < res.notices.length; j++) {
+        var n = res.notices[j];
+        var nDeleted = !!n.deleted_at;
+        html += "<div class='profile-row'><span class='profile-key' style='" + (nDeleted?"text-decoration:line-through;color:var(--muted)":"color:#ffd54a") + "'>" + n.date + "</span><span class='profile-val' style='font-size:13px'>" + (n.reason||"") + (nDeleted ? " — محذوف بواسطة " + (n.deleted_by_name||"-") : "") + "</span></div>";
+      }
+    }
+
     document.getElementById("employeeFullInfoDisplay").innerHTML = html;
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -2302,6 +2518,13 @@ var activeBreakId = null;
 
 async function startBreak() {
   if (!signedIn) { showToast("!", "لازم تسجل حضور الأول قبل ما تبدأ استراحة"); return; }
+  if (activeBreakId) {
+    // We think a break is already running — resync with the server instead
+    // of silently doing nothing, in case local state got out of sync.
+    showToast("!", "فيه استراحة شغالة بالفعل — بنحدّث الحالة");
+    await refreshBreaksOnly();
+    return;
+  }
   var btn = document.getElementById("btnBreakStart");
   if (btn.disabled) return; // already in flight, ignore extra clicks
   btn.disabled = true;
@@ -2321,12 +2544,18 @@ async function startBreak() {
       document.getElementById("timerDisplay").classList.add("running");
     }, 1000);
     showToast("*", "Break started");
-  } catch(e) { showToast("!", "Error: " + e.message); }
+  } catch(e) { showToast("!", "Error: " + e.message); await refreshBreaksOnly(); }
   finally { btn.disabled = false; showLoading(false); }
 }
 
 async function stopBreak() {
-  if (!activeBreakId) return;
+  if (!activeBreakId) {
+    // UI thinks there's nothing to stop — resync instead of doing nothing,
+    // in case a background refresh raced with this click.
+    showToast("!", "بنحدّث حالة الاستراحة، جرب تاني لو لسه شغالة");
+    await refreshBreaksOnly();
+    return;
+  }
   var btn = document.getElementById("btnBreakStop");
   if (btn.disabled) return; // already in flight, ignore extra clicks
   btn.disabled = true;
@@ -2353,7 +2582,7 @@ async function stopBreak() {
     document.getElementById("timerDisplay").classList.remove("running");
     document.getElementById("btnBreakStart").style.display = "inline-block";
     document.getElementById("btnBreakStop").style.display = "none";
-  } catch(e) { showToast("!","Error: " + e.message); }
+  } catch(e) { showToast("!","Error: " + e.message); await refreshBreaksOnly(); }
   finally { btn.disabled = false; showLoading(false); }
 }
 
