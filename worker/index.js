@@ -226,14 +226,13 @@ export default {
       if (path === "/api/tasks/active" && method === "GET") return await activeTasks(db, me);
       const taskEndMatch = path.match(/^\/api\/tasks\/(\d+)\/end$/);
       if (taskEndMatch && method === "PATCH") return await endTask(db, me, Number(taskEndMatch[1]), body);
+      const taskEditMatch = path.match(/^\/api\/tasks\/(\d+)$/);
+      if (taskEditMatch && method === "PATCH") return await editTask(db, me, Number(taskEditMatch[1]), body);
 
       if (path === "/api/projects" && method === "GET") return await listProjects(db);
 
       if (path === "/api/leave-requests" && method === "POST") return await requestLeave(db, me, body);
       if (path === "/api/leave-requests/mine" && method === "GET") return await myLeaveRequests(db, me, url.searchParams.get("month"));
-
-      if (path === "/api/overtime-requests" && method === "POST") return await requestOvertime(db, me, body);
-      if (path === "/api/overtime-requests/mine" && method === "GET") return await myOvertimeRequests(db, me, url.searchParams.get("month"));
 
       if (path === "/api/financial-requests" && method === "POST") return await requestFinancial(db, me, body);
       if (path === "/api/financial-requests/mine" && method === "GET") return await myFinancialRequests(db, me, url.searchParams.get("month"));
@@ -512,17 +511,46 @@ async function breaksToday(db, me) {
 // ---------------------------------------------------------------- tasks
 
 async function addTask(db, me, body) {
-  const missing = requireFields(body, ["project", "name"]);
+  const missing = requireFields(body, ["project_id", "name"]);
   if (missing) return err(`Missing field: ${missing}`);
+  const projRes = await db.execute({ sql: "SELECT * FROM projects WHERE id = ? AND active = 1", args: [body.project_id] });
+  const proj = projRes.rows[0];
+  if (!proj) return err("المشروع ده مش موجود أو مش متاح حالياً", 400);
+
   const today = cairoDateStr();
   const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
+  const displayName = proj.code + " - " + proj.name;
   const res = await db.execute({
-    sql: `INSERT INTO tasks (employee_id, project, name, description, date, time, start_time, first_name)
-          VALUES (?,?,?,?,?,?,?,?) RETURNING *`,
-    args: [me.id, body.project, body.name, body.description || "", today, t, t, fn],
+    sql: `INSERT INTO tasks (employee_id, project, project_id, name, description, date, time, start_time, first_name)
+          VALUES (?,?,?,?,?,?,?,?,?) RETURNING *`,
+    args: [me.id, displayName, proj.id, body.name, body.description || "", today, t, t, fn],
   });
   return json({ task: res.rows[0] }, 201);
+}
+
+async function editTask(db, me, taskId, body) {
+  const rows = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
+  const task = rows.rows[0];
+  if (!task) return err("Task not found", 404);
+  if (task.employee_id !== me.id && me.role !== "admin") return err("Forbidden", 403);
+
+  const fields = [];
+  const args = [];
+  if (body.name !== undefined) { fields.push("name = ?"); args.push(body.name); }
+  if (body.description !== undefined) { fields.push("description = ?"); args.push(body.description); }
+  if (body.project_id !== undefined) {
+    const projRes = await db.execute({ sql: "SELECT * FROM projects WHERE id = ?", args: [body.project_id] });
+    const proj = projRes.rows[0];
+    if (!proj) return err("المشروع ده مش موجود", 400);
+    fields.push("project_id = ?"); args.push(proj.id);
+    fields.push("project = ?"); args.push(proj.code + " - " + proj.name);
+  }
+  if (!fields.length) return err("مفيش حاجة للتعديل");
+  args.push(taskId);
+  await db.execute({ sql: `UPDATE tasks SET ${fields.join(", ")} WHERE id = ?`, args });
+  const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
+  return json({ task: updated.rows[0] });
 }
 
 async function endTask(db, me, taskId, body) {
@@ -562,9 +590,19 @@ async function activeTasks(db, me) {
   return json({ tasks: res.rows });
 }
 
+// Employee-facing project catalog — deduplicated by (code, name); if a group
+// has more than one ACTIVE variant, the frontend must show the friendly
+// simple_label picker so the exact variant is unambiguous. Single-variant
+// groups resolve automatically with no extra step.
 async function listProjects(db) {
-  const res = await db.execute("SELECT id, name FROM projects ORDER BY name COLLATE NOCASE");
-  return json({ projects: res.rows });
+  const res = await db.execute("SELECT * FROM projects WHERE active = 1 ORDER BY code ASC, name COLLATE NOCASE ASC");
+  const groups = {};
+  for (const r of res.rows) {
+    const key = r.code + "||" + r.name.trim().toLowerCase();
+    if (!groups[key]) groups[key] = { code: r.code, name: r.name, variants: [] };
+    groups[key].variants.push({ id: r.id, simple_label: r.simple_label });
+  }
+  return json({ projects: Object.values(groups) });
 }
 
 // ---------------------------------------------------------------- leave requests
@@ -602,33 +640,6 @@ async function myLeaveRequests(db, me, monthStr) {
 }
 
 // ---------------------------------------------------------------- overtime requests
-
-async function requestOvertime(db, me, body) {
-  const missing = requireFields(body, ["date"]);
-  if (missing) return err(`Missing field: ${missing}`);
-  if (isWeekendStr(body.date)) return err("اليوم ده اجازة اسبوعية");
-
-  const existing = await db.execute({
-    sql: "SELECT * FROM overtime_requests WHERE employee_id = ? AND date = ?",
-    args: [me.id, body.date],
-  });
-  if (existing.rows.length) return err("فيه طلب اوفر تايم لليوم ده بالفعل", 409);
-
-  const res = await db.execute({
-    sql: `INSERT INTO overtime_requests (employee_id, date, note) VALUES (?,?,?) RETURNING *`,
-    args: [me.id, body.date, body.reason || body.note || null],
-  });
-  return json({ request: res.rows[0] }, 201);
-}
-
-async function myOvertimeRequests(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
-  const res = await db.execute({
-    sql: "SELECT * FROM overtime_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
-    args: [me.id, month + "%"],
-  });
-  return json({ requests: res.rows });
-}
 
 // ---------------------------------------------------------------- financial requests (مستحقات مالية)
 
@@ -783,7 +794,8 @@ async function monthlyReport(db, employeeId, monthStr) {
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
-      sql: "SELECT * FROM overtime_requests WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'approved'",
+      sql: `SELECT DISTINCT t.date FROM tasks t JOIN projects p ON p.id = t.project_id
+            WHERE t.employee_id = ? AND t.date BETWEEN ? AND ? AND p.overtime_enabled = 1`,
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
@@ -807,15 +819,17 @@ async function monthlyReport(db, employeeId, monthStr) {
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
-      sql: "SELECT project, SUM(COALESCE(duration,0)) as total_seconds, COUNT(*) as task_count FROM tasks WHERE employee_id = ? AND date BETWEEN ? AND ? GROUP BY project ORDER BY total_seconds DESC",
+      sql: `SELECT p.code, p.name, SUM(COALESCE(t.duration,0)) as total_seconds, COUNT(*) as task_count
+            FROM tasks t JOIN projects p ON p.id = t.project_id
+            WHERE t.employee_id = ? AND t.date BETWEEN ? AND ?
+            GROUP BY p.code, p.name ORDER BY total_seconds DESC`,
       args: [employeeId, firstDay, lastDay],
     }),
   ]);
 
   const leaveByDate = {};
   for (const r of leaveRows.rows) leaveByDate[r.date] = r;
-  const otByDate = {};
-  for (const r of otRows.rows) otByDate[r.date] = r;
+  const otDates = new Set(otRows.rows.map((r) => r.date));
   const holidayByDate = {};
   for (const r of holidayRows.rows) holidayByDate[r.date] = r;
 
@@ -914,7 +928,7 @@ async function monthlyReport(db, employeeId, monthStr) {
     }
 
     const actualSeconds = sessionsByDate[dateStr] || 0;
-    const overtimeApproved = !!otByDate[dateStr];
+    const overtimeApproved = otDates.has(dateStr);
     let countedSeconds, overtimeSeconds = 0;
     if (overtimeApproved) {
       countedSeconds = actualSeconds;
@@ -999,7 +1013,7 @@ async function monthlyReport(db, employeeId, monthStr) {
     },
     leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance },
     project_hours: projectRows.rows.map((r) => ({
-      project: r.project || "(بدون مشروع)",
+      project: r.code + " - " + r.name,
       hours: +((Number(r.total_seconds) || 0) / 3600).toFixed(2),
       task_count: Number(r.task_count) || 0,
     })),
@@ -1022,18 +1036,20 @@ async function projectsReport(db, monthStr) {
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
 
   const res = await db.execute({
-    sql: `SELECT t.project, t.employee_id, e.name as employee_name, e.emp_code,
+    sql: `SELECT p.code, p.name, t.employee_id, e.name as employee_name, e.emp_code,
                  SUM(COALESCE(t.duration,0)) as total_seconds, COUNT(*) as task_count
-          FROM tasks t JOIN employees e ON e.id = t.employee_id
+          FROM tasks t
+          JOIN employees e ON e.id = t.employee_id
+          JOIN projects p ON p.id = t.project_id
           WHERE t.date BETWEEN ? AND ?
-          GROUP BY t.project, t.employee_id
-          ORDER BY t.project COLLATE NOCASE ASC, total_seconds DESC`,
+          GROUP BY p.code, p.name, t.employee_id
+          ORDER BY p.code ASC, p.name COLLATE NOCASE ASC, total_seconds DESC`,
     args: [firstDay, lastDay],
   });
 
   const byProject = {};
   for (const r of res.rows) {
-    const key = r.project || "(بدون مشروع)";
+    const key = r.code + " - " + r.name;
     if (!byProject[key]) byProject[key] = { project: key, total_seconds: 0, employees: [] };
     byProject[key].total_seconds += Number(r.total_seconds) || 0;
     byProject[key].employees.push({
@@ -1079,25 +1095,6 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   const leaveDecideMatch = path.match(/^\/api\/admin\/leave-requests\/(\d+)\/decide$/);
   if (leaveDecideMatch && method === "POST") {
     return await decideLeave(db, admin, Number(leaveDecideMatch[1]), body);
-  }
-
-  if (path === "/api/admin/overtime-requests" && method === "GET") {
-    const status = url.searchParams.get("status") || "pending";
-    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
-    const orderBy = status === "pending" ? "ot.requested_at ASC" : "ot.decided_at DESC";
-    const res = await db.execute({
-      sql: `SELECT ot.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM overtime_requests ot
-            JOIN employees e ON e.id = ot.employee_id
-            LEFT JOIN employees a ON a.id = ot.decided_by
-            WHERE ot.status = ? AND ot.date LIKE ? ORDER BY ${orderBy}`,
-      args: [status, month + "%"],
-    });
-    return json({ requests: res.rows });
-  }
-
-  const otDecideMatch = path.match(/^\/api\/admin\/overtime-requests\/(\d+)\/decide$/);
-  if (otDecideMatch && method === "POST") {
-    return await decideOvertime(db, admin, Number(otDecideMatch[1]), body);
   }
 
   // ---------- unified approved/rejected history across all request types ----------
@@ -1254,21 +1251,45 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- shared projects list (admin manages, everyone can read via /api/projects) ----------
   if (path === "/api/admin/projects" && method === "POST") {
-    const missing = requireFields(body, ["name"]);
+    const missing = requireFields(body, ["code", "name", "category", "type"]);
     if (missing) return err(`Missing field: ${missing}`);
+    if (!["COM", "NON-COM"].includes(body.category)) return err("Category لازم يكون COM أو NON-COM");
+    if (!["NEW", "SUB"].includes(body.type)) return err("Type لازم يكون NEW أو SUB");
+    if (body.type === "SUB" && !body.sub_code) return err("لازم تدخل كود فرعي للـ SUB");
+    const code = String(body.code).trim();
+    const name = String(body.name).trim();
+    const subCode = body.type === "SUB" ? String(body.sub_code).trim() : null;
+    const fullName = code + "_" + name + "_" + body.category + "_" + body.type + (subCode ? "_" + subCode : "");
     try {
       const res = await db.execute({
-        sql: `INSERT INTO projects (name, created_by) VALUES (?,?) RETURNING *`,
-        args: [body.name.trim(), admin.id],
+        sql: `INSERT INTO projects (code, name, category, type, sub_code, simple_label, overtime_enabled, full_name, created_by)
+              VALUES (?,?,?,?,?,?,?,?,?) RETURNING *`,
+        args: [code, name, body.category, body.type, subCode, body.simple_label || null, body.overtime_enabled ? 1 : 0, fullName, admin.id],
       });
       return json({ project: res.rows[0] }, 201);
     } catch (e) {
-      return err("المشروع ده مسجل بالفعل", 409);
+      return err("المشروع ده متسجل قبل كده بنفس الكود والاسم والتصنيف", 409);
     }
+  }
+  if (path === "/api/admin/projects" && method === "GET") {
+    const res = await db.execute("SELECT * FROM projects ORDER BY code ASC, name COLLATE NOCASE ASC, category ASC, type ASC");
+    return json({ projects: res.rows });
   }
   const projectDeleteMatch = path.match(/^\/api\/admin\/projects\/(\d+)$/);
   if (projectDeleteMatch && method === "DELETE") {
-    await db.execute({ sql: "DELETE FROM projects WHERE id = ?", args: [Number(projectDeleteMatch[1])] });
+    const pid = Number(projectDeleteMatch[1]);
+    const taskCount = await db.execute({ sql: "SELECT COUNT(*) as c FROM tasks WHERE project_id = ?", args: [pid] });
+    if (Number(taskCount.rows[0].c) > 0) {
+      // Has history — never hard-delete, just stop offering it to employees.
+      await db.execute({ sql: "UPDATE projects SET active = 0 WHERE id = ?", args: [pid] });
+      return json({ ok: true, soft_disabled: true });
+    }
+    await db.execute({ sql: "DELETE FROM projects WHERE id = ?", args: [pid] });
+    return json({ ok: true, soft_disabled: false });
+  }
+  const projectReactivateMatch = path.match(/^\/api\/admin\/projects\/(\d+)\/reactivate$/);
+  if (projectReactivateMatch && method === "POST") {
+    await db.execute({ sql: "UPDATE projects SET active = 1 WHERE id = ?", args: [Number(projectReactivateMatch[1])] });
     return json({ ok: true });
   }
 
@@ -1364,7 +1385,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const targetId = Number(deleteEmpMatch[1]);
     if (targetId === admin.id) return err("منقدرش تمسح حسابك انت نفسك", 400);
     const ownedTables = [
-      "sessions", "attendance", "breaks", "tasks", "leave_requests", "overtime_requests",
+      "sessions", "attendance", "breaks", "tasks", "leave_requests",
       "financial_requests", "offclock_requests", "permission_requests", "penalties", "notices",
     ];
     for (const t of ownedTables) {
@@ -1408,7 +1429,7 @@ async function decideLeave(db, admin, requestId, body) {
 }
 
 const REQUEST_TABLE_BY_KIND = {
-  leave: "leave_requests", overtime: "overtime_requests", financial: "financial_requests",
+  leave: "leave_requests", financial: "financial_requests",
   offclock: "offclock_requests", permission: "permission_requests",
 };
 
@@ -1445,20 +1466,6 @@ async function redecideRequest(db, admin, kind, requestId, action) {
   await db.execute({
     sql: `UPDATE ${table} SET status = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?`,
     args: [newStatus, admin.id, requestId],
-  });
-  return json({ ok: true });
-}
-
-async function decideOvertime(db, admin, requestId, body) {
-  if (!["approve", "reject"].includes(body.action)) return err("action must be approve or reject");
-  const res = await db.execute({ sql: "SELECT * FROM overtime_requests WHERE id = ?", args: [requestId] });
-  const request = res.rows[0];
-  if (!request) return err("Request not found", 404);
-  if (request.status !== "pending") return err("Request already decided", 409);
-
-  await db.execute({
-    sql: "UPDATE overtime_requests SET status = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?",
-    args: [body.action === "approve" ? "approved" : "rejected", admin.id, requestId],
   });
   return json({ ok: true });
 }
@@ -1559,7 +1566,6 @@ async function decideSimple(db, admin, table, requestId, body) {
 
 const REQUEST_KIND_META = [
   { table: "leave_requests", kind: "leave", detail: (r) => "Leave (" + (r.type === "casual" ? "Casual / عارضة" : "Annual / اعتيادية") + ")" },
-  { table: "overtime_requests", kind: "overtime", detail: () => "Overtime / اوفر تايم" },
   { table: "financial_requests", kind: "financial", detail: (r) => "EGP " + r.amount_egp + " / مستحقات مالية" },
   { table: "offclock_requests", kind: "offclock", detail: (r) => r.hours + "h Off-clock / ساعات خارج البصمة" },
   { table: "permission_requests", kind: "permission", detail: (r) => r.hours + "h Permission / اذن انصراف" },
