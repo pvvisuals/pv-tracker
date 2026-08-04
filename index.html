@@ -429,8 +429,14 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Project</div>
-<select id="taskProject">
+<select id="taskProject" onchange="onTaskProjectChange()">
 <option value="">اختر المشروع...</option>
+</select>
+</div>
+<div class="fg" id="taskProjectVariantWrap" style="display:none;margin:0">
+<div class="fl">Which one? <span class="fla">أنهي واحد</span></div>
+<select id="taskProjectVariant" onchange="onTaskVariantChange()">
+<option value="">اختر...</option>
 </select>
 </div>
 <div class="fg" style="margin:0">
@@ -443,7 +449,7 @@ textarea{resize:vertical;min-height:76px;}
 <textarea id="taskDesc" placeholder="Details...">
 </textarea>
 </div>
-<button class="btn-add" onclick="addTask()">+ START TASK · بدء مهمة</button>
+<button class="btn-add" onclick="addTask()" id="btnStartTask">+ START TASK · بدء مهمة</button>
 </div>
 
 <div class="log-wrap" style="margin-bottom:18px;">
@@ -516,20 +522,6 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="task-form">
-<div class="settings-label">طلب أوفر تايم مدفوع</div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Date <span class="fla">التاريخ</span></div>
-<input type="date" id="otDate"/>
-</div>
-</div>
-<div class="fg" style="margin:10px 0 0">
-<div class="fl">Reason <span class="fla">سبب الطلب</span></div>
-<input type="text" id="otReason" placeholder="اكتب السبب..."/>
-</div>
-<button class="btn-add" onclick="submitOvertimeRequest()">+ REQUEST OVERTIME · طلب أوفر تايم</button>
-</div>
-<div class="task-form">
 <div class="settings-label">طلب مستحقات مالية</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -599,10 +591,6 @@ textarea{resize:vertical;min-height:76px;}
 <div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>MY LEAVE REQUESTS · طلبات الإجازة</span></div>
 <div id="myLeaveList"><div class="empty-log">No requests yet</div></div>
-</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>MY OVERTIME REQUESTS · طلبات الأوفر تايم</span></div>
-<div id="myOTList"><div class="empty-log">No requests yet</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>MY FINANCIAL REQUESTS · طلبات المستحقات المالية</span></div>
@@ -696,12 +684,44 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="task-form">
 <div class="settings-label">Manage Projects <span class="fla">إدارة المشاريع</span></div>
-<div class="sec-sub" style="margin-bottom:12px">المشاريع اللي هتظهر للموظفين لما يبدأوا تاسك جديد</div>
+<div class="sec-sub" style="margin-bottom:12px">المشاريع اللي هتظهر للموظفين لما يبدأوا تاسك جديد — الكود والاسم بس هما اللي الموظف بيشوفهم</div>
 <div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Project Code <span class="fla">كود المشروع (أرقام فقط)</span></div>
+<input type="text" id="newProjectCode" placeholder="مثال: 101" inputmode="numeric"/>
+</div>
 <div class="fg" style="margin:0">
 <div class="fl">Project Name <span class="fla">اسم المشروع</span></div>
 <input type="text" id="newProjectName" placeholder="مثال: PV Tracker"/>
 </div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Category</div>
+<select id="newProjectCategory">
+<option value="COM">COM</option>
+<option value="NON-COM">NON-COM</option>
+</select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Type</div>
+<select id="newProjectType" onchange="toggleSubCodeField()">
+<option value="NEW">NEW</option>
+<option value="SUB">SUB</option>
+</select>
+</div>
+</div>
+<div class="fg" id="subCodeWrap" style="display:none">
+<div class="fl">Sub Code <span class="fla">كود فرعي (إجباري لو Type = SUB)</span></div>
+<input type="text" id="newProjectSubCode" placeholder="مثال: 205"/>
+</div>
+<div class="fg">
+<div class="fl">Simple Label <span class="fla">اسم مبسّط (يظهر للموظف بس لو المشروع ده عنده أكتر من نوع، زي "مرحلة 1")</span></div>
+<input type="text" id="newProjectSimpleLabel" placeholder="اختياري"/>
+</div>
+<div class="fg" style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+<input type="checkbox" id="newProjectOvertime" style="width:auto"/>
+<label for="newProjectOvertime" style="font-size:15px">Enable Overtime for this variant <span class="fla">تفعيل الأوفرتايم لهذه النسخة</span></label>
 </div>
 <button class="btn-add" onclick="addProject()">+ ADD PROJECT · إضافة مشروع</button>
 <div id="adminProjectsList" style="margin-top:14px"><div class="empty-log">No projects yet</div></div>
@@ -917,6 +937,31 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="editTaskModalOverlay">
+<div class="modal">
+<h3>EDIT TASK · تعديل المهمة</h3>
+<div class="fg">
+<div class="fl">Project</div>
+<select id="editTaskProject" onchange="onEditTaskProjectChange()"></select>
+</div>
+<div class="fg" id="editTaskVariantWrap" style="display:none">
+<div class="fl">Which one? <span class="fla">أنهي واحد</span></div>
+<select id="editTaskVariant" onchange="onEditTaskVariantChange()"></select>
+</div>
+<div class="fg">
+<div class="fl">Task Name</div>
+<input type="text" id="editTaskName"/>
+</div>
+<div class="fg">
+<div class="fl">Description</div>
+<textarea id="editTaskDesc"></textarea>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeEditTaskModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="saveTaskEdit()">Save · حفظ</button>
+</div>
+</div>
+</div>
 <button id="scrollTopBtn" onclick="scrollToTop()" title="Back to top">↑</button>
 <div class="loading-overlay" id="loadingOverlay">
 <div class="loading-spinner">LOADING...</div>
@@ -937,6 +982,7 @@ var breakInterval = null;
 var clockInterval = null;
 var taskTimerInterval = null;
 var allProjects = [];
+var adminProjectsFull = [];
 var modalCallback = null;
 var toastTimer = null;
 var recoverUser = null;
@@ -944,7 +990,6 @@ var todayAttendance = [];
 var todayBreaks = [];
 var taskStartTimes = {};
 var myLeaveReqs = [];
-var myOTReqs = [];
 var myFinReqs = [];
 var myOffReqs = [];
 var myPermReqs = [];
@@ -1228,18 +1273,56 @@ function startTaskTimer() {
   }, 1000);
 }
 
+var selectedProjectId = null;
+
 function populateTaskProjectSelect() {
   var sel = document.getElementById("taskProject");
   if (!sel) return;
   var current = sel.value;
   sel.innerHTML = '<option value="">اختر المشروع...</option>';
   for (var i = 0; i < allProjects.length; i++) {
+    var g = allProjects[i];
     var opt = document.createElement("option");
-    opt.value = allProjects[i].name;
-    opt.textContent = allProjects[i].name;
+    opt.value = g.code + "||" + g.name;
+    opt.textContent = g.code + " - " + g.name;
     sel.appendChild(opt);
   }
   sel.value = current;
+  onTaskProjectChange();
+}
+
+function onTaskProjectChange() {
+  var sel = document.getElementById("taskProject");
+  var variantWrap = document.getElementById("taskProjectVariantWrap");
+  var variantSel = document.getElementById("taskProjectVariant");
+  selectedProjectId = null;
+  if (!sel.value) { variantWrap.style.display = "none"; return; }
+  var parts = sel.value.split("||");
+  var group = allProjects.find(function(g) { return g.code === parts[0] && g.name === parts[1]; });
+  if (!group) { variantWrap.style.display = "none"; return; }
+
+  if (group.variants.length === 1) {
+    // No ambiguity — resolve automatically, no extra step for the employee.
+    selectedProjectId = group.variants[0].id;
+    variantWrap.style.display = "none";
+  } else {
+    // Multiple variants under the same code+name — the employee must pick
+    // using the friendly label only (never sees COM/NON-COM/NEW/SUB).
+    variantWrap.style.display = "block";
+    variantSel.innerHTML = '<option value="">اختر...</option>';
+    for (var i = 0; i < group.variants.length; i++) {
+      var v = group.variants[i];
+      var opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.simple_label || ("Option " + (i+1));
+      variantSel.appendChild(opt);
+    }
+  }
+}
+
+function onTaskVariantChange() {
+  var variantSel = document.getElementById("taskProjectVariant");
+  selectedProjectId = variantSel.value ? Number(variantSel.value) : null;
 }
 
 async function loadProjectsList() {
@@ -1381,7 +1464,6 @@ async function loadLeaveOvertimeData() {
   try {
     var results = await Promise.all([
       apiRequest("/api/leave-requests/mine" + qs, "GET"),
-      apiRequest("/api/overtime-requests/mine" + qs, "GET"),
       apiRequest("/api/financial-requests/mine" + qs, "GET"),
       apiRequest("/api/offclock-requests/mine" + qs, "GET"),
       apiRequest("/api/permission-requests/mine" + qs, "GET"),
@@ -1391,13 +1473,12 @@ async function loadLeaveOvertimeData() {
     ]);
     myLeaveReqs = results[0].requests || [];
     leaveBalance = results[0].balance || leaveBalance;
-    myOTReqs = results[1].requests || [];
-    myFinReqs = results[2].requests || [];
-    myOffReqs = results[3].requests || [];
-    myPermReqs = results[4].requests || [];
-    myHolidays = results[5].holidays || [];
-    myPenalties = results[6].penalties || [];
-    myNotices = results[7].notices || [];
+    myFinReqs = results[1].requests || [];
+    myOffReqs = results[2].requests || [];
+    myPermReqs = results[3].requests || [];
+    myHolidays = results[4].holidays || [];
+    myPenalties = results[5].penalties || [];
+    myNotices = results[6].notices || [];
     renderLeaveBalance();
     renderMyRequests();
     renderOfficialHolidaysEmployee();
@@ -1497,16 +1578,6 @@ function renderMyRequests() {
     }
     lEl.innerHTML = html;
   }
-  var oEl = document.getElementById("myOTList");
-  if (!myOTReqs.length) { oEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
-  else {
-    var html2 = "";
-    for (var j = 0; j < myOTReqs.length; j++) {
-      var o = myOTReqs[j];
-      html2 += "<div class='log-entry'><div class='log-type'>OT</div><div class='log-time'>" + o.date + "</div><div class='log-note'>" + statusBadge(o.status) + "</div>" + reasonNote(o) + "</div>";
-    }
-    oEl.innerHTML = html2;
-  }
   var fEl = document.getElementById("myFinList");
   if (!myFinReqs.length) { fEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
   else {
@@ -1554,19 +1625,6 @@ async function submitLeaveRequest() {
   showLoading(false);
 }
 
-async function submitOvertimeRequest() {
-  var date = document.getElementById("otDate").value;
-  var reason = document.getElementById("otReason").value.trim();
-  if (!date) { showToast("!", "اختار التاريخ"); return; }
-  showLoading(true);
-  try {
-    await apiRequest("/api/overtime-requests", "POST", { date: date, reason: reason });
-    showToast("v", "تم ارسال طلب الأوفر تايم");
-    document.getElementById("otReason").value = "";
-    await loadLeaveOvertimeData();
-  } catch(e) { showToast("!", e.message); }
-  showLoading(false);
-}
 
 async function submitFinancialRequest() {
   var amount = document.getElementById("finAmount").value;
@@ -1628,8 +1686,6 @@ async function saveMyBirthDate() {
 var REQUEST_KINDS = [
   { kind: "leave", listPath: "/api/admin/leave-requests", pendingEl: "adminLeaveList", approvedEl: "adminLeaveApprovedList", rejectedEl: "adminLeaveRejectedList",
     label: function(r) { return r.type === "casual" ? "CASUAL" : "ANNUAL"; }, date: function(r) { return r.date; } },
-  { kind: "overtime", listPath: "/api/admin/overtime-requests", pendingEl: "adminOTList", approvedEl: "adminOTApprovedList", rejectedEl: "adminOTRejectedList",
-    label: function() { return "OT"; }, date: function(r) { return r.date; } },
   { kind: "financial", listPath: "/api/admin/financial-requests", pendingEl: "adminFinList", approvedEl: "adminFinApprovedList", rejectedEl: "adminFinRejectedList",
     label: function(r) { return "EGP " + r.amount_egp; }, date: function(r) { return r.requested_at ? r.requested_at.slice(0,10) : ""; } },
   { kind: "offclock", listPath: "/api/admin/offclock-requests", pendingEl: "adminOffList", approvedEl: "adminOffApprovedList", rejectedEl: "adminOffRejectedList",
@@ -1652,12 +1708,14 @@ async function loadAdminData() {
       apiRequest("/api/admin/employees", "GET"),
       apiRequest("/api/projects", "GET"),
       apiRequest("/api/admin/employees/status", "GET"),
+      apiRequest("/api/admin/projects", "GET"),
     ];
     var results = await Promise.all(jobs);
     adminHolidaysMonth = results[0].holidays || [];
     adminEmployees = results[1].employees || [];
     allProjects = results[2].projects || [];
     empStatuses = results[3].statuses || [];
+    adminProjectsFull = results[4].projects || [];
 
     renderAdminHolidays();
     renderAdminProjects();
@@ -1723,7 +1781,7 @@ function requestRowHtml(cfg, r, status) {
 }
 
 var KIND_LABELS = {
-  leave: "LEAVE · إجازة", overtime: "OVERTIME · أوفر تايم", financial: "FINANCIAL · مستحقات مالية",
+  leave: "LEAVE · إجازة", financial: "FINANCIAL · مستحقات مالية",
   offclock: "OFF-CLOCK HOURS · ساعات خارج البصمة", permission: "PERMISSION · إذن انصراف",
 };
 var selectedRequestKind = null;
@@ -1808,7 +1866,6 @@ function renderSelectedKindPanel() {
 
 var DECIDE_PATHS = {
   leave: "/api/admin/leave-requests/",
-  overtime: "/api/admin/overtime-requests/",
   financial: "/api/admin/financial-requests/",
   offclock: "/api/admin/offclock-requests/",
   permission: "/api/admin/permission-requests/",
@@ -1874,32 +1931,64 @@ async function refreshHolidaysOnly() {
   renderAdminHolidays();
 }
 
+function toggleSubCodeField() {
+  var type = document.getElementById("newProjectType").value;
+  document.getElementById("subCodeWrap").style.display = (type === "SUB") ? "block" : "none";
+}
+
 async function refreshProjectsOnly() {
   await loadProjectsList();
+  try {
+    var res = await apiRequest("/api/admin/projects", "GET");
+    adminProjectsFull = res.projects || [];
+  } catch(e) { /* non-fatal, e.g. not admin */ }
   renderAdminProjects();
 }
 
 function renderAdminProjects() {
   var el = document.getElementById("adminProjectsList");
   if (!el) return;
-  if (!allProjects.length) { el.innerHTML = "<div class='empty-log'>No projects yet</div>"; return; }
+  if (!adminProjectsFull.length) { el.innerHTML = "<div class='empty-log'>No projects yet</div>"; return; }
   var html = "";
-  for (var i = 0; i < allProjects.length; i++) {
-    var p = allProjects[i];
-    html += "<div class='log-entry'><div class='log-type'>" + p.name + "</div><div class='log-note'></div>" +
-      "<button class='btn-end-task' onclick=\"deleteProject(" + p.id + ")\">DELETE · حذف</button></div>";
+  for (var i = 0; i < adminProjectsFull.length; i++) {
+    var p = adminProjectsFull[i];
+    var typeStr = p.type + (p.type === "SUB" && p.sub_code ? " (" + p.sub_code + ")" : "");
+    var note = p.category + " / " + typeStr + (p.simple_label ? " — \"" + p.simple_label + "\"" : "") +
+      (p.overtime_enabled ? " — <span style='color:#ffd54a'>Overtime ON</span>" : "");
+    var badge = p.active ? "" : " <span style='color:var(--muted)'>(متوقف)</span>";
+    var actionBtn = p.active
+      ? "<button class='btn-end-task' onclick=\"deleteProject(" + p.id + ")\">DELETE · حذف</button>"
+      : "<button class='btn-end-task' onclick=\"reactivateProject(" + p.id + ")\">RESTORE · إرجاع</button>";
+    html += "<div class='log-entry'><div class='log-type'" + (p.active?"":" style='color:var(--muted)'") + ">" + p.code + " - " + p.name + badge + "</div>" +
+      "<div class='log-note'>" + note + "</div>" + actionBtn + "</div>";
   }
   el.innerHTML = html;
 }
 
 async function addProject() {
+  var code = document.getElementById("newProjectCode").value.trim();
   var name = document.getElementById("newProjectName").value.trim();
-  if (!name) { showToast("!", "اكتب اسم المشروع"); return; }
+  var category = document.getElementById("newProjectCategory").value;
+  var type = document.getElementById("newProjectType").value;
+  var subCode = document.getElementById("newProjectSubCode").value.trim();
+  var simpleLabel = document.getElementById("newProjectSimpleLabel").value.trim();
+  var overtimeEnabled = document.getElementById("newProjectOvertime").checked;
+  if (!code || !name) { showToast("!", "اكتب الكود والاسم"); return; }
+  if (type === "SUB" && !subCode) { showToast("!", "لازم تدخل كود فرعي للـ SUB"); return; }
   showLoading(true);
   try {
-    await apiRequest("/api/admin/projects", "POST", { name: name });
+    await apiRequest("/api/admin/projects", "POST", {
+      code: code, name: name, category: category, type: type,
+      sub_code: type === "SUB" ? subCode : null,
+      simple_label: simpleLabel || null,
+      overtime_enabled: overtimeEnabled,
+    });
     showToast("v", "تم إضافة المشروع");
+    document.getElementById("newProjectCode").value = "";
     document.getElementById("newProjectName").value = "";
+    document.getElementById("newProjectSubCode").value = "";
+    document.getElementById("newProjectSimpleLabel").value = "";
+    document.getElementById("newProjectOvertime").checked = false;
     await refreshProjectsOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -1908,8 +1997,18 @@ async function addProject() {
 async function deleteProject(id) {
   showLoading(true);
   try {
-    await apiRequest("/api/admin/projects/" + id, "DELETE");
-    showToast("v", "تم الحذف");
+    var res = await apiRequest("/api/admin/projects/" + id, "DELETE");
+    showToast("v", res.soft_disabled ? "المشروع عليه تاسكات، تم إيقافه بدل الحذف النهائي" : "تم الحذف");
+    await refreshProjectsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function reactivateProject(id) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/projects/" + id + "/reactivate", "POST");
+    showToast("v", "تم إرجاع المشروع");
     await refreshProjectsOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -2621,17 +2720,19 @@ function renderBreakLog() {
 }
 
 async function addTask() {
-  var project = document.getElementById("taskProject").value.trim();
   var name = document.getElementById("taskName").value.trim();
   var desc = document.getElementById("taskDesc").value.trim();
-  if (!project || !name) { showToast("!", "ادخل المشروع والمهمة"); return; }
+  if (!selectedProjectId) { showToast("!", "اختار المشروع (ولو فيه أكتر من نوع، اختار النوع كمان)"); return; }
+  if (!name) { showToast("!", "ادخل اسم المهمة"); return; }
   showLoading(true);
   try {
-    var res = await apiRequest("/api/tasks", "POST", {project:project,name:name,description:desc});
+    var res = await apiRequest("/api/tasks", "POST", {project_id:selectedProjectId,name:name,description:desc});
     var task = res.task;
     activeTasksArr.push(task);
     taskStartTimes[task.id] = parseUTC(task.created_at);
     document.getElementById("taskProject").value = "";
+    document.getElementById("taskProjectVariantWrap").style.display = "none";
+    selectedProjectId = null;
     document.getElementById("taskName").value = "";
     document.getElementById("taskDesc").value = "";
     renderActiveTasks();
@@ -2700,6 +2801,101 @@ async function loadTasksForBrowsedDate() {
   } catch(e) { /* non-fatal */ }
 }
 
+var editTaskId = null;
+var editTaskSelectedProjectId = null;
+
+function findTaskById(id) {
+  var t = activeTasksArr.find(function(x) { return String(x.id) === String(id); });
+  if (t) return t;
+  return browsedTasks.find(function(x) { return String(x.id) === String(id); });
+}
+
+function openEditTaskModal(taskId) {
+  var t = findTaskById(taskId);
+  if (!t) { showToast("!", "التاسك ده مش موجود في القائمة الحالية — جرب تفتحه من نفس اليوم اللي اتسجل فيه"); return; }
+  editTaskId = taskId;
+  document.getElementById("editTaskName").value = t.name;
+  document.getElementById("editTaskDesc").value = t.description || "";
+
+  var sel = document.getElementById("editTaskProject");
+  sel.innerHTML = "";
+  var currentGroup = null;
+  for (var i = 0; i < allProjects.length; i++) {
+    var g = allProjects[i];
+    var opt = document.createElement("option");
+    opt.value = g.code + "||" + g.name;
+    opt.textContent = g.code + " - " + g.name;
+    sel.appendChild(opt);
+    if (g.variants.some(function(v){ return v.id === t.project_id; })) currentGroup = g;
+  }
+  if (currentGroup) sel.value = currentGroup.code + "||" + currentGroup.name;
+  onEditTaskProjectChange();
+  var variantSel = document.getElementById("editTaskVariant");
+  if (variantSel.style.display !== "none" && t.project_id) {
+    variantSel.value = t.project_id;
+    editTaskSelectedProjectId = t.project_id;
+  }
+
+  document.getElementById("editTaskModalOverlay").classList.add("active");
+}
+
+function onEditTaskProjectChange() {
+  var sel = document.getElementById("editTaskProject");
+  var variantWrap = document.getElementById("editTaskVariantWrap");
+  var variantSel = document.getElementById("editTaskVariant");
+  editTaskSelectedProjectId = null;
+  if (!sel.value) { variantWrap.style.display = "none"; return; }
+  var parts = sel.value.split("||");
+  var group = allProjects.find(function(g) { return g.code === parts[0] && g.name === parts[1]; });
+  if (!group) { variantWrap.style.display = "none"; return; }
+  if (group.variants.length === 1) {
+    editTaskSelectedProjectId = group.variants[0].id;
+    variantWrap.style.display = "none";
+  } else {
+    variantWrap.style.display = "block";
+    variantSel.innerHTML = "";
+    for (var i = 0; i < group.variants.length; i++) {
+      var v = group.variants[i];
+      var opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.simple_label || ("Option " + (i+1));
+      variantSel.appendChild(opt);
+    }
+    editTaskSelectedProjectId = Number(variantSel.value) || null;
+  }
+}
+function onEditTaskVariantChange() {
+  var variantSel = document.getElementById("editTaskVariant");
+  editTaskSelectedProjectId = variantSel.value ? Number(variantSel.value) : null;
+}
+
+function closeEditTaskModal() {
+  document.getElementById("editTaskModalOverlay").classList.remove("active");
+  editTaskId = null;
+}
+
+async function saveTaskEdit() {
+  if (!editTaskId) return;
+  var name = document.getElementById("editTaskName").value.trim();
+  var desc = document.getElementById("editTaskDesc").value.trim();
+  if (!name) { showToast("!", "اكتب اسم المهمة"); return; }
+  if (!editTaskSelectedProjectId) { showToast("!", "اختار المشروع"); return; }
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/tasks/" + editTaskId, "PATCH", { project_id: editTaskSelectedProjectId, name: name, description: desc });
+    [activeTasksArr, browsedTasks].forEach(function(arr) {
+      for (var i = 0; i < arr.length; i++) {
+        if (String(arr[i].id) === String(editTaskId)) arr[i] = res.task;
+      }
+    });
+    renderActiveTasks();
+    renderBrowsedTasks();
+    closeEditTaskModal();
+    showToast("v", "تم تعديل المهمة");
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
 function taskCardHtml(t, index) {
   var isActive = !t.end_time;
   var html = "<div class='task-card" + (isActive?" active-task":"") + "'>";
@@ -2716,6 +2912,7 @@ function taskCardHtml(t, index) {
   } else {
     html += "<div class='task-dur' style='color:var(--muted)'>Completed</div>";
   }
+  html += "<button class='btn-end-task' style='margin-top:6px' onclick='openEditTaskModal(" + t.id + ")'>EDIT · تعديل</button>";
   html += "</div></div>";
   return html;
 }
@@ -2767,7 +2964,6 @@ function switchTab(name) {
   if (name === "requests") {
     var isoToday = cairoISODate();
     if (!document.getElementById("leaveDate").value) document.getElementById("leaveDate").value = isoToday;
-    if (!document.getElementById("otDate").value) document.getElementById("otDate").value = isoToday;
     refreshMyProbationStatus();
     loadLeaveOvertimeData();
   }
