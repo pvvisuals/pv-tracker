@@ -642,7 +642,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Month Filter <span class="fla">فلتر الشهر</span></div>
-<input type="month" id="reqFilterMonth" onchange="loadAdminData()"/>
+<input type="month" id="reqFilterMonth" onchange="reloadMonthDependentAdminData()"/>
 </div>
 </div>
 
@@ -1646,47 +1646,61 @@ async function loadAdminData() {
       var d = new Date();
       monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
     }
-    var reqMonth = monthInput ? monthInput.value : "";
 
-    var jobs = [];
-    var jobKeys = [];
-    for (var i = 0; i < REQUEST_KINDS.length; i++) {
-      for (var s = 0; s < REQUEST_STATUSES.length; s++) {
-        jobs.push(apiRequest(REQUEST_KINDS[i].listPath + "?status=" + REQUEST_STATUSES[s] + "&month=" + reqMonth, "GET"));
-        jobKeys.push([REQUEST_KINDS[i].kind, REQUEST_STATUSES[s]]);
-      }
-    }
-    jobs.push(apiRequest("/api/admin/official-holidays", "GET"));
-    jobs.push(apiRequest("/api/admin/employees", "GET"));
-    jobs.push(apiRequest("/api/projects", "GET"));
-    jobs.push(apiRequest("/api/admin/employees/status", "GET"));
-    jobs.push(apiRequest("/api/admin/penalties?month=" + reqMonth, "GET"));
-    jobs.push(apiRequest("/api/admin/notices?month=" + reqMonth, "GET"));
-
+    var jobs = [
+      apiRequest("/api/admin/official-holidays", "GET"),
+      apiRequest("/api/admin/employees", "GET"),
+      apiRequest("/api/projects", "GET"),
+      apiRequest("/api/admin/employees/status", "GET"),
+    ];
     var results = await Promise.all(jobs);
+    adminHolidaysMonth = results[0].holidays || [];
+    adminEmployees = results[1].employees || [];
+    allProjects = results[2].projects || [];
+    empStatuses = results[3].statuses || [];
 
-    for (var j = 0; j < jobKeys.length; j++) {
-      var kind = jobKeys[j][0], status = jobKeys[j][1];
-      adminRequestsData[kind] = adminRequestsData[kind] || {};
-      adminRequestsData[kind][status] = results[j].requests || [];
-    }
-    adminHolidaysMonth = results[jobKeys.length].holidays || [];
-    adminEmployees = results[jobKeys.length + 1].employees || [];
-    allProjects = results[jobKeys.length + 2].projects || [];
-    empStatuses = results[jobKeys.length + 3].statuses || [];
-    adminPenaltiesMonth = results[jobKeys.length + 4].penalties || [];
-    adminNoticesMonth = results[jobKeys.length + 5].notices || [];
-
-    populateRequestFilter();
-    renderRequestsOverview();
     renderAdminHolidays();
     renderAdminProjects();
     renderEmpStatus();
-    renderAdminPenalties();
-    renderAdminNotices();
     populateTaskProjectSelect();
     populateEmployeeSelects();
+
+    await reloadMonthDependentAdminData();
   } catch(e) { /* non-fatal */ }
+}
+
+// Only the parts that actually depend on the selected month — used when the
+// month filter changes, so we don't re-fetch employees/projects/holidays/
+// status every time (those are unaffected by which month is picked).
+async function reloadMonthDependentAdminData() {
+  var monthInput = document.getElementById("reqFilterMonth");
+  var reqMonth = monthInput ? monthInput.value : "";
+
+  var jobs = [];
+  var jobKeys = [];
+  for (var i = 0; i < REQUEST_KINDS.length; i++) {
+    for (var s = 0; s < REQUEST_STATUSES.length; s++) {
+      jobs.push(apiRequest(REQUEST_KINDS[i].listPath + "?status=" + REQUEST_STATUSES[s] + "&month=" + reqMonth, "GET"));
+      jobKeys.push([REQUEST_KINDS[i].kind, REQUEST_STATUSES[s]]);
+    }
+  }
+  jobs.push(apiRequest("/api/admin/penalties?month=" + reqMonth, "GET"));
+  jobs.push(apiRequest("/api/admin/notices?month=" + reqMonth, "GET"));
+
+  var results = await Promise.all(jobs);
+
+  for (var j = 0; j < jobKeys.length; j++) {
+    var kind = jobKeys[j][0], status = jobKeys[j][1];
+    adminRequestsData[kind] = adminRequestsData[kind] || {};
+    adminRequestsData[kind][status] = results[j].requests || [];
+  }
+  adminPenaltiesMonth = results[jobKeys.length].penalties || [];
+  adminNoticesMonth = results[jobKeys.length + 1].notices || [];
+
+  populateRequestFilter();
+  renderRequestsOverview();
+  renderAdminPenalties();
+  renderAdminNotices();
 }
 
 function requestRowHtml(cfg, r, status) {
