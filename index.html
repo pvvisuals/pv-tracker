@@ -88,6 +88,14 @@ select option{background:#111;}
 .status-pill.in{border-color:rgba(255,255,255,0.3);color:#fff;}
 .status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
 .emp-status-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-left:10px;flex-shrink:0;border:1px solid rgba(255,255,255,0.3);}
+.toggle-row{display:flex;align-items:center;gap:14px;padding:14px;border:1px solid var(--border);margin-top:10px;}
+.toggle-switch{position:relative;display:inline-block;width:56px;height:30px;flex-shrink:0;cursor:pointer;}
+.toggle-switch input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;inset:0;background:#333;border:1px solid var(--border);transition:0.2s;border-radius:30px;}
+.toggle-slider:before{content:"";position:absolute;height:22px;width:22px;left:3px;bottom:3px;background:#888;transition:0.2s;border-radius:50%;}
+.toggle-switch input:checked + .toggle-slider{background:#3a3020;border-color:#ffd54a;}
+.toggle-switch input:checked + .toggle-slider:before{transform:translateX(26px);background:#ffd54a;}
+.toggle-label{font-size:16px;font-weight:700;}
 .emp-status-dot.dot-white{background:#fff;}
 .emp-status-dot.dot-green{background:#44ff88;box-shadow:0 0 6px #44ff88;}
 .emp-status-dot.dot-yellow{background:#ffd54a;box-shadow:0 0 6px #ffd54a;}
@@ -691,8 +699,9 @@ textarea{resize:vertical;min-height:76px;}
 <input type="text" id="newProjectCode" placeholder="مثال: 101" inputmode="numeric"/>
 </div>
 <div class="fg" style="margin:0">
-<div class="fl">Project Name <span class="fla">اسم المشروع</span></div>
-<input type="text" id="newProjectName" placeholder="مثال: PV Tracker"/>
+<div class="fl">Project Name <span class="fla">اسم المشروع (هيقترحلك أسامي متسجلة قبل كده)</span></div>
+<input type="text" id="newProjectName" placeholder="مثال: PV Tracker" list="projectNamesDatalist"/>
+<datalist id="projectNamesDatalist"></datalist>
 </div>
 </div>
 <div class="form-row">
@@ -719,9 +728,12 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Simple Label <span class="fla">اسم مبسّط (يظهر للموظف بس لو المشروع ده عنده أكتر من نوع، زي "مرحلة 1")</span></div>
 <input type="text" id="newProjectSimpleLabel" placeholder="اختياري"/>
 </div>
-<div class="fg" style="display:flex;align-items:center;gap:10px;margin-top:4px;">
-<input type="checkbox" id="newProjectOvertime" style="width:auto"/>
-<label for="newProjectOvertime" style="font-size:15px">Enable Overtime for this variant <span class="fla">تفعيل الأوفرتايم لهذه النسخة</span></label>
+<div class="toggle-row">
+<label class="toggle-switch">
+<input type="checkbox" id="newProjectOvertime"/>
+<span class="toggle-slider"></span>
+</label>
+<span class="toggle-label">Enable Overtime · تفعيل الأوفرتايم <span class="fla">(هيطلب كود الأمان)</span></span>
 </div>
 <button class="btn-add" onclick="addProject()">+ ADD PROJECT · إضافة مشروع</button>
 <div id="adminProjectsList" style="margin-top:14px"><div class="empty-log">No projects yet</div></div>
@@ -959,6 +971,49 @@ textarea{resize:vertical;min-height:76px;}
 <div class="modal-actions">
 <button class="btn-mc" onclick="closeEditTaskModal()">Cancel · إلغاء</button>
 <button class="btn-mo" onclick="saveTaskEdit()">Save · حفظ</button>
+</div>
+</div>
+</div>
+<div class="modal-overlay" id="editProjectModalOverlay">
+<div class="modal">
+<h3>EDIT PROJECT · تعديل المشروع</h3>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Code</div>
+<input type="text" id="editProjectCode"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Name</div>
+<input type="text" id="editProjectName" list="projectNamesDatalist"/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Category</div>
+<select id="editProjectCategory">
+<option value="COM">COM</option>
+<option value="NON-COM">NON-COM</option>
+</select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Type</div>
+<select id="editProjectType" onchange="toggleEditSubCodeField()">
+<option value="NEW">NEW</option>
+<option value="SUB">SUB</option>
+</select>
+</div>
+</div>
+<div class="fg" id="editSubCodeWrap" style="display:none">
+<div class="fl">Sub Code</div>
+<input type="text" id="editProjectSubCode"/>
+</div>
+<div class="fg">
+<div class="fl">Simple Label</div>
+<input type="text" id="editProjectSimpleLabel"/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeEditProjectModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="saveProjectEditPrompt()">Save · حفظ</button>
 </div>
 </div>
 </div>
@@ -1936,6 +1991,67 @@ function toggleSubCodeField() {
   document.getElementById("subCodeWrap").style.display = (type === "SUB") ? "block" : "none";
 }
 
+function toggleEditSubCodeField() {
+  var type = document.getElementById("editProjectType").value;
+  document.getElementById("editSubCodeWrap").style.display = (type === "SUB") ? "block" : "none";
+}
+
+var editProjectId = null;
+
+function openEditProjectModal(id) {
+  var p = adminProjectsFull.find(function(x) { return x.id === id; });
+  if (!p) { showToast("!", "المشروع ده مش موجود"); return; }
+  editProjectId = id;
+  document.getElementById("editProjectCode").value = p.code;
+  document.getElementById("editProjectName").value = p.name;
+  document.getElementById("editProjectCategory").value = p.category;
+  document.getElementById("editProjectType").value = p.type;
+  document.getElementById("editProjectSubCode").value = p.sub_code || "";
+  document.getElementById("editProjectSimpleLabel").value = p.simple_label || "";
+  toggleEditSubCodeField();
+  document.getElementById("editProjectModalOverlay").classList.add("active");
+}
+
+function closeEditProjectModal() {
+  document.getElementById("editProjectModalOverlay").classList.remove("active");
+  editProjectId = null;
+}
+
+function saveProjectEditPrompt() {
+  var code = document.getElementById("editProjectCode").value.trim();
+  var name = document.getElementById("editProjectName").value.trim();
+  var type = document.getElementById("editProjectType").value;
+  var subCode = document.getElementById("editProjectSubCode").value.trim();
+  if (!code || !name) { showToast("!", "اكتب الكود والاسم"); return; }
+  if (type === "SUB" && !subCode) { showToast("!", "لازم تدخل كود فرعي للـ SUB"); return; }
+  openPinModal("SAVE PROJECT CHANGES · حفظ تعديل المشروع", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeProjectEditSave(pin);
+  });
+}
+
+async function executeProjectEditSave(pin) {
+  var code = document.getElementById("editProjectCode").value.trim();
+  var name = document.getElementById("editProjectName").value.trim();
+  var category = document.getElementById("editProjectCategory").value;
+  var type = document.getElementById("editProjectType").value;
+  var subCode = document.getElementById("editProjectSubCode").value.trim();
+  var simpleLabel = document.getElementById("editProjectSimpleLabel").value.trim();
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/projects/" + editProjectId, "PATCH", {
+      code: code, name: name, category: category, type: type,
+      sub_code: type === "SUB" ? subCode : null,
+      simple_label: simpleLabel || null,
+      pin: pin,
+    });
+    showToast("v", "تم حفظ التعديل");
+    closeEditProjectModal();
+    await refreshProjectsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
 async function refreshProjectsOnly() {
   await loadProjectsList();
   try {
@@ -1949,23 +2065,119 @@ function renderAdminProjects() {
   var el = document.getElementById("adminProjectsList");
   if (!el) return;
   if (!adminProjectsFull.length) { el.innerHTML = "<div class='empty-log'>No projects yet</div>"; return; }
+
+  // Keep the "add project" name suggestions in sync with what already exists.
+  var namesDatalist = document.getElementById("projectNamesDatalist");
+  if (namesDatalist) {
+    var seenNames = {};
+    var optsHtml = "";
+    for (var n = 0; n < adminProjectsFull.length; n++) {
+      var nm = adminProjectsFull[n].name;
+      var key = nm.trim().toLowerCase();
+      if (!seenNames[key]) { seenNames[key] = true; optsHtml += "<option value='" + nm.replace(/'/g,"") + "'></option>"; }
+    }
+    namesDatalist.innerHTML = optsHtml;
+  }
+
   var html = "";
   for (var i = 0; i < adminProjectsFull.length; i++) {
     var p = adminProjectsFull[i];
     var typeStr = p.type + (p.type === "SUB" && p.sub_code ? " (" + p.sub_code + ")" : "");
-    var note = p.category + " / " + typeStr + (p.simple_label ? " — \"" + p.simple_label + "\"" : "") +
-      (p.overtime_enabled ? " — <span style='color:#ffd54a'>Overtime ON</span>" : "");
+    var note = p.category + " / " + typeStr + (p.simple_label ? " — \"" + p.simple_label + "\"" : "");
     var badge = p.active ? "" : " <span style='color:var(--muted)'>(متوقف)</span>";
-    var actionBtn = p.active
-      ? "<button class='btn-end-task' onclick=\"deleteProject(" + p.id + ")\">DELETE · حذف</button>"
-      : "<button class='btn-end-task' onclick=\"reactivateProject(" + p.id + ")\">RESTORE · إرجاع</button>";
-    html += "<div class='log-entry'><div class='log-type'" + (p.active?"":" style='color:var(--muted)'") + ">" + p.code + " - " + p.name + badge + "</div>" +
-      "<div class='log-note'>" + note + "</div>" + actionBtn + "</div>";
+
+    html += "<div class='log-entry'><div class='log-type'" + (p.active?"":" style='color:var(--muted)'") + ">" + p.code + " - " + p.name + badge + "</div>";
+    html += "<div class='log-note'>" + note + "</div>";
+    html += "<div class='toggle-row' style='margin-top:8px'>";
+    html += "<label class='toggle-switch'><input type='checkbox' " + (p.overtime_enabled?"checked":"") + " onchange=\"onExistingOvertimeToggle(" + p.id + ", this)\"/><span class='toggle-slider'></span></label>";
+    html += "<span class='toggle-label'>Overtime</span></div>";
+    html += "<div style='margin-top:8px'>";
+    html += "<button class='btn-end-task' onclick=\"openEditProjectModal(" + p.id + ")\">EDIT · تعديل</button> ";
+    if (p.active) {
+      html += "<button class='btn-end-task' onclick=\"pauseProjectPrompt(" + p.id + ")\">PAUSE · إيقاف</button> ";
+    } else {
+      html += "<button class='btn-end-task' onclick=\"reactivateProjectPrompt(" + p.id + ")\">RESTORE · إرجاع</button> ";
+    }
+    html += "<button class='btn-end-task' onclick=\"deleteProjectPrompt(" + p.id + ")\">DELETE PERMANENTLY · حذف نهائي</button>";
+    html += "</div></div>";
   }
   el.innerHTML = html;
 }
 
-async function addProject() {
+function onExistingOvertimeToggle(id, checkboxEl) {
+  var newVal = checkboxEl.checked;
+  checkboxEl.checked = !newVal; // revert visually until PIN confirms
+  openPinModal(
+    newVal ? "ENABLE OVERTIME · تفعيل الأوفرتايم" : "DISABLE OVERTIME · إلغاء الأوفرتايم",
+    "ادخل كود الأمان للتأكيد:",
+    function(pin) {
+      if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+      executeOvertimeToggle(id, newVal, pin, checkboxEl);
+    }
+  );
+}
+async function executeOvertimeToggle(id, newVal, pin, checkboxEl) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/projects/" + id, "PATCH", { overtime_enabled: newVal, pin: pin });
+    checkboxEl.checked = newVal;
+    showToast("v", newVal ? "تم تفعيل الأوفرتايم" : "تم إلغاء الأوفرتايم");
+    await refreshProjectsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function pauseProjectPrompt(id) {
+  openPinModal("PAUSE PROJECT · إيقاف المشروع", "هيختفي من قائمة الموظفين، وتقدر ترجّعه في أي وقت. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeProjectAction("/api/admin/projects/" + id + "/pause", pin, "تم إيقاف المشروع");
+  });
+}
+function reactivateProjectPrompt(id) {
+  openPinModal("RESTORE PROJECT · إرجاع المشروع", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeProjectAction("/api/admin/projects/" + id + "/reactivate", pin, "تم إرجاع المشروع");
+  });
+}
+function deleteProjectPrompt(id) {
+  openPinModal("DELETE PERMANENTLY · حذف نهائي", "ده حذف نهائي ومفيهوش رجعة (متاح بس لو المشروع ده معندوش تاسكات مسجلة). ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeProjectDelete(id, pin);
+  });
+}
+async function executeProjectAction(path, pin, successMsg) {
+  showLoading(true);
+  try {
+    await apiRequest(path, "POST", { pin: pin });
+    showToast("v", successMsg);
+    await refreshProjectsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+async function executeProjectDelete(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/projects/" + id, "DELETE", { pin: pin });
+    showToast("v", "تم الحذف النهائي");
+    await refreshProjectsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function addProject() {
+  var code = document.getElementById("newProjectCode").value.trim();
+  var name = document.getElementById("newProjectName").value.trim();
+  var type = document.getElementById("newProjectType").value;
+  var subCode = document.getElementById("newProjectSubCode").value.trim();
+  if (!code || !name) { showToast("!", "اكتب الكود والاسم"); return; }
+  if (type === "SUB" && !subCode) { showToast("!", "لازم تدخل كود فرعي للـ SUB"); return; }
+  openPinModal("ADD PROJECT · إضافة مشروع", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeAddProject(pin);
+  });
+}
+
+async function executeAddProject(pin) {
   var code = document.getElementById("newProjectCode").value.trim();
   var name = document.getElementById("newProjectName").value.trim();
   var category = document.getElementById("newProjectCategory").value;
@@ -1973,8 +2185,6 @@ async function addProject() {
   var subCode = document.getElementById("newProjectSubCode").value.trim();
   var simpleLabel = document.getElementById("newProjectSimpleLabel").value.trim();
   var overtimeEnabled = document.getElementById("newProjectOvertime").checked;
-  if (!code || !name) { showToast("!", "اكتب الكود والاسم"); return; }
-  if (type === "SUB" && !subCode) { showToast("!", "لازم تدخل كود فرعي للـ SUB"); return; }
   showLoading(true);
   try {
     await apiRequest("/api/admin/projects", "POST", {
@@ -1982,6 +2192,7 @@ async function addProject() {
       sub_code: type === "SUB" ? subCode : null,
       simple_label: simpleLabel || null,
       overtime_enabled: overtimeEnabled,
+      pin: pin,
     });
     showToast("v", "تم إضافة المشروع");
     document.getElementById("newProjectCode").value = "";
@@ -1989,26 +2200,6 @@ async function addProject() {
     document.getElementById("newProjectSubCode").value = "";
     document.getElementById("newProjectSimpleLabel").value = "";
     document.getElementById("newProjectOvertime").checked = false;
-    await refreshProjectsOnly();
-  } catch(e) { showToast("!", e.message); }
-  showLoading(false);
-}
-
-async function deleteProject(id) {
-  showLoading(true);
-  try {
-    var res = await apiRequest("/api/admin/projects/" + id, "DELETE");
-    showToast("v", res.soft_disabled ? "المشروع عليه تاسكات، تم إيقافه بدل الحذف النهائي" : "تم الحذف");
-    await refreshProjectsOnly();
-  } catch(e) { showToast("!", e.message); }
-  showLoading(false);
-}
-
-async function reactivateProject(id) {
-  showLoading(true);
-  try {
-    await apiRequest("/api/admin/projects/" + id + "/reactivate", "POST");
-    showToast("v", "تم إرجاع المشروع");
     await refreshProjectsOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -2874,15 +3065,23 @@ function closeEditTaskModal() {
   editTaskId = null;
 }
 
-async function saveTaskEdit() {
+function saveTaskEdit() {
   if (!editTaskId) return;
   var name = document.getElementById("editTaskName").value.trim();
-  var desc = document.getElementById("editTaskDesc").value.trim();
   if (!name) { showToast("!", "اكتب اسم المهمة"); return; }
   if (!editTaskSelectedProjectId) { showToast("!", "اختار المشروع"); return; }
+  openPinModal("CONFIRM TASK EDIT · تأكيد تعديل المهمة", "التعديل ده ممكن يأثر على حساب الأوفرتايم للأيام دي. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeTaskEditSave(pin);
+  });
+}
+
+async function executeTaskEditSave(pin) {
+  var name = document.getElementById("editTaskName").value.trim();
+  var desc = document.getElementById("editTaskDesc").value.trim();
   showLoading(true);
   try {
-    var res = await apiRequest("/api/tasks/" + editTaskId, "PATCH", { project_id: editTaskSelectedProjectId, name: name, description: desc });
+    var res = await apiRequest("/api/tasks/" + editTaskId, "PATCH", { project_id: editTaskSelectedProjectId, name: name, description: desc, pin: pin });
     [activeTasksArr, browsedTasks].forEach(function(arr) {
       for (var i = 0; i < arr.length; i++) {
         if (String(arr[i].id) === String(editTaskId)) arr[i] = res.task;
