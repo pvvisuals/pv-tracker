@@ -110,6 +110,16 @@ function addDaysToDateStr(dateStr, days) {
   d.setUTCDate(d.getUTCDate() + days);
   return cairoDateStr(d);
 }
+// Trims and collapses internal whitespace, e.g. "  PV   Tracker " -> "PV Tracker"
+function normalizeText(s) {
+  return String(s || "").trim().replace(/\s+/g, " ");
+}
+// The full_name uniqueness key is built from a lowercased name so "PV Tracker"
+// and "pv tracker" collide as duplicates, while the displayed `name` column
+// keeps whatever casing the admin actually typed.
+function buildFullName(code, name, category, type, subCode) {
+  return code + "_" + name.toLowerCase() + "_" + category + "_" + type + (subCode ? "_" + subCode : "");
+}
 function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate(); // month is 1-indexed here
 }
@@ -227,7 +237,7 @@ export default {
       const taskEndMatch = path.match(/^\/api\/tasks\/(\d+)\/end$/);
       if (taskEndMatch && method === "PATCH") return await endTask(db, me, Number(taskEndMatch[1]), body);
       const taskEditMatch = path.match(/^\/api\/tasks\/(\d+)$/);
-      if (taskEditMatch && method === "PATCH") return await editTask(db, me, Number(taskEditMatch[1]), body);
+      if (taskEditMatch && method === "PATCH") return await editTask(db, me, Number(taskEditMatch[1]), body, env);
 
       if (path === "/api/projects" && method === "GET") return await listProjects(db);
 
@@ -529,7 +539,8 @@ async function addTask(db, me, body) {
   return json({ task: res.rows[0] }, 201);
 }
 
-async function editTask(db, me, taskId, body) {
+async function editTask(db, me, taskId, body, env) {
+  if (!pinOkShared(env, body)) return err("كود الأمان غلط", 403);
   const rows = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
   const task = rows.rows[0];
   if (!task) return err("Task not found", 404);
@@ -1068,6 +1079,10 @@ async function projectsReport(db, monthStr) {
 
 // ---------------------------------------------------------------- admin
 
+function pinOkShared(env, body) {
+  return !!env.ADMIN_PIN && !!body.pin && String(body.pin) === String(env.ADMIN_PIN);
+}
+
 async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/employees" && method === "GET") {
     const res = await db.execute("SELECT * FROM employees ORDER BY emp_code ASC");
@@ -1251,15 +1266,16 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- shared projects list (admin manages, everyone can read via /api/projects) ----------
   if (path === "/api/admin/projects" && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
     const missing = requireFields(body, ["code", "name", "category", "type"]);
     if (missing) return err(`Missing field: ${missing}`);
     if (!["COM", "NON-COM"].includes(body.category)) return err("Category لازم يكون COM أو NON-COM");
     if (!["NEW", "SUB"].includes(body.type)) return err("Type لازم يكون NEW أو SUB");
     if (body.type === "SUB" && !body.sub_code) return err("لازم تدخل كود فرعي للـ SUB");
-    const code = String(body.code).trim();
-    const name = String(body.name).trim();
-    const subCode = body.type === "SUB" ? String(body.sub_code).trim() : null;
-    const fullName = code + "_" + name + "_" + body.category + "_" + body.type + (subCode ? "_" + subCode : "");
+    const code = normalizeText(body.code);
+    const name = normalizeText(body.name);
+    const subCode = body.type === "SUB" ? normalizeText(body.sub_code) : null;
+    const fullName = buildFullName(code, name, body.category, body.type, subCode);
     try {
       const res = await db.execute({
         sql: `INSERT INTO projects (code, name, category, type, sub_code, simple_label, overtime_enabled, full_name, created_by)
@@ -1275,21 +1291,64 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const res = await db.execute("SELECT * FROM projects ORDER BY code ASC, name COLLATE NOCASE ASC, category ASC, type ASC");
     return json({ projects: res.rows });
   }
-  const projectDeleteMatch = path.match(/^\/api\/admin\/projects\/(\d+)$/);
-  if (projectDeleteMatch && method === "DELETE") {
-    const pid = Number(projectDeleteMatch[1]);
-    const taskCount = await db.execute({ sql: "SELECT COUNT(*) as c FROM tasks WHERE project_id = ?", args: [pid] });
-    if (Number(taskCount.rows[0].c) > 0) {
-      // Has history — never hard-delete, just stop offering it to employees.
-      await db.execute({ sql: "UPDATE projects SET active = 0 WHERE id = ?", args: [pid] });
-      return json({ ok: true, soft_disabled: true });
+
+  // ---------- edit an existing project variant (any field, incl. the overtime checkbox) ----------
+  const projectEditMatch = path.match(/^\/api\/admin\/projects\/(\d+)$/);
+  if (projectEditMatch && method === "PATCH") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const pid = Number(projectEditMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM projects WHERE id = ?", args: [pid] });
+    const proj = cur.rows[0];
+    if (!proj) return err("Project not found", 404);
+
+    const code = body.code !== undefined ? normalizeText(body.code) : proj.code;
+    const name = body.name !== undefined ? normalizeText(body.name) : proj.name;
+    const category = body.category !== undefined ? body.category : proj.category;
+    const type = body.type !== undefined ? body.type : proj.type;
+    if (!["COM", "NON-COM"].includes(category)) return err("Category لازم يكون COM أو NON-COM");
+    if (!["NEW", "SUB"].includes(type)) return err("Type لازم يكون NEW أو SUB");
+    const subCode = type === "SUB" ? normalizeText(body.sub_code !== undefined ? body.sub_code : proj.sub_code) : null;
+    if (type === "SUB" && !subCode) return err("لازم تدخل كود فرعي للـ SUB");
+    const simpleLabel = body.simple_label !== undefined ? body.simple_label : proj.simple_label;
+    const overtimeEnabled = body.overtime_enabled !== undefined ? (body.overtime_enabled ? 1 : 0) : proj.overtime_enabled;
+    const fullName = buildFullName(code, name, category, type, subCode);
+
+    try {
+      await db.execute({
+        sql: `UPDATE projects SET code=?, name=?, category=?, type=?, sub_code=?, simple_label=?, overtime_enabled=?, full_name=? WHERE id=?`,
+        args: [code, name, category, type, subCode, simpleLabel, overtimeEnabled, fullName, pid],
+      });
+      const updated = await db.execute({ sql: "SELECT * FROM projects WHERE id = ?", args: [pid] });
+      return json({ project: updated.rows[0] });
+    } catch (e) {
+      return err("في مشروع تاني متسجل بنفس الكود والاسم والتصنيف", 409);
     }
-    await db.execute({ sql: "DELETE FROM projects WHERE id = ?", args: [pid] });
-    return json({ ok: true, soft_disabled: false });
+  }
+
+  // ---------- pause: stop offering to employees, keep all history, reversible ----------
+  const projectPauseMatch = path.match(/^\/api\/admin\/projects\/(\d+)\/pause$/);
+  if (projectPauseMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    await db.execute({ sql: "UPDATE projects SET active = 0 WHERE id = ?", args: [Number(projectPauseMatch[1])] });
+    return json({ ok: true });
   }
   const projectReactivateMatch = path.match(/^\/api\/admin\/projects\/(\d+)\/reactivate$/);
   if (projectReactivateMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
     await db.execute({ sql: "UPDATE projects SET active = 1 WHERE id = ?", args: [Number(projectReactivateMatch[1])] });
+    return json({ ok: true });
+  }
+
+  // ---------- permanent delete: irreversible, blocked if any task references it ----------
+  const projectDeleteMatch = path.match(/^\/api\/admin\/projects\/(\d+)$/);
+  if (projectDeleteMatch && method === "DELETE") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const pid = Number(projectDeleteMatch[1]);
+    const taskCount = await db.execute({ sql: "SELECT COUNT(*) as c FROM tasks WHERE project_id = ?", args: [pid] });
+    if (Number(taskCount.rows[0].c) > 0) {
+      return err("المشروع ده عليه تاسكات مسجلة — استخدم 'إيقاف' بدل الحذف النهائي عشان التاريخ يفضل موجود", 409);
+    }
+    await db.execute({ sql: "DELETE FROM projects WHERE id = ?", args: [pid] });
     return json({ ok: true });
   }
 
@@ -1363,7 +1422,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   }
 
   function pinOk(body) {
-    return !!env.ADMIN_PIN && !!body.pin && String(body.pin) === String(env.ADMIN_PIN);
+    return pinOkShared(env, body);
   }
 
   // ---------- reset an employee's password (PIN required) ----------
