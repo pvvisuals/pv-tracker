@@ -104,6 +104,7 @@ select option{background:#111;}
 .proj-badge{display:inline-block;padding:4px 10px;border:1px solid var(--border);font-size:12px;letter-spacing:1px;color:var(--muted);}
 .proj-row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 .proj-row-actions .toggle-row{padding:6px 10px;margin-top:0;border:none;}
+.fl-hint{font-family:'Cairo',sans-serif;font-size:12px;color:var(--muted2);margin-top:6px;line-height:1.5;}
 .emp-status-dot.dot-white{background:#fff;}
 .emp-status-dot.dot-green{background:#44ff88;box-shadow:0 0 6px #44ff88;}
 .emp-status-dot.dot-yellow{background:#ffd54a;box-shadow:0 0 6px #ffd54a;}
@@ -221,12 +222,12 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg">
 <div class="fl">Phone <span class="fla">رقم الموبايل</span>
 </div>
-<input type="tel" id="loginPhone" placeholder="01xxxxxxxxx"/>
+<input type="tel" id="loginPhone" placeholder="01xxxxxxxxx" autocomplete="username"/>
 </div>
 <div class="fg">
 <div class="fl">Password <span class="fla">كلمة المرور</span>
 </div>
-<input type="password" id="loginPass" placeholder="********" onkeydown="if(event.key==='Enter')doLogin()"/>
+<input type="password" id="loginPass" placeholder="********" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
 </div>
 <div class="msg error" id="loginError">رقم الموبايل او الباسورد غلط</div>
 <button class="btn-p" onclick="doLogin()">ENTER</button>
@@ -247,7 +248,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg">
 <div class="fl">Employee ID <span class="fla">كود الموظف (اختاره بنفسك)</span>
 </div>
-<input type="text" id="reg-empcode" placeholder="مثال: PV01"/>
+<input type="text" id="reg-empcode" placeholder="مثال: PV01" autocomplete="off"/>
 </div>
 <div class="fg">
 <div class="fl">Full Name <span class="fla">الاسم الكامل</span>
@@ -257,12 +258,12 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg">
 <div class="fl">Phone <span class="fla">رقم الموبايل</span>
 </div>
-<input type="tel" id="reg-phone" placeholder="01xxxxxxxxx"/>
+<input type="tel" id="reg-phone" placeholder="01xxxxxxxxx" autocomplete="tel"/>
 </div>
 <div class="fg">
 <div class="fl">Password <span class="fla">كلمة المرور</span>
 </div>
-<input type="password" id="reg-pass" placeholder="********"/>
+<input type="password" id="reg-pass" placeholder="********" autocomplete="new-password"/>
 </div>
 <div class="fg">
 <div class="fl">Job Title <span class="fla">المسمى الوظيفي</span>
@@ -339,7 +340,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="rs3" style="display:none">
 <div class="fg">
 <div class="fl">New Password</div>
-<input type="password" id="recNP" placeholder="********"/>
+<input type="password" id="recNP" placeholder="********" autocomplete="new-password"/>
 </div>
 <div class="msg error" id="re3">
 </div>
@@ -632,6 +633,24 @@ textarea{resize:vertical;min-height:76px;}
 <div id="empStatusList"><div class="empty-log">Loading...</div></div>
 </div>
 
+<div class="task-form">
+<div class="settings-label">Daily Tasks Browser <span class="fla">مين شغال في إيه</span></div>
+<div class="sec-sub" style="margin-bottom:12px">هنا التصنيف الكامل (Category/Type) ظاهر زي ما دخّلته بالظبط</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee <span class="fla">الموظف</span></div>
+<select id="dailyTasksEmployee" onchange="loadDailyTasksBrowser()">
+<option value="all">All Employees · كل الموظفين</option>
+</select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">اليوم</span></div>
+<input type="date" id="dailyTasksDate" onchange="loadDailyTasksBrowser()"/>
+</div>
+</div>
+</div>
+<div id="dailyTasksResult"></div>
+
 <div class="settings-label" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
 <span>REQUESTS · الطلبات</span>
 <button class="btn-end-task" style="margin-top:0" onclick="loadAdminData()">↻ REFRESH · تحديث</button>
@@ -700,17 +719,19 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="task-form">
 <div class="settings-label">Manage Projects <span class="fla">إدارة المشاريع</span></div>
-<div class="sec-sub" style="margin-bottom:12px">المشاريع اللي هتظهر للموظفين لما يبدأوا تاسك جديد — الكود والاسم بس هما اللي الموظف بيشوفهم</div>
+<div class="sec-sub" style="margin-bottom:16px">الموظف بيشوف بس الكود والاسم والرمز — مش الـ Category ولا الـ Type</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
-<div class="fl">Project Code <span class="fla">كود المشروع (أرقام فقط)</span></div>
-<input type="text" id="newProjectCode" placeholder="مثال: 101" inputmode="numeric" list="projectCodesDatalist"/>
+<div class="fl">Project Code</div>
+<input type="text" id="newProjectCode" placeholder="101" inputmode="numeric" list="projectCodesDatalist" autocomplete="off"/>
 <datalist id="projectCodesDatalist"></datalist>
+<div class="fl-hint">أرقام فقط</div>
 </div>
 <div class="fg" style="margin:0">
-<div class="fl">Project Name <span class="fla">اسم المشروع (هيقترحلك أسامي متسجلة قبل كده)</span></div>
-<input type="text" id="newProjectName" placeholder="مثال: PV Tracker" list="projectNamesDatalist"/>
+<div class="fl">Project Name</div>
+<input type="text" id="newProjectName" placeholder="PV Tracker" list="projectNamesDatalist" autocomplete="off"/>
 <datalist id="projectNamesDatalist"></datalist>
+<div class="fl-hint">هيقترحلك أسامي متسجلة قبل كده</div>
 </div>
 </div>
 <div class="form-row">
@@ -730,12 +751,14 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="fg" id="subCodeWrap" style="display:none">
-<div class="fl">Sub Code <span class="fla">كود فرعي (إجباري لو Type = SUB)</span></div>
-<input type="text" id="newProjectSubCode" placeholder="مثال: 205"/>
+<div class="fl">Sub Code</div>
+<input type="text" id="newProjectSubCode" placeholder="205" autocomplete="off"/>
+<div class="fl-hint">إجباري لو Type = SUB</div>
 </div>
 <div class="fg">
-<div class="fl">Simple Label <span class="fla">الرمز التلقائي (بيظهر للموظف بس لو المشروع عنده أكتر من نوع — مقفول للتعديل)</span></div>
+<div class="fl">Simple Label</div>
 <input type="text" id="newProjectSimpleLabel" value="A" readonly style="opacity:0.75;cursor:not-allowed"/>
+<div class="fl-hint">رمز تلقائي مقفول — بيظهر للموظف بس لو المشروع عنده أكتر من نوع</div>
 </div>
 <div class="toggle-row">
 <label class="toggle-switch">
@@ -867,7 +890,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
-<input type="password" id="resetPwPin" placeholder="****"/>
+<input type="password" id="resetPwPin" placeholder="****" autocomplete="off"/>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">New Password <span class="fla">كلمة مرور جديدة</span></div>
@@ -882,7 +905,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-sub" style="margin-bottom:12px;color:#ff4444">⚠️ هيمسح كل بيانات الموظف نهائياً (حضور، مهام، طلبات، كل حاجة) — إجراء لا رجعة فيه</div>
 <div class="fg" style="margin:0 0 12px">
 <div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
-<input type="password" id="deletePin" placeholder="****"/>
+<input type="password" id="deletePin" placeholder="****" autocomplete="off"/>
 </div>
 <button class="btn-add" style="background:#ff4444;border-color:#ff4444;color:#fff" onclick="deleteEmployeeConfirm()">DELETE EMPLOYEE · حذف نهائي</button>
 </div>
@@ -951,7 +974,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="modal">
 <h3 id="pinModalTitle">Admin PIN</h3>
 <p id="pinModalMsg">ادخل كود الأمان</p>
-<input type="password" id="pinModalInput" placeholder="****" style="margin:14px 0"/>
+<input type="password" id="pinModalInput" placeholder="****" style="margin:14px 0" autocomplete="off"/>
 <div class="modal-actions">
 <button class="btn-mc" onclick="closePinModal()">Cancel · إلغاء</button>
 <button class="btn-mo" onclick="pinModalConfirm()">Confirm · تأكيد</button>
@@ -989,11 +1012,11 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Code</div>
-<input type="text" id="editProjectCode" list="projectCodesDatalist"/>
+<input type="text" id="editProjectCode" list="projectCodesDatalist" autocomplete="off"/>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Name</div>
-<input type="text" id="editProjectName" list="projectNamesDatalist"/>
+<input type="text" id="editProjectName" list="projectNamesDatalist" autocomplete="off"/>
 </div>
 </div>
 <div class="form-row">
@@ -1014,11 +1037,12 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="fg" id="editSubCodeWrap" style="display:none">
 <div class="fl">Sub Code</div>
-<input type="text" id="editProjectSubCode"/>
+<input type="text" id="editProjectSubCode" autocomplete="off"/>
 </div>
 <div class="fg">
-<div class="fl">Simple Label <span class="fla">(مقفول — بيتحدد أوتوماتيك)</span></div>
+<div class="fl">Simple Label</div>
 <input type="text" id="editProjectSimpleLabel" readonly style="opacity:0.75;cursor:not-allowed"/>
+<div class="fl-hint">مقفول — بيتحدد أوتوماتيك</div>
 </div>
 <div class="modal-actions">
 <button class="btn-mc" onclick="closeEditProjectModal()">Cancel · إلغاء</button>
@@ -1786,6 +1810,8 @@ async function loadAdminData() {
     renderEmpStatus();
     populateTaskProjectSelect();
     populateEmployeeSelects();
+    populateDailyTasksEmployeeSelect();
+    loadDailyTasksBrowser();
 
     await reloadMonthDependentAdminData();
   } catch(e) { /* non-fatal */ }
@@ -2258,6 +2284,52 @@ async function refreshEmployeesOnly() {
   showEmployeeFullInfo();
   showProbationStatus();
   updatePenaltyPreview();
+}
+
+function populateDailyTasksEmployeeSelect() {
+  var sel = document.getElementById("dailyTasksEmployee");
+  if (!sel) return;
+  var current = sel.value || "all";
+  sel.innerHTML = '<option value="all">All Employees · كل الموظفين</option>';
+  for (var i = 0; i < adminEmployees.length; i++) {
+    var e = adminEmployees[i];
+    var opt = document.createElement("option");
+    opt.value = e.id;
+    opt.textContent = "#" + e.emp_code + " - " + e.name;
+    sel.appendChild(opt);
+  }
+  sel.value = current;
+}
+
+async function loadDailyTasksBrowser() {
+  var empSel = document.getElementById("dailyTasksEmployee");
+  var dateInput = document.getElementById("dailyTasksDate");
+  if (!empSel || !dateInput) return;
+  if (!dateInput.value) dateInput.value = cairoISODate();
+  try {
+    var res = await apiRequest("/api/admin/tasks-by-day?employee_id=" + empSel.value + "&date=" + dateInput.value, "GET");
+    renderDailyTasks(res.tasks || []);
+  } catch(e) { showToast("!", e.message); }
+}
+
+function renderDailyTasks(tasks) {
+  var el = document.getElementById("dailyTasksResult");
+  if (!el) return;
+  if (!tasks.length) { el.innerHTML = "<div class='log-wrap' style='margin-top:14px'><div class='empty-log'>مفيش تاسكات في اليوم ده</div></div>"; return; }
+  var html = "<div class='log-wrap' style='margin-top:14px'>";
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
+    var fullProject = t.p_code
+      ? (t.p_code + " - " + t.p_name + " — " + t.category + " / " + t.type + (t.sub_code ? " " + t.sub_code : "") + (t.simple_label ? " (" + t.simple_label + ")" : ""))
+      : "(مشروع محذوف)";
+    html += "<div class='log-entry'><div class='log-type'>#" + t.emp_code + " " + t.employee_name + "</div>" +
+      "<div class='log-time'>" + fullProject + "</div>" +
+      "<div class='log-note'>" + t.name + (t.description ? " — " + t.description : "") + "<br/>" +
+      "Started: " + t.start_time + (t.end_time ? " - Ended: " + t.end_time : " (جارية الآن)") +
+      (t.duration ? " — Duration: " + formatDuration(t.duration) : "") + "</div></div>";
+  }
+  html += "</div>";
+  el.innerHTML = html;
 }
 
 function renderEmpStatus() {
@@ -2735,10 +2807,14 @@ function renderProjectsReport(res) {
   for (var i = 0; i < res.projects.length; i++) {
     var p = res.projects[i];
     html += "<div class='log-wrap' style='margin-top:14px'>";
-    html += "<div class='log-header'><span>" + p.project + "</span><span>" + p.hours + " h total</span></div>";
-    for (var j = 0; j < p.employees.length; j++) {
-      var emp = p.employees[j];
-      html += "<div class='log-entry'><div class='log-type'>#" + emp.emp_code + "</div><div class='log-time'>" + emp.name + "</div><div class='log-note'>" + emp.hours + " h — " + emp.task_count + " task(s)</div></div>";
+    html += "<div class='log-header'><span>" + p.project + "</span><span>" + p.hours + " h إجمالي كل الأنواع</span></div>";
+    for (var k = 0; k < p.types.length; k++) {
+      var ty = p.types[k];
+      html += "<div class='log-entry' style='background:rgba(255,255,255,0.03)'><div class='log-type'>" + ty.type + "</div><div class='log-note'>" + ty.hours + " h</div></div>";
+      for (var j = 0; j < ty.employees.length; j++) {
+        var emp = ty.employees[j];
+        html += "<div class='log-entry' style='padding-right:22px'><div class='log-type'>#" + emp.emp_code + "</div><div class='log-time'>" + emp.name + "</div><div class='log-note'>" + emp.hours + " h — " + emp.task_count + " task(s)</div></div>";
+      }
     }
     html += "</div>";
   }
@@ -2823,7 +2899,11 @@ function renderAdminReport(res) {
     html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>HOURS BY PROJECT (THIS EMPLOYEE) · ساعات المشاريع لهذا الموظف</span></div>";
     for (var p = 0; p < res.project_hours.length; p++) {
       var pr = res.project_hours[p];
-      html += "<div class='log-entry'><div class='log-type'>" + pr.project + "</div><div class='log-note'>" + pr.hours + " h — " + pr.task_count + " task(s)</div></div>";
+      var typesNote = "";
+      for (var pt = 0; pt < pr.types.length; pt++) {
+        typesNote += "<br/>&nbsp;&nbsp;— " + pr.types[pt].type + ": " + pr.types[pt].hours + " h (" + pr.types[pt].task_count + " task(s))";
+      }
+      html += "<div class='log-entry'><div class='log-type'>" + pr.project + " — إجمالي " + pr.hours + " h</div><div class='log-note'>" + typesNote + "</div></div>";
     }
     html += "</div>";
   }
