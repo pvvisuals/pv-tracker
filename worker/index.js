@@ -120,6 +120,18 @@ function normalizeText(s) {
 function buildFullName(code, name, category, type, subCode) {
   return code + "_" + name.toLowerCase() + "_" + category + "_" + type + (subCode ? "_" + subCode : "");
 }
+
+// Fixed, auto-assigned letter shown to employees ONLY when a (code,name)
+// group has more than one active variant — never admin-editable.
+const VARIANT_LABEL_MAP = {
+  "COM_NEW": "A",
+  "COM_SUB": "B",
+  "NON-COM_NEW": "C",
+  "NON-COM_SUB": "D",
+};
+function autoSimpleLabel(category, type) {
+  return VARIANT_LABEL_MAP[category + "_" + type] || "?";
+}
 function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate(); // month is 1-indexed here
 }
@@ -1163,6 +1175,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   }
   const holidayDeleteMatch = path.match(/^\/api\/admin\/official-holidays\/(\d+)$/);
   if (holidayDeleteMatch && method === "DELETE") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
     await db.execute({ sql: "DELETE FROM official_holidays WHERE id = ?", args: [Number(holidayDeleteMatch[1])] });
     return json({ ok: true });
   }
@@ -1280,7 +1293,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       const res = await db.execute({
         sql: `INSERT INTO projects (code, name, category, type, sub_code, simple_label, overtime_enabled, full_name, created_by)
               VALUES (?,?,?,?,?,?,?,?,?) RETURNING *`,
-        args: [code, name, body.category, body.type, subCode, body.simple_label || null, body.overtime_enabled ? 1 : 0, fullName, admin.id],
+        args: [code, name, body.category, body.type, subCode, autoSimpleLabel(body.category, body.type), body.overtime_enabled ? 1 : 0, fullName, admin.id],
       });
       return json({ project: res.rows[0] }, 201);
     } catch (e) {
@@ -1309,7 +1322,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (!["NEW", "SUB"].includes(type)) return err("Type لازم يكون NEW أو SUB");
     const subCode = type === "SUB" ? normalizeText(body.sub_code !== undefined ? body.sub_code : proj.sub_code) : null;
     if (type === "SUB" && !subCode) return err("لازم تدخل كود فرعي للـ SUB");
-    const simpleLabel = body.simple_label !== undefined ? body.simple_label : proj.simple_label;
+    const simpleLabel = autoSimpleLabel(category, type);
     const overtimeEnabled = body.overtime_enabled !== undefined ? (body.overtime_enabled ? 1 : 0) : proj.overtime_enabled;
     const fullName = buildFullName(code, name, category, type, subCode);
 
