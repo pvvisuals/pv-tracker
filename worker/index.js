@@ -132,6 +132,9 @@ const VARIANT_LABEL_MAP = {
 function autoSimpleLabel(category, type) {
   return VARIANT_LABEL_MAP[category + "_" + type] || "?";
 }
+function taskProjectDisplay(proj) {
+  return proj.code + " - " + proj.name + (proj.simple_label ? " (" + proj.simple_label + ")" : "");
+}
 function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate(); // month is 1-indexed here
 }
@@ -211,7 +214,7 @@ export default {
     const method = req.method;
 
     let body = {};
-    if (method === "POST" || method === "PATCH") {
+    if (method === "POST" || method === "PATCH" || method === "DELETE") {
       try { body = await req.json(); } catch { body = {}; }
     }
 
@@ -542,7 +545,7 @@ async function addTask(db, me, body) {
   const today = cairoDateStr();
   const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
-  const displayName = proj.code + " - " + proj.name;
+  const displayName = taskProjectDisplay(proj);
   const res = await db.execute({
     sql: `INSERT INTO tasks (employee_id, project, project_id, name, description, date, time, start_time, first_name)
           VALUES (?,?,?,?,?,?,?,?,?) RETURNING *`,
@@ -567,7 +570,7 @@ async function editTask(db, me, taskId, body, env) {
     const proj = projRes.rows[0];
     if (!proj) return err("المشروع ده مش موجود", 400);
     fields.push("project_id = ?"); args.push(proj.id);
-    fields.push("project = ?"); args.push(proj.code + " - " + proj.name);
+    fields.push("project = ?"); args.push(taskProjectDisplay(proj));
   }
   if (!fields.length) return err("مفيش حاجة للتعديل");
   args.push(taskId);
@@ -842,10 +845,11 @@ async function monthlyReport(db, employeeId, monthStr) {
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
-      sql: `SELECT p.code, p.name, SUM(COALESCE(t.duration,0)) as total_seconds, COUNT(*) as task_count
+      sql: `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
+                   SUM(COALESCE(t.duration,0)) as total_seconds, COUNT(*) as task_count
             FROM tasks t JOIN projects p ON p.id = t.project_id
             WHERE t.employee_id = ? AND t.date BETWEEN ? AND ?
-            GROUP BY p.code, p.name ORDER BY total_seconds DESC`,
+            GROUP BY p.code, p.name, p.category, p.type, p.sub_code ORDER BY total_seconds DESC`,
       args: [employeeId, firstDay, lastDay],
     }),
   ]);
@@ -1035,12 +1039,33 @@ async function monthlyReport(db, employeeId, monthStr) {
       final_salary: finalSalary,
     },
     leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance },
-    project_hours: projectRows.rows.map((r) => ({
-      project: r.code + " - " + r.name,
-      hours: +((Number(r.total_seconds) || 0) / 3600).toFixed(2),
-      task_count: Number(r.task_count) || 0,
-    })),
+    project_hours: buildProjectHoursByType(projectRows.rows),
   });
+}
+
+// Groups flat (code,name,category,type,sub_code,total_seconds) rows into
+// project -> type-variant hierarchy, so "how many hours on this project
+// overall" and "how many hours on each type of it" are both available.
+function buildProjectHoursByType(rows) {
+  const byProject = {};
+  for (const r of rows) {
+    const key = r.code + " - " + r.name;
+    if (!byProject[key]) byProject[key] = { project: key, total_seconds: 0, types: {} };
+    byProject[key].total_seconds += Number(r.total_seconds) || 0;
+    const typeLabel = r.category + " / " + r.type + (r.sub_code ? " " + r.sub_code : "") + (r.simple_label ? " (" + r.simple_label + ")" : "");
+    if (!byProject[key].types[typeLabel]) byProject[key].types[typeLabel] = { type: typeLabel, seconds: 0, task_count: 0 };
+    byProject[key].types[typeLabel].seconds += Number(r.total_seconds) || 0;
+    byProject[key].types[typeLabel].task_count += Number(r.task_count) || 0;
+  }
+  return Object.values(byProject)
+    .map((p) => ({
+      project: p.project,
+      hours: +(p.total_seconds / 3600).toFixed(2),
+      types: Object.values(p.types)
+        .map((t) => ({ type: t.type, hours: +(t.seconds / 3600).toFixed(2), task_count: t.task_count }))
+        .sort((a, b) => b.hours - a.hours),
+    }))
+    .sort((a, b) => b.hours - a.hours);
 }
 
 // Company-wide project hours — sums task time across ALL employees for the
@@ -1059,23 +1084,29 @@ async function projectsReport(db, monthStr) {
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
 
   const res = await db.execute({
-    sql: `SELECT p.code, p.name, t.employee_id, e.name as employee_name, e.emp_code,
+    sql: `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
+                 t.employee_id, e.name as employee_name, e.emp_code,
                  SUM(COALESCE(t.duration,0)) as total_seconds, COUNT(*) as task_count
           FROM tasks t
           JOIN employees e ON e.id = t.employee_id
           JOIN projects p ON p.id = t.project_id
           WHERE t.date BETWEEN ? AND ?
-          GROUP BY p.code, p.name, t.employee_id
+          GROUP BY p.code, p.name, p.category, p.type, p.sub_code, t.employee_id
           ORDER BY p.code ASC, p.name COLLATE NOCASE ASC, total_seconds DESC`,
     args: [firstDay, lastDay],
   });
 
   const byProject = {};
   for (const r of res.rows) {
-    const key = r.code + " - " + r.name;
-    if (!byProject[key]) byProject[key] = { project: key, total_seconds: 0, employees: [] };
-    byProject[key].total_seconds += Number(r.total_seconds) || 0;
-    byProject[key].employees.push({
+    const projKey = r.code + " - " + r.name;
+    if (!byProject[projKey]) byProject[projKey] = { project: projKey, total_seconds: 0, variants: {} };
+    byProject[projKey].total_seconds += Number(r.total_seconds) || 0;
+
+    const typeLabel = r.category + " / " + r.type + (r.sub_code ? " " + r.sub_code : "") + (r.simple_label ? " (" + r.simple_label + ")" : "");
+    const variants = byProject[projKey].variants;
+    if (!variants[typeLabel]) variants[typeLabel] = { type: typeLabel, total_seconds: 0, employees: [] };
+    variants[typeLabel].total_seconds += Number(r.total_seconds) || 0;
+    variants[typeLabel].employees.push({
       employee_id: r.employee_id, emp_code: r.emp_code, name: r.employee_name,
       hours: +((Number(r.total_seconds) || 0) / 3600).toFixed(2),
       task_count: Number(r.task_count) || 0,
@@ -1083,7 +1114,13 @@ async function projectsReport(db, monthStr) {
   }
 
   const projects = Object.values(byProject)
-    .map((p) => ({ project: p.project, hours: +(p.total_seconds / 3600).toFixed(2), employees: p.employees }))
+    .map((p) => ({
+      project: p.project,
+      hours: +(p.total_seconds / 3600).toFixed(2),
+      types: Object.values(p.variants)
+        .map((v) => ({ type: v.type, hours: +(v.total_seconds / 3600).toFixed(2), employees: v.employees }))
+        .sort((a, b) => b.hours - a.hours),
+    }))
     .sort((a, b) => b.hours - a.hours);
 
   return json({ year, month, projects });
@@ -1103,6 +1140,10 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   if (path === "/api/admin/employees/status" && method === "GET") {
     return await adminEmployeesStatus(db);
+  }
+
+  if (path === "/api/admin/tasks-by-day" && method === "GET") {
+    return await adminTasksByDay(db, url.searchParams.get("employee_id"), url.searchParams.get("date"));
   }
 
   if (path === "/api/admin/leave-requests" && method === "GET") {
@@ -1545,6 +1586,24 @@ async function redecideRequest(db, admin, kind, requestId, action) {
 // Generic list/decide for financial_requests, offclock_requests, permission_requests —
 // they all share the same shape (employee_id, status, requested_at, decided_at, decided_by).
 const REQUEST_TABLES = new Set(["financial_requests", "offclock_requests", "permission_requests"]);
+
+// Admin-only "who worked on what, on a given day" — shows the FULL project
+// classification (code, name, category, type, sub_code) since this view is
+// for the admin, unlike the employee-facing simplified code+name+letter.
+async function adminTasksByDay(db, employeeId, dateStr) {
+  const date = (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) ? dateStr : cairoDateStr();
+  let sql = `SELECT t.*, e.name as employee_name, e.emp_code,
+                    p.code as p_code, p.name as p_name, p.category, p.type, p.sub_code, p.simple_label
+             FROM tasks t
+             JOIN employees e ON e.id = t.employee_id
+             LEFT JOIN projects p ON p.id = t.project_id
+             WHERE t.date = ?`;
+  const args = [date];
+  if (employeeId && employeeId !== "all") { sql += " AND t.employee_id = ?"; args.push(Number(employeeId)); }
+  sql += " ORDER BY e.emp_code ASC, t.created_at ASC";
+  const res = await db.execute({ sql, args });
+  return json({ date, tasks: res.rows });
+}
 
 async function adminEmployeesStatus(db) {
   const today = cairoDateStr();
