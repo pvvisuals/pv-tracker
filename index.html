@@ -96,6 +96,14 @@ select option{background:#111;}
 .toggle-switch input:checked + .toggle-slider{background:#3a3020;border-color:#ffd54a;}
 .toggle-switch input:checked + .toggle-slider:before{transform:translateX(26px);background:#ffd54a;}
 .toggle-label{font-size:16px;font-weight:700;}
+.proj-row{padding:16px 18px;border-bottom:1px solid var(--border2);}
+.proj-row:last-child{border-bottom:none;}
+.proj-row-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px;}
+.proj-id{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:0.5px;}
+.proj-badges{display:flex;gap:8px;flex-wrap:wrap;}
+.proj-badge{display:inline-block;padding:4px 10px;border:1px solid var(--border);font-size:12px;letter-spacing:1px;color:var(--muted);}
+.proj-row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.proj-row-actions .toggle-row{padding:6px 10px;margin-top:0;border:none;}
 .emp-status-dot.dot-white{background:#fff;}
 .emp-status-dot.dot-green{background:#44ff88;box-shadow:0 0 6px #44ff88;}
 .emp-status-dot.dot-yellow{background:#ffd54a;box-shadow:0 0 6px #ffd54a;}
@@ -696,7 +704,8 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Project Code <span class="fla">كود المشروع (أرقام فقط)</span></div>
-<input type="text" id="newProjectCode" placeholder="مثال: 101" inputmode="numeric"/>
+<input type="text" id="newProjectCode" placeholder="مثال: 101" inputmode="numeric" list="projectCodesDatalist"/>
+<datalist id="projectCodesDatalist"></datalist>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Project Name <span class="fla">اسم المشروع (هيقترحلك أسامي متسجلة قبل كده)</span></div>
@@ -707,14 +716,14 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Category</div>
-<select id="newProjectCategory">
+<select id="newProjectCategory" onchange="updateNewProjectLabelPreview()">
 <option value="COM">COM</option>
 <option value="NON-COM">NON-COM</option>
 </select>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Type</div>
-<select id="newProjectType" onchange="toggleSubCodeField()">
+<select id="newProjectType" onchange="toggleSubCodeField(); updateNewProjectLabelPreview();">
 <option value="NEW">NEW</option>
 <option value="SUB">SUB</option>
 </select>
@@ -725,8 +734,8 @@ textarea{resize:vertical;min-height:76px;}
 <input type="text" id="newProjectSubCode" placeholder="مثال: 205"/>
 </div>
 <div class="fg">
-<div class="fl">Simple Label <span class="fla">اسم مبسّط (يظهر للموظف بس لو المشروع ده عنده أكتر من نوع، زي "مرحلة 1")</span></div>
-<input type="text" id="newProjectSimpleLabel" placeholder="اختياري"/>
+<div class="fl">Simple Label <span class="fla">الرمز التلقائي (بيظهر للموظف بس لو المشروع عنده أكتر من نوع — مقفول للتعديل)</span></div>
+<input type="text" id="newProjectSimpleLabel" value="A" readonly style="opacity:0.75;cursor:not-allowed"/>
 </div>
 <div class="toggle-row">
 <label class="toggle-switch">
@@ -980,7 +989,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Code</div>
-<input type="text" id="editProjectCode"/>
+<input type="text" id="editProjectCode" list="projectCodesDatalist"/>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Name</div>
@@ -990,14 +999,14 @@ textarea{resize:vertical;min-height:76px;}
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Category</div>
-<select id="editProjectCategory">
+<select id="editProjectCategory" onchange="updateEditProjectLabelPreview()">
 <option value="COM">COM</option>
 <option value="NON-COM">NON-COM</option>
 </select>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Type</div>
-<select id="editProjectType" onchange="toggleEditSubCodeField()">
+<select id="editProjectType" onchange="toggleEditSubCodeField(); updateEditProjectLabelPreview();">
 <option value="NEW">NEW</option>
 <option value="SUB">SUB</option>
 </select>
@@ -1008,8 +1017,8 @@ textarea{resize:vertical;min-height:76px;}
 <input type="text" id="editProjectSubCode"/>
 </div>
 <div class="fg">
-<div class="fl">Simple Label</div>
-<input type="text" id="editProjectSimpleLabel"/>
+<div class="fl">Simple Label <span class="fla">(مقفول — بيتحدد أوتوماتيك)</span></div>
+<input type="text" id="editProjectSimpleLabel" readonly style="opacity:0.75;cursor:not-allowed"/>
 </div>
 <div class="modal-actions">
 <button class="btn-mc" onclick="closeEditProjectModal()">Cancel · إلغاء</button>
@@ -1986,6 +1995,19 @@ async function refreshHolidaysOnly() {
   renderAdminHolidays();
 }
 
+var VARIANT_LABEL_MAP = { "COM_NEW": "A", "COM_SUB": "B", "NON-COM_NEW": "C", "NON-COM_SUB": "D" };
+
+function updateNewProjectLabelPreview() {
+  var cat = document.getElementById("newProjectCategory").value;
+  var type = document.getElementById("newProjectType").value;
+  document.getElementById("newProjectSimpleLabel").value = VARIANT_LABEL_MAP[cat + "_" + type] || "?";
+}
+function updateEditProjectLabelPreview() {
+  var cat = document.getElementById("editProjectCategory").value;
+  var type = document.getElementById("editProjectType").value;
+  document.getElementById("editProjectSimpleLabel").value = VARIANT_LABEL_MAP[cat + "_" + type] || "?";
+}
+
 function toggleSubCodeField() {
   var type = document.getElementById("newProjectType").value;
   document.getElementById("subCodeWrap").style.display = (type === "SUB") ? "block" : "none";
@@ -2009,6 +2031,7 @@ function openEditProjectModal(id) {
   document.getElementById("editProjectSubCode").value = p.sub_code || "";
   document.getElementById("editProjectSimpleLabel").value = p.simple_label || "";
   toggleEditSubCodeField();
+  updateEditProjectLabelPreview();
   document.getElementById("editProjectModalOverlay").classList.add("active");
 }
 
@@ -2024,8 +2047,9 @@ function saveProjectEditPrompt() {
   var subCode = document.getElementById("editProjectSubCode").value.trim();
   if (!code || !name) { showToast("!", "اكتب الكود والاسم"); return; }
   if (type === "SUB" && !subCode) { showToast("!", "لازم تدخل كود فرعي للـ SUB"); return; }
+  document.getElementById("editProjectModalOverlay").classList.remove("active"); // hide first, keep editProjectId
   openPinModal("SAVE PROJECT CHANGES · حفظ تعديل المشروع", "ادخل كود الأمان للتأكيد:", function(pin) {
-    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); document.getElementById("editProjectModalOverlay").classList.add("active"); return; }
     executeProjectEditSave(pin);
   });
 }
@@ -2078,25 +2102,41 @@ function renderAdminProjects() {
     }
     namesDatalist.innerHTML = optsHtml;
   }
+  var codesDatalist = document.getElementById("projectCodesDatalist");
+  if (codesDatalist) {
+    var seenCodes = {};
+    var codesHtml = "";
+    for (var c = 0; c < adminProjectsFull.length; c++) {
+      var cd = adminProjectsFull[c].code;
+      if (!seenCodes[cd]) { seenCodes[cd] = true; codesHtml += "<option value='" + cd.replace(/'/g,"") + "'></option>"; }
+    }
+    codesDatalist.innerHTML = codesHtml;
+  }
 
   var html = "";
   for (var i = 0; i < adminProjectsFull.length; i++) {
     var p = adminProjectsFull[i];
-    var typeStr = p.type + (p.type === "SUB" && p.sub_code ? " (" + p.sub_code + ")" : "");
-    var note = p.category + " / " + typeStr + (p.simple_label ? " — \"" + p.simple_label + "\"" : "");
-    var badge = p.active ? "" : " <span style='color:var(--muted)'>(متوقف)</span>";
+    var typeStr = p.type + (p.type === "SUB" && p.sub_code ? " " + p.sub_code : "");
+    var pausedNote = p.active ? "" : " <span style='color:var(--muted);font-size:12px'>(متوقف)</span>";
 
-    html += "<div class='log-entry'><div class='log-type'" + (p.active?"":" style='color:var(--muted)'") + ">" + p.code + " - " + p.name + badge + "</div>";
-    html += "<div class='log-note'>" + note + "</div>";
-    html += "<div class='toggle-row' style='margin-top:8px'>";
+    html += "<div class='proj-row'>";
+    html += "<div class='proj-row-top'>";
+    html += "<div class='proj-id'" + (p.active?"":" style='color:var(--muted)'") + ">" + p.code + " - " + p.name + pausedNote + "</div>";
+    html += "<div class='proj-badges'>";
+    html += "<span class='proj-badge'>" + p.category + "</span>";
+    html += "<span class='proj-badge'>" + typeStr + "</span>";
+    html += "<span class='proj-badge'>" + (p.simple_label || "-") + "</span>";
+    html += "</div>";
+    html += "<div class='toggle-row'>";
     html += "<label class='toggle-switch'><input type='checkbox' " + (p.overtime_enabled?"checked":"") + " onchange=\"onExistingOvertimeToggle(" + p.id + ", this)\"/><span class='toggle-slider'></span></label>";
     html += "<span class='toggle-label'>Overtime</span></div>";
-    html += "<div style='margin-top:8px'>";
-    html += "<button class='btn-end-task' onclick=\"openEditProjectModal(" + p.id + ")\">EDIT · تعديل</button> ";
+    html += "</div>";
+    html += "<div class='proj-row-actions'>";
+    html += "<button class='btn-end-task' onclick=\"openEditProjectModal(" + p.id + ")\">EDIT · تعديل</button>";
     if (p.active) {
-      html += "<button class='btn-end-task' onclick=\"pauseProjectPrompt(" + p.id + ")\">PAUSE · إيقاف</button> ";
+      html += "<button class='btn-end-task' onclick=\"pauseProjectPrompt(" + p.id + ")\">PAUSE · إيقاف</button>";
     } else {
-      html += "<button class='btn-end-task' onclick=\"reactivateProjectPrompt(" + p.id + ")\">RESTORE · إرجاع</button> ";
+      html += "<button class='btn-end-task' onclick=\"reactivateProjectPrompt(" + p.id + ")\">RESTORE · إرجاع</button>";
     }
     html += "<button class='btn-end-task' onclick=\"deleteProjectPrompt(" + p.id + ")\">DELETE PERMANENTLY · حذف نهائي</button>";
     html += "</div></div>";
@@ -2198,7 +2238,10 @@ async function executeAddProject(pin) {
     document.getElementById("newProjectCode").value = "";
     document.getElementById("newProjectName").value = "";
     document.getElementById("newProjectSubCode").value = "";
-    document.getElementById("newProjectSimpleLabel").value = "";
+    document.getElementById("newProjectSimpleLabel").value = "A";
+    document.getElementById("newProjectCategory").value = "COM";
+    document.getElementById("newProjectType").value = "NEW";
+    toggleSubCodeField();
     document.getElementById("newProjectOvertime").checked = false;
     await refreshProjectsOnly();
   } catch(e) { showToast("!", e.message); }
@@ -2285,10 +2328,16 @@ async function addOfficialHoliday() {
   showLoading(false);
 }
 
-async function deleteOfficialHoliday(id) {
+function deleteOfficialHoliday(id) {
+  openPinModal("DELETE HOLIDAY · حذف إجازة رسمية", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeDeleteOfficialHoliday(id, pin);
+  });
+}
+async function executeDeleteOfficialHoliday(id, pin) {
   showLoading(true);
   try {
-    await apiRequest("/api/admin/official-holidays/" + id, "DELETE");
+    await apiRequest("/api/admin/official-holidays/" + id, "DELETE", { pin: pin });
     showToast("v", "تم الحذف");
     await refreshHolidaysOnly();
   } catch(e) { showToast("!", e.message); }
@@ -3070,8 +3119,9 @@ function saveTaskEdit() {
   var name = document.getElementById("editTaskName").value.trim();
   if (!name) { showToast("!", "اكتب اسم المهمة"); return; }
   if (!editTaskSelectedProjectId) { showToast("!", "اختار المشروع"); return; }
+  document.getElementById("editTaskModalOverlay").classList.remove("active"); // hide first, keep editTaskId
   openPinModal("CONFIRM TASK EDIT · تأكيد تعديل المهمة", "التعديل ده ممكن يأثر على حساب الأوفرتايم للأيام دي. ادخل كود الأمان:", function(pin) {
-    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); document.getElementById("editTaskModalOverlay").classList.add("active"); return; }
     executeTaskEditSave(pin);
   });
 }
