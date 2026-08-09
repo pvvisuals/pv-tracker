@@ -415,9 +415,10 @@ async function signIn(db, me) {
 }
 
 async function signOut(db, me) {
+  const todayForCheck = cairoDateStr();
   const [openTaskRes, openBreakRes] = await Promise.all([
     db.execute({ sql: "SELECT name FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0", args: [me.id] }),
-    db.execute({ sql: "SELECT id FROM breaks WHERE employee_id = ? AND end_time IS NULL", args: [me.id] }),
+    db.execute({ sql: "SELECT id FROM breaks WHERE employee_id = ? AND date = ? AND end_time IS NULL", args: [me.id, todayForCheck] }),
   ]);
   const openItems = [];
   if (openBreakRes.rows.length) openItems.push("استراحة شغالة");
