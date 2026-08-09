@@ -22,7 +22,7 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-
 .splash-bar-fill{height:100%;background:#fff;animation:fillBar 1.8s 1.8s ease both;width:0;}
 @keyframes fillBar{to{width:100%;}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
-.screen{position:fixed;inset:0;z-index:90;background:#000;display:none;align-items:center;justify-content:center;padding:24px;overflow-y:auto;}
+.screen{position:fixed;inset:0;z-index:90;background:#000;display:none;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto;}
 .screen.active{display:flex;}
 .auth-card{background:var(--card);border:1px solid var(--border);padding:40px 36px;width:100%;max-width:440px;animation:cardIn 0.4s ease both;}
 @keyframes cardIn{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:none;}}
@@ -62,6 +62,16 @@ select option{background:#111;}
 .user-avatar{width:32px;height:32px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#000;overflow:hidden;cursor:pointer;}
 .user-avatar img{width:100%;height:100%;object-fit:cover;}
 .user-name{font-size:16px;color:var(--muted);}
+@media(max-width:480px){
+  .app-header{height:auto;min-height:54px;padding:10px 14px;flex-wrap:wrap;gap:6px 10px;}
+  .header-left{gap:8px;}
+  .hd{display:none;}
+  .ht{font-size:14px;letter-spacing:2px;}
+  .header-right{gap:8px;}
+  .live-time{font-size:15px;letter-spacing:1px;}
+  .user-badge{gap:6px;}
+  .user-name{font-size:12px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+}
 .tabs{display:flex;background:#000;border-bottom:1px solid var(--border);padding:0 28px;overflow-x:auto;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{padding:13px 20px;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-bottom:1px solid transparent;transition:color 0.2s,border-color 0.2s;white-space:nowrap;flex-shrink:0;}
@@ -473,6 +483,13 @@ textarea{resize:vertical;min-height:76px;}
 <div class="log-header"><span>ACTIVE TASKS NOW · التاسكات الشغالة دلوقتي</span></div>
 <div class="tasks-list" id="activeTasksList">
 <div class="task-card"><div class="empty-log" style="width:100%;padding:18px 0;">No active tasks</div></div>
+</div>
+</div>
+
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>PAUSED TASKS · التاسكات المتوقفة</span></div>
+<div class="tasks-list" id="pausedTasksList">
+<div class="task-card"><div class="empty-log" style="width:100%;padding:18px 0;">No paused tasks</div></div>
 </div>
 </div>
 
@@ -1259,7 +1276,13 @@ async function confirmSignOut(t) {
     pill.innerHTML = "<div class='status-dot'></div><span>NOT SIGNED IN</span>";
     renderSignLog();
     showToast("v", "Goodbye! Worked: " + (entry.worked || ""));
-  } catch(e) { showToast("!", "Error: " + e.message); }
+  } catch(e) {
+    if (e.message && e.message.indexOf("لازم تقفل الحاجات دي الأول") > -1) {
+      openModal("SIGN OUT BLOCKED · مينفعش تسجل انصراف", e.message, function() {});
+    } else {
+      showToast("!", "Error: " + e.message);
+    }
+  }
   showLoading(false);
 }
 
@@ -1513,6 +1536,7 @@ async function refreshBreaksOnly() {
 }
 async function refreshTasksOnly() {
   await loadActiveTasks();
+  await loadPausedTasks();
   setupTaskBrowseMonthBounds();
   await loadTasksForBrowsedDate();
 }
@@ -1527,6 +1551,7 @@ async function loadTodayData() {
     applyAttendanceState(results[0].entries, results[0].open_session);
     applyBreaksState(results[1].entries);
     await loadActiveTasks();
+    await loadPausedTasks();
 
     if (user.role === "admin") {
       await Promise.all([loadLeaveOvertimeData(), loadAdminData()]);
@@ -3048,8 +3073,9 @@ async function addTask() {
   try {
     var res = await apiRequest("/api/tasks", "POST", {project_id:selectedProjectId,name:name,description:desc});
     var task = res.task;
+    task.segments = task.segments || [{ created_at: task.created_at, start_display: task.start_time, date: task.date, ended_at: null }];
     activeTasksArr.push(task);
-    taskStartTimes[task.id] = parseUTC(task.created_at);
+    taskStartTimes[task.id] = computeVirtualStart(task);
     document.getElementById("taskProject").value = "";
     document.getElementById("taskProjectVariantWrap").style.display = "none";
     selectedProjectId = null;
@@ -3071,15 +3097,18 @@ async function endTask(taskId) {
   try {
     var res = await apiRequest("/api/tasks/" + taskId + "/end", "PATCH", {});
     activeTasksArr = activeTasksArr.filter(function(t) { return String(t.id) !== String(taskId); });
+    pausedTasksArr = pausedTasksArr.filter(function(t) { return String(t.id) !== String(taskId); });
     for (var i = 0; i < browsedTasks.length; i++) {
       if (String(browsedTasks[i].id) === String(taskId)) {
         browsedTasks[i].end_time = res.end_time;
         browsedTasks[i].duration = res.duration;
+        browsedTasks[i].paused = 0;
         break;
       }
     }
     delete taskStartTimes[taskId];
     renderActiveTasks();
+    renderPausedTasks();
     renderBrowsedTasks();
     showToast("v","Done! " + formatDuration(res.duration));
   } catch(e) { showToast("!","Error ending task"); }
@@ -3105,9 +3134,17 @@ async function loadActiveTasks() {
     var res = await apiRequest("/api/tasks/active", "GET");
     activeTasksArr = res.tasks || [];
     for (var i = 0; i < activeTasksArr.length; i++) {
-      taskStartTimes[activeTasksArr[i].id] = parseUTC(activeTasksArr[i].created_at);
+      taskStartTimes[activeTasksArr[i].id] = computeVirtualStart(activeTasksArr[i]);
     }
     renderActiveTasks();
+  } catch(e) { /* non-fatal */ }
+}
+
+async function loadPausedTasks() {
+  try {
+    var res = await apiRequest("/api/tasks/paused", "GET");
+    pausedTasksArr = res.tasks || [];
+    renderPausedTasks();
   } catch(e) { /* non-fatal */ }
 }
 
@@ -3126,6 +3163,8 @@ var editTaskSelectedProjectId = null;
 
 function findTaskById(id) {
   var t = activeTasksArr.find(function(x) { return String(x.id) === String(id); });
+  if (t) return t;
+  t = pausedTasksArr.find(function(x) { return String(x.id) === String(id); });
   if (t) return t;
   return browsedTasks.find(function(x) { return String(x.id) === String(id); });
 }
@@ -3212,12 +3251,13 @@ async function executeTaskEditSave(pin) {
   showLoading(true);
   try {
     var res = await apiRequest("/api/tasks/" + editTaskId, "PATCH", { project_id: editTaskSelectedProjectId, name: name, description: desc, pin: pin });
-    [activeTasksArr, browsedTasks].forEach(function(arr) {
+    [activeTasksArr, pausedTasksArr, browsedTasks].forEach(function(arr) {
       for (var i = 0; i < arr.length; i++) {
         if (String(arr[i].id) === String(editTaskId)) arr[i] = res.task;
       }
     });
     renderActiveTasks();
+    renderPausedTasks();
     renderBrowsedTasks();
     closeEditTaskModal();
     showToast("v", "تم تعديل المهمة");
@@ -3225,19 +3265,67 @@ async function executeTaskEditSave(pin) {
   showLoading(false);
 }
 
+function computeVirtualStart(task) {
+  var segs = task.segments || [];
+  var accumulatedClosed = 0;
+  var currentSegmentStart = null;
+  for (var i = 0; i < segs.length; i++) {
+    var s = segs[i];
+    var startMs = parseUTC(s.created_at);
+    if (s.ended_at) {
+      accumulatedClosed += Math.floor((parseUTC(s.ended_at) - startMs) / 1000);
+    } else {
+      currentSegmentStart = startMs;
+    }
+  }
+  if (currentSegmentStart === null) currentSegmentStart = Date.now();
+  return currentSegmentStart - accumulatedClosed * 1000;
+}
+
+function pausedAccumulatedSeconds(task) {
+  var segs = task.segments || [];
+  var total = 0;
+  for (var i = 0; i < segs.length; i++) {
+    if (segs[i].ended_at) total += Math.floor((parseUTC(segs[i].ended_at) - parseUTC(segs[i].created_at)) / 1000);
+  }
+  return total;
+}
+
+function taskSegmentsTimeline(task) {
+  var segs = task.segments || [];
+  if (!segs.length) return "Started: " + task.start_time + (task.end_time ? " - Ended: " + task.end_time : " (" + task.date + ")");
+  var parts = [];
+  for (var i = 0; i < segs.length; i++) {
+    var s = segs[i];
+    var label = i === 0 ? "بدأ" : "استكمل";
+    var line = label + " " + s.start_display + " (" + s.date + ")";
+    if (s.ended_at) line += (task.end_time && i === segs.length - 1 ? " → انتهى " : " → توقف ") + s.end_display;
+    parts.push(line);
+  }
+  return parts.join(" · ");
+}
+
 function taskCardHtml(t, index) {
-  var isActive = !t.end_time;
+  var isCompleted = !!t.end_time;
+  var isPaused = !isCompleted && !!t.paused;
+  var isActive = !isCompleted && !t.paused;
   var html = "<div class='task-card" + (isActive?" active-task":"") + "'>";
   html += "<div class='task-num'>" + String(index+1).padStart(2,"0") + "</div>";
   html += "<div class='task-info'>";
   html += "<div class='task-project'>" + t.project + "</div>";
   html += "<div class='task-name'>" + t.name + "</div>";
   if (t.description) html += "<div class='task-desc'>" + t.description + "</div>";
-  html += "<div class='task-meta'>Started: " + t.start_time + (t.end_time ? " - Ended: "+t.end_time : " (" + t.date + ")") + "</div>";
+  html += "<div class='task-meta'>" + taskSegmentsTimeline(t) + "</div>";
   if (t.duration) html += "<div class='task-dur'>Duration: " + formatDuration(t.duration) + "</div>";
+
   if (isActive) {
     html += "<div class='task-dur task-live-timer' data-tid='" + t.id + "'>00:00:00</div>";
     html += "<button class='btn-end-task' data-tid='" + t.id + "' onclick='endTask(this.dataset.tid)'>END TASK · إنهاء المهمة</button>";
+    html += "<button class='btn-end-task' style='margin-top:6px' onclick='pauseTaskAction(" + t.id + ")'>PAUSE · إيقاف مؤقت</button>";
+  } else if (isPaused) {
+    html += "<div class='task-dur' style='color:#ffd54a'>Paused so far: " + formatDuration(pausedAccumulatedSeconds(t)) + "</div>";
+    html += "<button class='btn-end-task' onclick='resumeTaskAction(" + t.id + ")'>RESUME · استكمال</button>";
+    html += "<button class='btn-end-task' style='margin-top:6px' onclick='endTask(" + t.id + ")'>END TASK · إنهاء المهمة</button>";
   } else {
     html += "<div class='task-dur' style='color:var(--muted)'>Completed</div>";
   }
@@ -3246,12 +3334,61 @@ function taskCardHtml(t, index) {
   return html;
 }
 
+var pausedTasksArr = [];
+
 function renderActiveTasks() {
   var el = document.getElementById("activeTasksList");
   if (!activeTasksArr.length) { el.innerHTML = "<div class='task-card'><div class='empty-log' style='width:100%;padding:18px 0;'>No active tasks</div></div>"; return; }
   var html = "";
   for (var i = 0; i < activeTasksArr.length; i++) html += taskCardHtml(activeTasksArr[i], i);
   el.innerHTML = html;
+}
+
+function renderPausedTasks() {
+  var el = document.getElementById("pausedTasksList");
+  if (!el) return;
+  if (!pausedTasksArr.length) { el.innerHTML = "<div class='task-card'><div class='empty-log' style='width:100%;padding:18px 0;'>No paused tasks</div></div>"; return; }
+  var html = "";
+  for (var i = 0; i < pausedTasksArr.length; i++) html += taskCardHtml(pausedTasksArr[i], i);
+  el.innerHTML = html;
+}
+
+async function pauseTaskAction(taskId) {
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/tasks/" + taskId + "/pause", "PATCH", {});
+    activeTasksArr = activeTasksArr.filter(function(t) { return String(t.id) !== String(taskId); });
+    delete taskStartTimes[taskId];
+    pausedTasksArr.push(res.task);
+    updateBrowsedTaskInPlace(res.task);
+    renderActiveTasks();
+    renderPausedTasks();
+    renderBrowsedTasks();
+    showToast("v", "تم إيقاف المهمة مؤقتاً");
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function resumeTaskAction(taskId) {
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/tasks/" + taskId + "/resume", "PATCH", {});
+    pausedTasksArr = pausedTasksArr.filter(function(t) { return String(t.id) !== String(taskId); });
+    activeTasksArr.push(res.task);
+    taskStartTimes[taskId] = computeVirtualStart(res.task);
+    updateBrowsedTaskInPlace(res.task);
+    renderActiveTasks();
+    renderPausedTasks();
+    renderBrowsedTasks();
+    showToast("v", "تم استكمال المهمة");
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function updateBrowsedTaskInPlace(updatedTask) {
+  for (var i = 0; i < browsedTasks.length; i++) {
+    if (String(browsedTasks[i].id) === String(updatedTask.id)) { browsedTasks[i] = updatedTask; break; }
+  }
 }
 
 function renderBrowsedTasks() {
