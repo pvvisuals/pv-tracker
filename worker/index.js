@@ -249,8 +249,13 @@ export default {
       if (path === "/api/tasks/today" && method === "GET") return await tasksToday(db, me);
       if (path === "/api/tasks/list" && method === "GET") return await tasksByDate(db, me, url.searchParams.get("date") || cairoDateStr());
       if (path === "/api/tasks/active" && method === "GET") return await activeTasks(db, me);
+      if (path === "/api/tasks/paused" && method === "GET") return await pausedTasksList(db, me);
       const taskEndMatch = path.match(/^\/api\/tasks\/(\d+)\/end$/);
       if (taskEndMatch && method === "PATCH") return await endTask(db, me, Number(taskEndMatch[1]), body);
+      const taskPauseMatch = path.match(/^\/api\/tasks\/(\d+)\/pause$/);
+      if (taskPauseMatch && method === "PATCH") return await pauseTask(db, me, Number(taskPauseMatch[1]));
+      const taskResumeMatch = path.match(/^\/api\/tasks\/(\d+)\/resume$/);
+      if (taskResumeMatch && method === "PATCH") return await resumeTask(db, me, Number(taskResumeMatch[1]));
       const taskEditMatch = path.match(/^\/api\/tasks\/(\d+)$/);
       if (taskEditMatch && method === "PATCH") return await editTask(db, me, Number(taskEditMatch[1]), body, env);
 
@@ -410,6 +415,17 @@ async function signIn(db, me) {
 }
 
 async function signOut(db, me) {
+  const [openTaskRes, openBreakRes] = await Promise.all([
+    db.execute({ sql: "SELECT name FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0", args: [me.id] }),
+    db.execute({ sql: "SELECT id FROM breaks WHERE employee_id = ? AND end_time IS NULL", args: [me.id] }),
+  ]);
+  const openItems = [];
+  if (openBreakRes.rows.length) openItems.push("استراحة شغالة");
+  for (const t of openTaskRes.rows) openItems.push("تاسك شغال: " + t.name);
+  if (openItems.length) {
+    return err("لازم تقفل الحاجات دي الأول قبل ما تسجل انصراف: " + openItems.join("، "), 409);
+  }
+
   const today = cairoDateStr();
   const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
@@ -551,7 +567,12 @@ async function addTask(db, me, body) {
           VALUES (?,?,?,?,?,?,?,?,?) RETURNING *`,
     args: [me.id, displayName, proj.id, body.name, body.description || "", today, t, t, fn],
   });
-  return json({ task: res.rows[0] }, 201);
+  const task = res.rows[0];
+  await db.execute({
+    sql: `INSERT INTO task_segments (task_id, employee_id, date, start_display) VALUES (?,?,?,?)`,
+    args: [task.id, me.id, today, t],
+  });
+  return json({ task }, 201);
 }
 
 async function editTask(db, me, taskId, body, env) {
@@ -576,7 +597,42 @@ async function editTask(db, me, taskId, body, env) {
   args.push(taskId);
   await db.execute({ sql: `UPDATE tasks SET ${fields.join(", ")} WHERE id = ?`, args });
   const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
-  return json({ task: updated.rows[0] });
+  return json({ task: (await attachSegments(db, updated.rows))[0] });
+}
+
+async function pauseTask(db, me, taskId) {
+  const rows = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ? AND employee_id = ?", args: [taskId, me.id] });
+  const task = rows.rows[0];
+  if (!task) return err("Task not found", 404);
+  if (task.end_time) return err("التاسك ده خلص بالفعل", 400);
+  if (task.paused) return err("التاسك ده متوقف بالفعل", 400);
+
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const segRes = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1", args: [taskId] });
+  if (segRes.rows[0]) {
+    await db.execute({ sql: "UPDATE task_segments SET end_display = ?, ended_at = datetime('now') WHERE id = ?", args: [t, segRes.rows[0].id] });
+  }
+  await db.execute({ sql: "UPDATE tasks SET paused = 1 WHERE id = ?", args: [taskId] });
+  const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
+  return json({ task: (await attachSegments(db, updated.rows))[0] });
+}
+
+async function resumeTask(db, me, taskId) {
+  const rows = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ? AND employee_id = ?", args: [taskId, me.id] });
+  const task = rows.rows[0];
+  if (!task) return err("Task not found", 404);
+  if (task.end_time) return err("التاسك ده خلص بالفعل", 400);
+  if (!task.paused) return err("التاسك ده مش متوقف", 400);
+
+  const today = cairoDateStr();
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  await db.execute({
+    sql: `INSERT INTO task_segments (task_id, employee_id, date, start_display) VALUES (?,?,?,?)`,
+    args: [taskId, me.id, today, t],
+  });
+  await db.execute({ sql: "UPDATE tasks SET paused = 0 WHERE id = ?", args: [taskId] });
+  const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
+  return json({ task: (await attachSegments(db, updated.rows))[0] });
 }
 
 async function endTask(db, me, taskId, body) {
@@ -584,9 +640,36 @@ async function endTask(db, me, taskId, body) {
   const task = rows.rows[0];
   if (!task) return err("Task not found", 404);
   const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
-  const dur = Math.max(0, Math.floor((Date.now() - new Date(task.created_at + "Z").getTime()) / 1000));
-  await db.execute({ sql: "UPDATE tasks SET end_time = ?, duration = ? WHERE id = ?", args: [t, dur, taskId] });
-  return json({ ok: true, end_time: t, duration: dur });
+
+  const openSegRes = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1", args: [taskId] });
+  if (openSegRes.rows[0]) {
+    await db.execute({ sql: "UPDATE task_segments SET end_display = ?, ended_at = datetime('now') WHERE id = ?", args: [t, openSegRes.rows[0].id] });
+  }
+
+  // Total duration = sum of every segment's actual elapsed time (pauses
+  // don't count), not just "now minus original start".
+  const allSegs = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ?", args: [taskId] });
+  let totalSecs = 0;
+  for (const s of allSegs.rows) {
+    const startMs = new Date(s.created_at + "Z").getTime();
+    const endMs = s.ended_at ? new Date(s.ended_at + "Z").getTime() : Date.now();
+    if (endMs > startMs) totalSecs += Math.floor((endMs - startMs) / 1000);
+  }
+
+  await db.execute({ sql: "UPDATE tasks SET end_time = ?, duration = ?, paused = 0 WHERE id = ?", args: [t, totalSecs, taskId] });
+  return json({ ok: true, end_time: t, duration: totalSecs });
+}
+
+// Batches segment history (start/pause/resume/end timestamps) onto a list
+// of task rows, so the UI can show the full multi-day timeline.
+async function attachSegments(db, tasks) {
+  if (!tasks.length) return tasks;
+  const ids = tasks.map((t) => t.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const segRes = await db.execute({ sql: `SELECT * FROM task_segments WHERE task_id IN (${placeholders}) ORDER BY id ASC`, args: ids });
+  const byTask = {};
+  for (const s of segRes.rows) { (byTask[s.task_id] = byTask[s.task_id] || []).push(s); }
+  return tasks.map((t) => ({ ...t, segments: byTask[t.id] || [] }));
 }
 
 async function tasksToday(db, me) {
@@ -595,7 +678,7 @@ async function tasksToday(db, me) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
     args: [me.id, today],
   });
-  return json({ tasks: res.rows });
+  return json({ tasks: await attachSegments(db, res.rows) });
 }
 
 async function tasksByDate(db, me, dateStr) {
@@ -603,17 +686,27 @@ async function tasksByDate(db, me, dateStr) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
     args: [me.id, dateStr],
   });
-  return json({ tasks: res.rows });
+  return json({ tasks: await attachSegments(db, res.rows) });
 }
 
-// Any task the employee hasn't ended yet, no matter which day it started —
-// so an overnight/multi-day task never silently disappears from view.
+// Currently-being-worked tasks (not paused, not ended) — shown regardless
+// of which day they started, so a multi-day task never disappears.
 async function activeTasks(db, me) {
   const res = await db.execute({
-    sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL ORDER BY created_at ASC",
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0 ORDER BY created_at ASC",
     args: [me.id],
   });
-  return json({ tasks: res.rows });
+  return json({ tasks: await attachSegments(db, res.rows) });
+}
+
+// Paused tasks — set aside, not finished, shown regardless of day so the
+// employee can resume any of them whenever they get back to it.
+async function pausedTasksList(db, me) {
+  const res = await db.execute({
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 1 ORDER BY created_at ASC",
+    args: [me.id],
+  });
+  return json({ tasks: await attachSegments(db, res.rows) });
 }
 
 // Employee-facing project catalog — deduplicated by (code, name); if a group
@@ -820,8 +913,10 @@ async function monthlyReport(db, employeeId, monthStr) {
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
-      sql: `SELECT DISTINCT t.date FROM tasks t JOIN projects p ON p.id = t.project_id
-            WHERE t.employee_id = ? AND t.date BETWEEN ? AND ? AND p.overtime_enabled = 1`,
+      sql: `SELECT DISTINCT ts.date FROM task_segments ts
+            JOIN tasks t ON t.id = ts.task_id
+            JOIN projects p ON p.id = t.project_id
+            WHERE t.employee_id = ? AND ts.date BETWEEN ? AND ? AND p.overtime_enabled = 1`,
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
@@ -1257,7 +1352,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/penalties" && method === "GET") {
     const employeeId = url.searchParams.get("employee_id");
     const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
-    let sql = `SELECT p.*, c.name as created_by_name, d.name as deleted_by_name FROM penalties p
+    let sql = `SELECT p.*, e.name as employee_name, e.emp_code, c.name as created_by_name, d.name as deleted_by_name FROM penalties p
+               JOIN employees e ON e.id = p.employee_id
                LEFT JOIN employees c ON c.id = p.created_by
                LEFT JOIN employees d ON d.id = p.deleted_by
                WHERE p.date LIKE ?`;
@@ -1294,7 +1390,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/notices" && method === "GET") {
     const employeeId = url.searchParams.get("employee_id");
     const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
-    let sql = `SELECT n.*, c.name as created_by_name, d.name as deleted_by_name FROM notices n
+    let sql = `SELECT n.*, e.name as employee_name, e.emp_code, c.name as created_by_name, d.name as deleted_by_name FROM notices n
+               JOIN employees e ON e.id = n.employee_id
                LEFT JOIN employees c ON c.id = n.created_by
                LEFT JOIN employees d ON d.id = n.deleted_by
                WHERE n.date LIKE ?`;
@@ -1499,7 +1596,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (targetId === admin.id) return err("منقدرش تمسح حسابك انت نفسك", 400);
     const ownedTables = [
       "sessions", "attendance", "breaks", "tasks", "leave_requests",
-      "financial_requests", "offclock_requests", "permission_requests", "penalties", "notices",
+      "financial_requests", "offclock_requests", "permission_requests", "penalties", "notices", "task_segments",
     ];
     for (const t of ownedTables) {
       await db.execute({ sql: `DELETE FROM ${t} WHERE employee_id = ?`, args: [targetId] });
@@ -1592,17 +1689,18 @@ const REQUEST_TABLES = new Set(["financial_requests", "offclock_requests", "perm
 // for the admin, unlike the employee-facing simplified code+name+letter.
 async function adminTasksByDay(db, employeeId, dateStr) {
   const date = (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) ? dateStr : cairoDateStr();
-  let sql = `SELECT t.*, e.name as employee_name, e.emp_code,
+  let sql = `SELECT DISTINCT t.*, e.name as employee_name, e.emp_code,
                     p.code as p_code, p.name as p_name, p.category, p.type, p.sub_code, p.simple_label
              FROM tasks t
              JOIN employees e ON e.id = t.employee_id
+             JOIN task_segments ts ON ts.task_id = t.id
              LEFT JOIN projects p ON p.id = t.project_id
-             WHERE t.date = ?`;
+             WHERE ts.date = ?`;
   const args = [date];
   if (employeeId && employeeId !== "all") { sql += " AND t.employee_id = ?"; args.push(Number(employeeId)); }
   sql += " ORDER BY e.emp_code ASC, t.created_at ASC";
   const res = await db.execute({ sql, args });
-  return json({ date, tasks: res.rows });
+  return json({ date, tasks: await attachSegments(db, res.rows) });
 }
 
 async function adminEmployeesStatus(db) {
