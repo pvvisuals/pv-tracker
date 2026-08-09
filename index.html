@@ -6,7 +6,7 @@
 <title>PV Visual Studio</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600&family=Cairo:wght@400;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#000;--card:#111;--border:#3a3a3a;--border2:#2a2a2a;--text:#fff;--muted:#a8a8a8;--muted2:#7a7a7a;}
+:root{--bg:#000;--card:#111;--border:#3a3a3a;--border2:#2a2a2a;--text:#fff;--muted:#a8a8a8;--muted2:#7a7a7a;--ok:#3ddc84;--danger:#ff5c5c;--warn:#ffd54a;}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;min-height:100vh;overflow-x:hidden;}
 #splash{position:fixed;inset:0;z-index:1000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;}
@@ -77,6 +77,7 @@ select option{background:#111;}
 .tab{padding:13px 20px;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-bottom:1px solid transparent;transition:color 0.2s,border-color 0.2s;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--muted);}.tab.active{color:#fff;border-bottom-color:#fff;}
 .tab-content{display:none;padding:32px 28px;max-width:840px;margin:0 auto;width:100%;}
+@media(max-width:600px){.tab-content{padding:18px 16px;}}
 .tab-content.active{display:block;}
 .sec-head{margin-bottom:24px;}
 .sec-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:3px;margin-bottom:2px;}
@@ -91,11 +92,14 @@ select option{background:#111;}
 .kind-btn .kind-count{font-size:13px;color:var(--muted);margin-top:5px;}
 .kind-btn.active .kind-count{color:#333;}
 @media(max-width:560px){.info-grid{grid-template-columns:1fr;}}
-.info-card{background:var(--card);padding:20px 22px;}
+.info-card{background:var(--card);padding:20px 22px;box-shadow:0 2px 10px rgba(0,0,0,0.35);transition:transform 0.15s,box-shadow 0.15s;}
+.info-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,0.5);}
 .info-card-label{font-size:15px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text);margin-bottom:8px;}
 .info-card-value{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1px;}
 .status-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--border);font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:18px;color:var(--muted);}
-.status-pill.in{border-color:rgba(255,255,255,0.3);color:#fff;}
+.status-pill.in{border-color:var(--ok);color:var(--ok);}
+.status-pill.out{border-color:var(--danger);color:var(--danger);}
+.status-pill.onbreak{border-color:var(--warn);color:var(--warn);}
 .status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
 .emp-status-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-left:10px;flex-shrink:0;border:1px solid rgba(255,255,255,0.3);}
 .toggle-row{display:flex;align-items:center;gap:14px;padding:14px;border:1px solid var(--border);margin-top:10px;}
@@ -118,17 +122,24 @@ select option{background:#111;}
 .task-seg-list{display:flex;flex-direction:column;gap:3px;}
 .task-seg-row{font-size:12.5px;color:var(--muted2);display:flex;align-items:center;gap:7px;line-height:1.4;}
 .task-seg-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
-.task-seg-dot.dot-green{background:#44ff88;}
-.task-seg-dot.dot-yellow{background:#ffd54a;}
-.task-seg-dot.dot-red{background:#ff4444;}
+.task-seg-dot.dot-green{background:var(--ok);}
+.task-seg-dot.dot-yellow{background:var(--warn);}
+.task-seg-dot.dot-red{background:var(--danger);}
 .task-seg-date{opacity:0.6;}
 #content-admin .task-form,
-#content-admin .log-wrap{margin-top:6px;margin-bottom:38px;}
-#content-admin .task-form:first-of-type{margin-top:0;}
+#content-admin .log-wrap{margin-top:6px;margin-bottom:38px;position:relative;padding-top:26px;}
+#content-admin .task-form::before,
+#content-admin .log-wrap::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,rgba(255,255,255,0.55),rgba(255,255,255,0.05));}
+#content-admin .task-form:first-of-type{margin-top:0;padding-top:0;}
+#content-admin .task-form:first-of-type::before,
+#content-admin .log-wrap:first-of-type::before{display:none;}
 .emp-status-dot.dot-white{background:#fff;}
-.emp-status-dot.dot-green{background:#44ff88;box-shadow:0 0 6px #44ff88;}
-.emp-status-dot.dot-yellow{background:#ffd54a;box-shadow:0 0 6px #ffd54a;}
-.emp-status-dot.dot-red{background:#ff4444;box-shadow:0 0 6px #ff4444;}
+.emp-status-dot.dot-green{background:var(--ok);box-shadow:0 0 6px var(--ok);}
+.emp-status-dot.dot-yellow{background:var(--warn);box-shadow:0 0 6px var(--warn);}
+.emp-status-dot.dot-red{background:var(--danger);box-shadow:0 0 6px var(--danger);}
+.emp-status-detail.text-green{color:var(--ok);}
+.emp-status-detail.text-yellow{color:var(--warn);}
+.emp-status-detail.text-red{color:var(--danger);}
 .emp-status-row{display:flex;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border2);}
 .emp-status-row:last-child{border-bottom:none;}
 .emp-status-name{font-weight:700;font-size:16px;min-width:170px;}
@@ -141,12 +152,14 @@ select option{background:#111;}
 .btn-in{border-color:rgba(255,255,255,0.2);color:#fff;}.btn-in:hover{background:#fff;color:#000;}
 .btn-out:hover:not(:disabled){border-color:rgba(255,255,255,0.15);color:#ccc;}
 .btn:disabled{opacity:0.2;cursor:not-allowed;}
-.log-wrap{border:1px solid var(--border);}
+.log-wrap{border:1px solid var(--border);box-shadow:0 2px 10px rgba(0,0,0,0.3);}
 .log-header{padding:14px 18px;background:var(--card);border-bottom:1px solid var(--border);font-size:17px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);display:flex;justify-content:space-between;}
 .log-entry{padding:13px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border2);font-size:17px;}
 .log-entry:last-child{border-bottom:none;}
 .log-type{font-size:12px;font-weight:700;letter-spacing:1.5px;border:1px solid var(--border);padding:3px 8px;text-transform:uppercase;min-width:72px;text-align:center;color:var(--muted);}
-.log-type.in{border-color:rgba(255,255,255,0.2);color:#fff;}
+.log-type.in{border-color:var(--ok);color:var(--ok);}
+.log-type.out{border-color:var(--danger);color:var(--danger);}
+.log-type.onbreak{border-color:var(--warn);color:var(--warn);}
 .log-time{font-family:'Bebas Neue',sans-serif;font-size:21px;color:#fff;letter-spacing:1px;}
 .log-note{color:var(--muted);font-size:15px;flex:1;}
 .empty-log{padding:28px;text-align:center;color:var(--muted2);font-size:16px;letter-spacing:1px;}
@@ -155,13 +168,13 @@ select option{background:#111;}
 .timer-label{font-size:13px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
 .timer-label-ar{font-family:'Cairo',sans-serif;font-size:15px;color:var(--muted2);margin-bottom:16px;}
 .timer-display{font-family:'Bebas Neue',sans-serif;font-size:86px;letter-spacing:4px;color:var(--muted2);line-height:1;margin:8px 0 24px;transition:color 0.4s;}
-.timer-display.running{color:#fff;}
+.timer-display.running{color:var(--warn);}
 .timer-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 .btn-ts{padding:13px 48px;background:#fff;color:#000;border:none;font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:2px;cursor:pointer;transition:opacity 0.2s;}
 .btn-ts:hover{opacity:0.85;}
 .btn-te{padding:13px 48px;background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.25);font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:2px;cursor:pointer;}
 .btn-te:hover{background:rgba(255,255,255,0.05);}
-.task-form{background:var(--card);border:1px solid var(--border);padding:22px;margin-bottom:18px;}
+.task-form{background:var(--card);border:1px solid var(--border);padding:22px;margin-bottom:18px;box-shadow:0 2px 10px rgba(0,0,0,0.3);}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
 @media(max-width:560px){.form-row{grid-template-columns:1fr;}}
 textarea{resize:vertical;min-height:76px;}
@@ -436,6 +449,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="timer-card">
 <div class="timer-label">ELAPSED BREAK TIME</div>
 <div class="timer-label-ar">مدة الاستراحة الحالية</div>
+<div class="status-pill" id="breakStatus" style="margin-top:0"><div class="status-dot"></div><span>NOT ON BREAK</span></div>
 <div class="timer-display" id="timerDisplay">00:00:00</div>
 <div class="timer-actions">
 <button class="btn-ts" id="btnBreakStart" onclick="startBreak()">START BREAK · بدء الاستراحة</button>
@@ -1485,8 +1499,13 @@ function applyAttendanceState(entries, openSession) {
     document.getElementById("btnSignIn").disabled = false;
     document.getElementById("btnSignOut").disabled = true;
     var pill2 = document.getElementById("signStatus");
-    pill2.className = "status-pill";
-    pill2.innerHTML = "<div class='status-dot'></div><span>NOT SIGNED IN</span>";
+    if (lastOut) {
+      pill2.className = "status-pill out";
+      pill2.innerHTML = "<div class='status-dot'></div><span>SIGNED OUT</span>";
+    } else {
+      pill2.className = "status-pill";
+      pill2.innerHTML = "<div class='status-dot'></div><span>NOT SIGNED IN</span>";
+    }
   }
   var breakStartBtn = document.getElementById("btnBreakStart");
   if (breakStartBtn && !activeBreakId) breakStartBtn.disabled = !signedIn;
@@ -1514,6 +1533,8 @@ function applyBreaksState(entries) {
       }
       document.getElementById("btnBreakStart").style.display = "none";
       document.getElementById("btnBreakStop").style.display = "inline-block";
+      var breakPillOn = document.getElementById("breakStatus");
+      if (breakPillOn) { breakPillOn.className = "status-pill onbreak"; breakPillOn.innerHTML = "<div class='status-dot pulse'></div><span>ON BREAK</span>"; }
       if (!breakInterval) {
         breakInterval = setInterval(function() {
           var elapsed = Math.floor((Date.now()-breakStartTime)/1000);
@@ -1531,6 +1552,8 @@ function applyBreaksState(entries) {
     document.getElementById("timerDisplay").classList.remove("running");
     document.getElementById("btnBreakStart").style.display = "inline-block";
     document.getElementById("btnBreakStop").style.display = "none";
+    var breakPillOff = document.getElementById("breakStatus");
+    if (breakPillOff) { breakPillOff.className = "status-pill"; breakPillOff.innerHTML = "<div class='status-dot'></div><span>NOT ON BREAK</span>"; }
   }
   renderBreakLog();
 }
@@ -2378,24 +2401,24 @@ function renderEmpStatus() {
   var html = "";
   for (var i = 0; i < empStatuses.length; i++) {
     var s = empStatuses[i];
-    var dotClass = "dot-white", label = "لسه مسجلش حضور · Not signed in", timerHtml = "";
+    var dotClass = "dot-white", textClass = "", label = "لسه مسجلش حضور · Not signed in", timerHtml = "";
     if (s.status === "signed_in") {
-      dotClass = "dot-green";
+      dotClass = "dot-green"; textClass = "text-green";
       label = "حاضر من " + s.sign_in_time + " · Signed in";
       timerHtml = "<span class='emp-status-timer' data-kind='live' data-since='" + s.since + "'>00:00:00</span>";
     } else if (s.status === "break") {
-      dotClass = "dot-yellow";
+      dotClass = "dot-yellow"; textClass = "text-yellow";
       label = "في استراحة من " + s.break_start_time + " · On break";
       timerHtml = "<span class='emp-status-timer' data-kind='live' data-since='" + s.since + "'>00:00:00</span>";
     } else if (s.status === "signed_out") {
-      dotClass = "dot-red";
+      dotClass = "dot-red"; textClass = "text-red";
       label = "انصرف الساعة " + s.sign_out_time + " · Signed out";
       timerHtml = "<span class='emp-status-timer'>" + formatDuration(s.worked_seconds || 0) + "</span>";
     }
     html += "<div class='emp-status-row'>" +
       "<span class='emp-status-dot " + dotClass + "'></span>" +
       "<span class='emp-status-name'>#" + s.emp_code + " " + s.name + "</span>" +
-      "<span class='emp-status-detail'>" + label + "</span>" +
+      "<span class='emp-status-detail " + textClass + "'>" + label + "</span>" +
       timerHtml + "</div>";
   }
   el.innerHTML = html;
@@ -2982,7 +3005,7 @@ function renderSignLog() {
     var crossDay = e.date && e.date !== isoToday;
     var note = e.worked ? "worked: "+e.worked : "";
     if (crossDay) note = (note ? note + " · " : "") + "من يوم " + e.date;
-    html += "<div class='log-entry'><div class='log-type " + (e.action==="sign_in"?"in":"") + "'>" + (e.action==="sign_in"?"SIGN IN":"SIGN OUT") + "</div><div class='log-time'>" + e.time + "</div><div class='log-note'>" + note + "</div></div>";
+    html += "<div class='log-entry'><div class='log-type " + (e.action==="sign_in"?"in":"out") + "'>" + (e.action==="sign_in"?"SIGN IN":"SIGN OUT") + "</div><div class='log-time'>" + e.time + "</div><div class='log-note'>" + note + "</div></div>";
   }
   el.innerHTML = html;
 }
@@ -3067,13 +3090,13 @@ function renderBreakLog() {
   for (var i = 0; i < todayBreaks.length; i++) {
     var b = todayBreaks[i];
     if (!b.end_time) {
-      html += "<div class='log-entry'><div class='log-type'>BREAK " + (i+1) + "</div><div class='log-time'>" + b.start_time + "</div><div class='log-note'>ONGOING · جارية الآن</div></div>";
+      html += "<div class='log-entry'><div class='log-type onbreak'>BREAK " + (i+1) + "</div><div class='log-time'>" + b.start_time + "</div><div class='log-note'>ONGOING · جارية الآن</div></div>";
       continue;
     }
     total += b.duration;
     var over = b.duration > 1800;
-    var style = over ? " style='color:#ff4444'" : "";
-    html += "<div class='log-entry'><div class='log-type'>BREAK " + (i+1) + "</div><div class='log-time'" + style + ">" + b.start_time + "</div><div class='log-note'" + style + ">" + b.end_time + " - " + formatDuration(b.duration) + (over ? " (اكثر من 30 دقيقة)" : "") + "</div></div>";
+    var style = over ? " style='color:var(--danger)'" : "";
+    html += "<div class='log-entry'><div class='log-type onbreak'" + (over?" style='border-color:var(--danger);color:var(--danger)'":"") + ">BREAK " + (i+1) + "</div><div class='log-time'" + style + ">" + b.start_time + "</div><div class='log-note'" + style + ">" + b.end_time + " - " + formatDuration(b.duration) + (over ? " (اكثر من 30 دقيقة)" : "") + "</div></div>";
   }
   document.getElementById("totalBreak").textContent = "Total: " + formatDuration(total);
   el.innerHTML = html;
