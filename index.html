@@ -115,6 +115,16 @@ select option{background:#111;}
 .proj-row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 .proj-row-actions .toggle-row{padding:6px 10px;margin-top:0;border:none;}
 .fl-hint{font-family:'Cairo',sans-serif;font-size:12px;color:var(--muted2);margin-top:6px;line-height:1.5;}
+.task-seg-list{display:flex;flex-direction:column;gap:3px;}
+.task-seg-row{font-size:12.5px;color:var(--muted2);display:flex;align-items:center;gap:7px;line-height:1.4;}
+.task-seg-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.task-seg-dot.dot-green{background:#44ff88;}
+.task-seg-dot.dot-yellow{background:#ffd54a;}
+.task-seg-dot.dot-red{background:#ff4444;}
+.task-seg-date{opacity:0.6;}
+#content-admin .task-form,
+#content-admin .log-wrap{margin-top:6px;margin-bottom:38px;}
+#content-admin .task-form:first-of-type{margin-top:0;}
 .emp-status-dot.dot-white{background:#fff;}
 .emp-status-dot.dot-green{background:#44ff88;box-shadow:0 0 6px #44ff88;}
 .emp-status-dot.dot-yellow{background:#ffd54a;box-shadow:0 0 6px #ffd54a;}
@@ -2341,20 +2351,25 @@ function renderDailyTasks(tasks) {
   var el = document.getElementById("dailyTasksResult");
   if (!el) return;
   if (!tasks.length) { el.innerHTML = "<div class='log-wrap' style='margin-top:14px'><div class='empty-log'>مفيش تاسكات في اليوم ده</div></div>"; return; }
-  var html = "<div class='log-wrap' style='margin-top:14px'>";
+  var html = "";
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
-    var fullProject = t.p_code
-      ? (t.p_code + " - " + t.p_name + " — " + t.category + " / " + t.type + (t.sub_code ? " " + t.sub_code : "") + (t.simple_label ? " (" + t.simple_label + ")" : ""))
-      : "(مشروع محذوف)";
-    html += "<div class='log-entry'><div class='log-type'>#" + t.emp_code + " " + t.employee_name + "</div>" +
-      "<div class='log-time'>" + fullProject + "</div>" +
-      "<div class='log-note'>" + t.name + (t.description ? " — " + t.description : "") + "<br/>" +
-      "Started: " + t.start_time + (t.end_time ? " - Ended: " + t.end_time : " (جارية الآن)") +
-      (t.duration ? " — Duration: " + formatDuration(t.duration) : "") + "</div></div>";
+    var projCodeName = t.p_code ? (t.p_code + " - " + t.p_name) : "(مشروع محذوف)";
+    var projType = t.p_code ? (t.category + " / " + t.type + (t.sub_code ? " " + t.sub_code : "") + (t.simple_label ? " (" + t.simple_label + ")" : "")) : "";
+    html += "<div class='proj-row'>";
+    html += "<div class='proj-row-top'>";
+    html += "<div class='proj-id'>#" + t.emp_code + " " + t.employee_name + "</div>";
+    html += "<div class='proj-badges'><span class='proj-badge'>" + projCodeName + "</span>" + (projType ? "<span class='proj-badge'>" + projType + "</span>" : "") + "</div>";
+    html += "</div>";
+    html += "<div class='fl-hint' style='margin-top:8px'>" + t.name + (t.description ? " — " + t.description : "") + "</div>";
+    if (t.segments && t.segments.length) {
+      html += "<div class='task-seg-list' style='margin-top:8px'>" + taskSegmentsTimeline(t) + "</div>";
+    } else {
+      html += "<div class='fl-hint'>Started: " + t.start_time + (t.end_time ? " - Ended: " + t.end_time : " (جارية الآن)") + (t.duration ? " — Duration: " + formatDuration(t.duration) : "") + "</div>";
+    }
+    html += "</div>";
   }
-  html += "</div>";
-  el.innerHTML = html;
+  el.innerHTML = "<div class='log-wrap' style='margin-top:14px;padding:4px 4px'>" + html + "</div>";
 }
 
 function renderEmpStatus() {
@@ -3293,16 +3308,21 @@ function pausedAccumulatedSeconds(task) {
 
 function taskSegmentsTimeline(task) {
   var segs = task.segments || [];
-  if (!segs.length) return "Started: " + task.start_time + (task.end_time ? " - Ended: " + task.end_time : " (" + task.date + ")");
-  var parts = [];
+  if (!segs.length) {
+    return "<div class='task-seg-row'><span class='task-seg-dot dot-green'></span>Started: " + task.start_time + (task.end_time ? " - Ended: " + task.end_time : " (" + task.date + ")") + "</div>";
+  }
+  var html = "";
   for (var i = 0; i < segs.length; i++) {
     var s = segs[i];
-    var label = i === 0 ? "بدأ" : "استكمل";
-    var line = label + " " + s.start_display + " (" + s.date + ")";
-    if (s.ended_at) line += (task.end_time && i === segs.length - 1 ? " → انتهى " : " → توقف ") + s.end_display;
-    parts.push(line);
+    var startLabel = i === 0 ? "بدأ" : "استكمل";
+    html += "<div class='task-seg-row'><span class='task-seg-dot dot-green'></span>" + startLabel + " " + s.start_display + " <span class='task-seg-date'>(" + s.date + ")</span></div>";
+    if (s.ended_at) {
+      var isFinal = task.end_time && i === segs.length - 1;
+      var endLabel = isFinal ? "انتهى" : "توقف";
+      html += "<div class='task-seg-row'><span class='task-seg-dot " + (isFinal ? "dot-red" : "dot-yellow") + "'></span>" + endLabel + " " + s.end_display + "</div>";
+    }
   }
-  return parts.join(" · ");
+  return html;
 }
 
 function taskCardHtml(t, index) {
@@ -3315,7 +3335,7 @@ function taskCardHtml(t, index) {
   html += "<div class='task-project'>" + t.project + "</div>";
   html += "<div class='task-name'>" + t.name + "</div>";
   if (t.description) html += "<div class='task-desc'>" + t.description + "</div>";
-  html += "<div class='task-meta'>" + taskSegmentsTimeline(t) + "</div>";
+  html += "<div class='task-meta task-seg-list'>" + taskSegmentsTimeline(t) + "</div>";
   if (t.duration) html += "<div class='task-dur'>Duration: " + formatDuration(t.duration) + "</div>";
 
   if (isActive) {
