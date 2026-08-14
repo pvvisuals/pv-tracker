@@ -755,6 +755,10 @@ textarea{resize:vertical;min-height:76px;}
 
 <div class="task-form">
 <div class="settings-label">إدارة الإجازات الرسمية</div>
+<div class="fg">
+<div class="fl">Filter Month <span class="fla">فلتر الشهر</span></div>
+<input type="month" id="holidayFilterMonth" onchange="refreshHolidaysOnly()"/>
+</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Date <span class="fla">التاريخ</span></div>
@@ -1891,7 +1895,6 @@ async function loadAdminData() {
     }
 
     var jobs = [
-      apiRequest("/api/admin/official-holidays", "GET"),
       apiRequest("/api/admin/employees", "GET"),
       apiRequest("/api/projects", "GET"),
       apiRequest("/api/admin/employees/status", "GET"),
@@ -1899,14 +1902,13 @@ async function loadAdminData() {
       apiRequest("/api/admin/birthdays", "GET"),
     ];
     var results = await Promise.all(jobs);
-    adminHolidaysMonth = results[0].holidays || [];
-    adminEmployees = results[1].employees || [];
-    allProjects = results[2].projects || [];
-    empStatuses = results[3].statuses || [];
-    adminProjectsFull = results[4].projects || [];
-    adminBirthdays = results[5].birthdays || [];
+    adminEmployees = results[0].employees || [];
+    allProjects = results[1].projects || [];
+    empStatuses = results[2].statuses || [];
+    adminProjectsFull = results[3].projects || [];
+    adminBirthdays = results[4].birthdays || [];
 
-    renderAdminHolidays();
+    await refreshHolidaysOnly();
     renderAdminProjects();
     renderEmpStatus();
     renderAdminBirthdays();
@@ -2118,7 +2120,13 @@ async function refreshRequestKind(kind) {
 
 // Re-fetches only official holidays (1 call) instead of everything.
 async function refreshHolidaysOnly() {
-  var hol = await apiRequest("/api/admin/official-holidays", "GET");
+  var monthInput = document.getElementById("holidayFilterMonth");
+  if (monthInput && !monthInput.value) {
+    var d = new Date();
+    monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+  var qs = monthInput && monthInput.value ? ("?month=" + monthInput.value) : "";
+  var hol = await apiRequest("/api/admin/official-holidays" + qs, "GET");
   adminHolidaysMonth = hol.holidays || [];
   renderAdminHolidays();
 }
@@ -3017,7 +3025,6 @@ function renderAdminReport(res) {
     html += logRow("Extra Hours — Not Counted <span class='fla' style='color:var(--warn)'>زيادة مش محسوبة (مفيش أوفرتايم مفعّل)</span>", "<span style='color:var(--warn)'>" + t.uncounted_overtime_hours + " h</span>");
   }
   html += logRow("Official Holiday (worked ×2) <span class='fla'>إجازة رسمية اشتغل فيها</span>", "<span style='color:var(--ok)'>" + t.holiday_bonus_hours + " h</span>");
-  html += logRow("Official Holiday (auto 8h) <span class='fla'>إجازة رسمية تلقائي</span>", t.holiday_off_hours + " h");
   html += logRow("Weekend Worked ×2 <span class='fla'>جمعة/سبت اشتغل فيهم</span>", "<span style='color:var(--ok)'>" + t.weekend_bonus_hours + " h</span>");
   html += logRow("Financial Requests → Hours <span class='fla'>مستحقات مالية</span>", x.financial_total_egp + " EGP → <span style='color:var(--ok)'>" + x.financial_hours + " h</span>");
   html += logRow("Off-clock Hours <span class='fla'>ساعات خارج البصمة</span>", "<span style='color:var(--ok)'>" + x.offclock_hours + " h</span>");
@@ -3038,7 +3045,6 @@ function renderAdminReport(res) {
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>DAY BY DAY · تفاصيل يومية</span></div>";
   for (var i = 0; i < res.days.length; i++) {
     var d = res.days[i];
-    var lines = [];
     var statusLabel = "", statusColor = "var(--muted)";
 
     if (d.status === "weekend") { statusLabel = "إجازة أسبوعية · Weekly Off"; statusColor = "var(--muted)"; }
@@ -3050,27 +3056,32 @@ function renderAdminReport(res) {
     else if (d.status === "official_holiday_worked") { statusLabel = "اشتغل في إجازة رسمية ×2 (" + (d.holiday_label||"") + ") · Worked on Holiday"; statusColor = "var(--ok)"; }
     else if (d.status === "worked") { statusLabel = "يوم عمل · Worked Day"; statusColor = "var(--text)"; }
 
-    lines.push("<span style='color:" + statusColor + ";font-weight:700'>" + statusLabel + "</span>");
-
-    if (d.sign_in_time) lines.push("حضر / In: " + d.sign_in_time + (d.sign_out_time ? " — مشى / Out: " + d.sign_out_time : " — لسه مسجلش انصراف / not signed out yet"));
+    var badges = [];
+    if (d.sign_in_time) badges.push("<span class='proj-badge'>In: " + d.sign_in_time + (d.sign_out_time ? " — Out: " + d.sign_out_time : " — لسه مسجلش انصراف") + "</span>");
 
     if (d.actual_seconds != null && (d.status === "worked" || d.status === "weekend_worked" || d.status === "official_holiday_worked")) {
-      lines.push("فعلي / Actual: " + formatDuration(d.actual_seconds) + " → محسوب / Counted: " + formatDuration(d.counted_seconds));
+      badges.push("<span class='proj-badge'>Actual: " + formatDuration(d.actual_seconds) + " → Counted: " + formatDuration(d.counted_seconds) + "</span>");
     }
 
     if (d.status === "worked") {
       if (d.overtime_approved && d.overtime_seconds > 0) {
-        lines.push("<span style='color:var(--ok)'>أوفرتايم محسوب / Overtime counted: " + formatDuration(d.overtime_seconds) + "</span>");
+        badges.push("<span class='proj-badge' style='color:var(--ok);border-color:var(--ok)'>Overtime ✓ محسوب: " + formatDuration(d.overtime_seconds) + "</span>");
       } else if (d.uncounted_overtime_seconds > 0) {
-        lines.push("<span style='color:var(--warn)'>زيادة مش محسوبة (مفيش أوفرتايم) / Extra not counted: " + formatDuration(d.uncounted_overtime_seconds) + "</span>");
+        badges.push("<span class='proj-badge' style='color:var(--warn);border-color:var(--warn)'>Overtime ✗ مش محسوب: " + formatDuration(d.uncounted_overtime_seconds) + "</span>");
       }
     }
 
     if (d.break_seconds != null && d.break_seconds > 0) {
-      lines.push("<span style='color:" + breakColorFor(d.break_seconds) + "'>استراحة (للاطلاع فقط) / Break (info only): " + formatDuration(d.break_seconds) + "</span>");
+      var bc = breakColorFor(d.break_seconds);
+      badges.push("<span class='proj-badge' style='color:" + bc + ";border-color:" + bc + "'>Break (للاطلاع فقط): " + formatDuration(d.break_seconds) + "</span>");
     }
 
-    html += "<div class='log-entry'><div class='log-type'>" + d.date.slice(-2) + "</div><div class='log-note'>" + lines.join("<br/>") + "</div></div>";
+    html += "<div class='proj-row'>";
+    html += "<div class='proj-row-top'>";
+    html += "<div class='proj-id'>" + d.date + " <span style='color:" + statusColor + "'>— " + statusLabel + "</span></div>";
+    html += "</div>";
+    if (badges.length) html += "<div class='proj-badges' style='margin-top:8px'>" + badges.join("") + "</div>";
+    html += "</div>";
   }
   html += "</div>";
 
