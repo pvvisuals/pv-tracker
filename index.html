@@ -679,6 +679,11 @@ textarea{resize:vertical;min-height:76px;}
 <div id="empStatusList"><div class="empty-log">Loading...</div></div>
 </div>
 
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header"><span>BIRTHDAYS · أعياد الميلاد</span></div>
+<div id="adminBirthdaysList"><div class="empty-log">Loading...</div></div>
+</div>
+
 <div class="task-form">
 <div class="settings-label">Daily Tasks Browser <span class="fla">مين شغال في إيه</span></div>
 <div class="sec-sub" style="margin-bottom:12px">هنا التصنيف الكامل (Category/Type) ظاهر زي ما دخّلته بالظبط</div>
@@ -1096,6 +1101,16 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="birthdayModalOverlay">
+<div class="modal" style="text-align:center;border-color:var(--warn);">
+<div style="font-size:52px;margin-bottom:10px;">🎂</div>
+<h3 style="color:var(--warn)">HAPPY BIRTHDAY!</h3>
+<p id="birthdayModalText"></p>
+<div class="modal-actions" style="justify-content:center">
+<button class="btn-mo" onclick="closeBirthdayModal()">شكراً · Thank You</button>
+</div>
+</div>
+</div>
 <button id="scrollTopBtn" onclick="scrollToTop()" title="Back to top">↑</button>
 <div class="loading-overlay" id="loadingOverlay">
 <div class="loading-spinner">LOADING...</div>
@@ -1117,6 +1132,7 @@ var clockInterval = null;
 var taskTimerInterval = null;
 var allProjects = [];
 var adminProjectsFull = [];
+var adminBirthdays = [];
 var modalCallback = null;
 var toastTimer = null;
 var recoverUser = null;
@@ -1285,8 +1301,28 @@ async function confirmSignIn(t) {
     pill.innerHTML = "<div class='status-dot pulse'></div><span>SIGNED IN</span>";
     renderSignLog();
     showToast("v", "Welcome " + fn + "!");
+    if (isTodayBirthdayLocal()) showBirthdayMessage(fn);
   } catch(e) { showToast("!", "Error: " + e.message); }
   showLoading(false);
+}
+
+function isTodayBirthdayLocal() {
+  if (!user.birth_date) return false;
+  var parts = user.birth_date.split("-");
+  if (parts.length !== 3) return false;
+  var iso = cairoISODate(); // YYYY-MM-DD
+  var todayParts = iso.split("-");
+  return parts[1] === todayParts[1] && parts[2] === todayParts[2];
+}
+
+function showBirthdayMessage(firstName) {
+  document.getElementById("birthdayModalText").innerHTML =
+    "🎉 Happy Birthday " + firstName + "! كل سنة وانت طيب يا " + firstName + "!<br/><br/>" +
+    "فريق PV Visual Studio بيتمنالك سنة سعيدة ومليئة بالإنجازات 🎂";
+  document.getElementById("birthdayModalOverlay").classList.add("active");
+}
+function closeBirthdayModal() {
+  document.getElementById("birthdayModalOverlay").classList.remove("active");
 }
 
 async function confirmSignOut(t) {
@@ -1860,6 +1896,7 @@ async function loadAdminData() {
       apiRequest("/api/projects", "GET"),
       apiRequest("/api/admin/employees/status", "GET"),
       apiRequest("/api/admin/projects", "GET"),
+      apiRequest("/api/admin/birthdays", "GET"),
     ];
     var results = await Promise.all(jobs);
     adminHolidaysMonth = results[0].holidays || [];
@@ -1867,10 +1904,12 @@ async function loadAdminData() {
     allProjects = results[2].projects || [];
     empStatuses = results[3].statuses || [];
     adminProjectsFull = results[4].projects || [];
+    adminBirthdays = results[5].birthdays || [];
 
     renderAdminHolidays();
     renderAdminProjects();
     renderEmpStatus();
+    renderAdminBirthdays();
     populateTaskProjectSelect();
     populateEmployeeSelects();
     populateDailyTasksEmployeeSelect();
@@ -2439,9 +2478,29 @@ function renderEmpStatus() {
     }
     html += "<div class='emp-status-row'>" +
       "<span class='emp-status-dot " + dotClass + "'></span>" +
-      "<span class='emp-status-name'>#" + s.emp_code + " " + s.name + "</span>" +
+      "<span class='emp-status-name'>#" + s.emp_code + " " + s.name + (isTodayBirthday(s.id) ? " 🎂" : "") + "</span>" +
       "<span class='emp-status-detail " + textClass + "'>" + label + "</span>" +
       timerHtml + "</div>";
+  }
+  el.innerHTML = html;
+}
+
+function isTodayBirthday(empId) {
+  return adminBirthdays.some(function(b) { return String(b.id) === String(empId) && b.is_today; });
+}
+
+function renderAdminBirthdays() {
+  var el = document.getElementById("adminBirthdaysList");
+  if (!el) return;
+  if (!adminBirthdays.length) { el.innerHTML = "<div class='empty-log'>No birthdays on file</div>"; return; }
+  var html = "";
+  for (var i = 0; i < adminBirthdays.length; i++) {
+    var b = adminBirthdays[i];
+    var isToday = b.is_today;
+    var when = isToday ? "🎂 النهاردة! · Today!" : ("باقي " + b.days_until + " يوم · " + b.days_until + " days left");
+    html += "<div class='log-entry'><div class='log-type'" + (isToday ? " style='border-color:var(--warn);color:var(--warn)'" : "") + ">#" + b.emp_code + "</div>" +
+      "<div class='log-time'>" + b.name + "</div>" +
+      "<div class='log-note'" + (isToday ? " style='color:var(--warn);font-weight:700'" : "") + ">" + when + " — " + b.birth_date + "</div></div>";
   }
   el.innerHTML = html;
 }
@@ -2906,6 +2965,14 @@ function renderProjectsReport(res) {
   el.innerHTML = html;
 }
 
+function breakColorFor(seconds) {
+  var mins = seconds / 60;
+  if (mins > 35) return "var(--danger)";
+  if (mins < 25 && mins > 0) return "var(--ok)";
+  if (mins === 0) return "var(--muted2)";
+  return "var(--warn)";
+}
+
 function renderAdminReport(res) {
   var el = document.getElementById("adminReportResult");
   var t = res.totals;
@@ -2919,64 +2986,91 @@ function renderAdminReport(res) {
   // ---- Employee header ----
   html += "<div class='task-form' style='margin-top:18px'>";
   html += "<div class='settings-label'>" + e.name + " · #" + e.emp_code + "</div>";
-  html += "<div class='sec-sub'>" + (e.title||"") + " — " + (e.dept||"") + " · العمر: " + (e.age!=null?e.age:"-") + " · التقرير عن: " + monthName + " " + res.year + "</div>";
+  html += "<div class='sec-sub'>" + (e.title||"") + " — " + (e.dept||"") + " · العمر / Age: " + (e.age!=null?e.age:"-") + " · " + monthName + " " + res.year + "</div>";
   html += "</div>";
 
-  // ---- Salary summary (the headline) ----
-  var diffColor = s.hours_diff >= 0 ? "#44ff88" : "#ff4444";
+  // ---- Salary summary (bilingual, the headline) ----
+  var diffColor = s.hours_diff >= 0 ? "var(--ok)" : "var(--danger)";
   var diffSign = s.hours_diff >= 0 ? "+" : "";
   html += "<div class='task-form' style='border-color:#fff;'>";
-  html += "<div class='settings-label'>SALARY SUMMARY · ملخص المرتب</div>";
+  html += "<div class='settings-label'>SALARY SUMMARY · ملخص حساب المرتب</div>";
   html += "<div class='info-grid'>";
-  html += infoCard("Base Salary", s.base_salary + " EGP");
-  html += infoCard("Hourly Rate", s.hourly_rate + " EGP");
-  html += infoCard("Required Hours", s.required_hours + " h");
-  html += infoCard("Counted Hours", s.counted_hours + " h");
-  html += infoCard("Hours Diff", "<span style='color:" + diffColor + "'>" + diffSign + s.hours_diff + " h</span>");
-  html += infoCard("Salary Adjustment", "<span style='color:" + diffColor + "'>" + diffSign + s.salary_adjustment + " EGP</span>");
-  html += infoCard("Penalties", "<span style='color:#ff4444'>-" + s.penalties_total_egp + " EGP</span>");
+  html += infoCard("Base Salary <span class='fla'>المرتب الأساسي</span>", s.base_salary + " EGP");
+  html += infoCard("Hourly Rate <span class='fla'>قيمة الساعة</span>", s.hourly_rate + " EGP");
+  html += infoCard("Required Hours <span class='fla'>الساعات المطلوبة</span>", s.required_hours + " h");
+  html += infoCard("Counted Hours <span class='fla'>الساعات المحسوبة</span>", s.counted_hours + " h");
+  html += infoCard("Hours Diff <span class='fla'>الفرق</span>", "<span style='color:" + diffColor + "'>" + diffSign + s.hours_diff + " h</span>");
+  html += infoCard("Salary Adjustment <span class='fla'>تعديل المرتب</span>", "<span style='color:" + diffColor + "'>" + diffSign + s.salary_adjustment + " EGP</span>");
+  html += infoCard("Penalties <span class='fla'>الجزاءات</span>", "<span style='color:var(--danger)'>-" + s.penalties_total_egp + " EGP</span>");
   html += "</div>";
   html += "<div style='text-align:center;padding:18px;border:1px solid var(--border);margin-top:4px;'>";
   html += "<div style='font-size:15px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;'>FINAL SALARY · صافي المرتب</div>";
   html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:44px;color:#fff;margin-top:6px;'>" + s.final_salary.toLocaleString() + " EGP</div>";
+  html += "<div class='fl-hint' style='margin-top:8px'>= المرتب الأساسي + تعديل الساعات − الجزاءات · Base + Hours Adjustment − Penalties</div>";
   html += "</div></div>";
 
   // ---- Hours breakdown ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>HOURS BREAKDOWN · تفصيل الساعات</span></div>";
-  html += logRow("Regular Worked", t.actual_hours + " h actual → " + (t.counted_hours - t.overtime_hours - t.holiday_bonus_hours - t.holiday_off_hours - t.weekend_bonus_hours - x.financial_hours - x.offclock_hours - x.permission_bonus_hours).toFixed(2) + " h counted");
-  html += logRow("Overtime · أوفر تايم", t.overtime_hours + " h");
-  html += logRow("Official Holiday (worked ×2) · إجازة رسمية اشتغل فيها", t.holiday_bonus_hours + " h");
-  html += logRow("Official Holiday (auto 8h) · إجازة رسمية تلقائي", t.holiday_off_hours + " h");
-  html += logRow("Weekend Worked ×2 · جمعة/سبت اشتغل فيهم", t.weekend_bonus_hours + " h");
-  html += logRow("Financial Requests → Hours · مستحقات مالية", x.financial_total_egp + " EGP → " + x.financial_hours + " h");
-  html += logRow("Off-clock Hours · ساعات خارج البصمة", x.offclock_hours + " h");
-  html += logRow("Unused Permission → Bonus · إذن انصراف غير مستخدم", x.permission_bonus_hours + " / " + x.permission_monthly_limit + " h");
+  html += logRow("Actual Hours Worked <span class='fla'>الساعات الفعلية</span>", t.actual_hours + " h");
+  html += logRow("Overtime — Counted <span class='fla' style='color:var(--ok)'>محسوب</span>", "<span style='color:var(--ok)'>" + t.overtime_hours + " h</span>");
+  if (t.uncounted_overtime_hours > 0) {
+    html += logRow("Extra Hours — Not Counted <span class='fla' style='color:var(--warn)'>زيادة مش محسوبة (مفيش أوفرتايم مفعّل)</span>", "<span style='color:var(--warn)'>" + t.uncounted_overtime_hours + " h</span>");
+  }
+  html += logRow("Official Holiday (worked ×2) <span class='fla'>إجازة رسمية اشتغل فيها</span>", "<span style='color:var(--ok)'>" + t.holiday_bonus_hours + " h</span>");
+  html += logRow("Official Holiday (auto 8h) <span class='fla'>إجازة رسمية تلقائي</span>", t.holiday_off_hours + " h");
+  html += logRow("Weekend Worked ×2 <span class='fla'>جمعة/سبت اشتغل فيهم</span>", "<span style='color:var(--ok)'>" + t.weekend_bonus_hours + " h</span>");
+  html += logRow("Financial Requests → Hours <span class='fla'>مستحقات مالية</span>", x.financial_total_egp + " EGP → <span style='color:var(--ok)'>" + x.financial_hours + " h</span>");
+  html += logRow("Off-clock Hours <span class='fla'>ساعات خارج البصمة</span>", "<span style='color:var(--ok)'>" + x.offclock_hours + " h</span>");
+  html += logRow("Unused Permission → Bonus <span class='fla'>إذن انصراف غير مستخدم</span>", "<span style='color:var(--ok)'>" + x.permission_bonus_hours + "</span> / " + x.permission_monthly_limit + " h");
+  if (t.absent_hours_deducted > 0) {
+    html += logRow("Absence — Deducted <span class='fla' style='color:var(--danger)'>خصم الغياب</span>", "<span style='color:var(--danger)'>-" + t.absent_hours_deducted + " h</span>");
+  }
   html += "</div>";
 
   // ---- Attendance summary ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>ATTENDANCE SUMMARY · ملخص الحضور</span></div>";
-  html += logRow("Absent Days · أيام غياب", t.absent_days);
-  html += logRow("Casual Leave Taken · عارضة مستخدمة", t.leave_days_casual + " (رصيد متبقي: " + res.leave_balance.casual + "/6)");
-  html += logRow("Annual Leave Taken · اعتيادية مستخدمة", t.leave_days_annual + " (رصيد متبقي: " + res.leave_balance.annual + "/15)");
+  html += logRow("Absent Days <span class='fla'>أيام غياب بدون إجازة</span>", "<span style='color:" + (t.absent_days>0?"var(--danger)":"var(--text)") + "'>" + t.absent_days + "</span>");
+  html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " (رصيد متبقي / left: " + res.leave_balance.casual + "/6)");
+  html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " (رصيد متبقي / left: " + res.leave_balance.annual + "/15)");
   html += "</div>";
 
-  // ---- Day by day ----
+  // ---- Day by day (fully detailed) ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>DAY BY DAY · تفاصيل يومية</span></div>";
   for (var i = 0; i < res.days.length; i++) {
     var d = res.days[i];
-    var note = "";
-    if (d.status === "weekend") note = "اجازة اسبوعية";
-    else if (d.status === "weekend_worked") note = "اشتغل في يوم إجازة أسبوعية — " + formatDuration(d.actual_seconds) + " ×2 = " + formatDuration(d.counted_seconds);
-    else if (d.status === "leave") note = "اجازة " + (d.leave_type === "casual" ? "عارضة" : "اعتيادية") + " - 8h";
-    else if (d.status === "absent") note = "غياب";
-    else if (d.status === "today_pending") note = "لسه النهارده";
-    else if (d.status === "official_holiday_off") note = "اجازة رسمية (" + (d.holiday_label||"") + ") - 8h تلقائي";
-    else if (d.status === "official_holiday_worked") note = "اشتغل في اجازة رسمية (" + (d.holiday_label||"") + ") - " + formatDuration(d.actual_seconds) + " ×2 = " + formatDuration(d.counted_seconds);
-    else if (d.status === "worked") {
-      note = "counted: " + formatDuration(d.counted_seconds) + " / actual: " + formatDuration(d.actual_seconds);
-      if (d.overtime_approved) note += " (OT approved)";
+    var lines = [];
+    var statusLabel = "", statusColor = "var(--muted)";
+
+    if (d.status === "weekend") { statusLabel = "إجازة أسبوعية · Weekly Off"; statusColor = "var(--muted)"; }
+    else if (d.status === "weekend_worked") { statusLabel = "اشتغل في إجازة أسبوعية ×2 · Worked on Weekly Off"; statusColor = "var(--ok)"; }
+    else if (d.status === "leave") { statusLabel = "إجازة " + (d.leave_type === "casual" ? "عارضة" : "اعتيادية") + " · Leave"; statusColor = "var(--warn)"; }
+    else if (d.status === "absent") { statusLabel = "غياب · Absent"; statusColor = "var(--danger)"; }
+    else if (d.status === "today_pending") { statusLabel = "لسه النهارده · Today (in progress)"; statusColor = "var(--muted)"; }
+    else if (d.status === "official_holiday_off") { statusLabel = "إجازة رسمية (" + (d.holiday_label||"") + ") · Holiday"; statusColor = "var(--warn)"; }
+    else if (d.status === "official_holiday_worked") { statusLabel = "اشتغل في إجازة رسمية ×2 (" + (d.holiday_label||"") + ") · Worked on Holiday"; statusColor = "var(--ok)"; }
+    else if (d.status === "worked") { statusLabel = "يوم عمل · Worked Day"; statusColor = "var(--text)"; }
+
+    lines.push("<span style='color:" + statusColor + ";font-weight:700'>" + statusLabel + "</span>");
+
+    if (d.sign_in_time) lines.push("حضر / In: " + d.sign_in_time + (d.sign_out_time ? " — مشى / Out: " + d.sign_out_time : " — لسه مسجلش انصراف / not signed out yet"));
+
+    if (d.actual_seconds != null && (d.status === "worked" || d.status === "weekend_worked" || d.status === "official_holiday_worked")) {
+      lines.push("فعلي / Actual: " + formatDuration(d.actual_seconds) + " → محسوب / Counted: " + formatDuration(d.counted_seconds));
     }
-    html += "<div class='log-entry'><div class='log-type'>" + d.date.slice(-2) + "</div><div class='log-note'>" + note + "</div></div>";
+
+    if (d.status === "worked") {
+      if (d.overtime_approved && d.overtime_seconds > 0) {
+        lines.push("<span style='color:var(--ok)'>أوفرتايم محسوب / Overtime counted: " + formatDuration(d.overtime_seconds) + "</span>");
+      } else if (d.uncounted_overtime_seconds > 0) {
+        lines.push("<span style='color:var(--warn)'>زيادة مش محسوبة (مفيش أوفرتايم) / Extra not counted: " + formatDuration(d.uncounted_overtime_seconds) + "</span>");
+      }
+    }
+
+    if (d.break_seconds != null && d.break_seconds > 0) {
+      lines.push("<span style='color:" + breakColorFor(d.break_seconds) + "'>استراحة (للاطلاع فقط) / Break (info only): " + formatDuration(d.break_seconds) + "</span>");
+    }
+
+    html += "<div class='log-entry'><div class='log-type'>" + d.date.slice(-2) + "</div><div class='log-note'>" + lines.join("<br/>") + "</div></div>";
   }
   html += "</div>";
 
