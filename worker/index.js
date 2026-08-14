@@ -149,6 +149,26 @@ function calcAge(birthDateStr) {
   return age;
 }
 
+function isBirthdayToday(birthDateStr) {
+  if (!birthDateStr) return false;
+  const today = cairoParts(new Date());
+  const [, bm, bd] = birthDateStr.split("-").map(Number);
+  return Number(today.m) === bm && Number(today.d) === bd;
+}
+
+function daysUntilBirthday(birthDateStr) {
+  if (!birthDateStr) return null;
+  const today = cairoParts(new Date());
+  const [, bm, bd] = birthDateStr.split("-").map(Number);
+  const todayYmd = `${today.y}-${String(today.m).padStart(2,"0")}-${String(today.d).padStart(2,"0")}`;
+  let nextYear = Number(today.y);
+  let candidate = `${nextYear}-${String(bm).padStart(2,"0")}-${String(bd).padStart(2,"0")}`;
+  if (candidate < todayYmd) { nextYear += 1; candidate = `${nextYear}-${String(bm).padStart(2,"0")}-${String(bd).padStart(2,"0")}`; }
+  const todayMs = new Date(todayYmd + "T12:00:00Z").getTime();
+  const candMs = new Date(candidate + "T12:00:00Z").getTime();
+  return Math.round((candMs - todayMs) / 86400000);
+}
+
 function hourlyRate(emp) {
   const salary = Number(emp.monthly_salary) || 0;
   const days = Number(emp.work_days_per_month) || 0;
@@ -187,6 +207,7 @@ function publicEmployee(e) {
     casual_balance: e.casual_balance, annual_balance: e.annual_balance,
     birth_date: e.birth_date || null, age: calcAge(e.birth_date),
     is_probation: !!e.is_probation,
+    is_birthday_today: isBirthdayToday(e.birth_date),
   };
 }
 
@@ -904,7 +925,7 @@ async function monthlyReport(db, employeeId, monthStr) {
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
   const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
 
-  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows] = await Promise.all([
+  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows] = await Promise.all([
     db.execute({
       sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC",
       args: [employeeId, firstDay, addDaysToDateStr(lastDay, 1)],
@@ -948,6 +969,10 @@ async function monthlyReport(db, employeeId, monthStr) {
             GROUP BY p.code, p.name, p.category, p.type, p.sub_code ORDER BY total_seconds DESC`,
       args: [employeeId, firstDay, lastDay],
     }),
+    db.execute({
+      sql: "SELECT * FROM breaks WHERE employee_id = ? AND date BETWEEN ? AND ?",
+      args: [employeeId, firstDay, lastDay],
+    }),
   ]);
 
   const leaveByDate = {};
@@ -955,6 +980,10 @@ async function monthlyReport(db, employeeId, monthStr) {
   const otDates = new Set(otRows.rows.map((r) => r.date));
   const holidayByDate = {};
   for (const r of holidayRows.rows) holidayByDate[r.date] = r;
+  const breakSecondsByDate = {};
+  for (const b of breakRows.rows) {
+    if (b.duration) breakSecondsByDate[b.date] = (breakSecondsByDate[b.date] || 0) + Number(b.duration);
+  }
 
   const todayStr = cairoDateStr();
   const days = [];
@@ -975,12 +1004,15 @@ async function monthlyReport(db, employeeId, monthStr) {
   // date they happened to sign out.
   const sessionsByDate = {};   // sign-in date -> total actual seconds worked that day
   const daysWithSignIn = new Set();
+  const timesByDate = {};      // sign-in date -> { in_time, out_time } (first sign-in / last sign-out shown that day)
   {
     let pendingIn = null;
     for (const e of attRows.rows) {
       if (e.action === "sign_in") {
         pendingIn = e;
         daysWithSignIn.add(e.date);
+        if (!timesByDate[e.date]) timesByDate[e.date] = {};
+        if (!timesByDate[e.date].in_time) timesByDate[e.date].in_time = e.time;
       } else if (e.action === "sign_out" && pendingIn) {
         const inMs = new Date(pendingIn.created_at + "Z").getTime();
         const outMs = new Date(e.created_at + "Z").getTime();
@@ -988,26 +1020,43 @@ async function monthlyReport(db, employeeId, monthStr) {
           const secs = Math.floor((outMs - inMs) / 1000);
           sessionsByDate[pendingIn.date] = (sessionsByDate[pendingIn.date] || 0) + secs;
         }
+        if (!timesByDate[pendingIn.date]) timesByDate[pendingIn.date] = {};
+        timesByDate[pendingIn.date].out_time = e.time;
         pendingIn = null;
       }
     }
   }
 
+  let totalUncountedOvertimeSeconds = 0; // worked past required, but no overtime-enabled project that day
+
   for (let d = 1; d <= lastDayNum; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     if (dateStr > todayStr) break; // don't project future days
+
+    // Every elapsed calendar day counts toward the required baseline now —
+    // weekly off days, official holidays, and approved leave included —
+    // because each of those already grants the employee a normal 8h credit
+    // below, so a "clean" month naturally balances to zero difference.
+    requiredSeconds += daySeconds;
+
+    const breakSecs = breakSecondsByDate[dateStr] || 0;
+    const times = timesByDate[dateStr] || {};
+
     if (isWeekendStr(dateStr)) {
-      // Weekly off day — not required. But if the employee actually worked
-      // that day anyway, pay it double, same treatment as an official holiday.
+      // Weekly off day — normally just gets the same 8h "as if attended"
+      // credit as any other excused day. If the employee actually worked
+      // anyway, pay it double instead, same treatment as a holiday.
       const actualSeconds = sessionsByDate[dateStr] || 0;
       if (actualSeconds > 0) {
         const countedSeconds = actualSeconds * 2;
         totalActualSeconds += actualSeconds;
         totalCountedSeconds += countedSeconds;
         totalWeekendBonusSeconds += actualSeconds;
-        days.push({ date: dateStr, status: "weekend_worked", actual_seconds: actualSeconds, counted_seconds: countedSeconds });
+        days.push({ date: dateStr, status: "weekend_worked", actual_seconds: actualSeconds, counted_seconds: countedSeconds,
+          sign_in_time: times.in_time || null, sign_out_time: times.out_time || null, break_seconds: breakSecs });
       } else {
-        days.push({ date: dateStr, status: "weekend" });
+        totalCountedSeconds += daySeconds;
+        days.push({ date: dateStr, status: "weekend", counted_seconds: daySeconds, break_seconds: breakSecs });
       }
       continue;
     }
@@ -1023,11 +1072,12 @@ async function monthlyReport(db, employeeId, monthStr) {
         days.push({
           date: dateStr, status: "official_holiday_worked", holiday_label: holiday.label,
           actual_seconds: actualSeconds, counted_seconds: countedSeconds,
+          sign_in_time: times.in_time || null, sign_out_time: times.out_time || null, break_seconds: breakSecs,
         });
       } else {
         totalCountedSeconds += daySeconds;
         totalHolidayOffSeconds += daySeconds;
-        days.push({ date: dateStr, status: "official_holiday_off", holiday_label: holiday.label, counted_seconds: daySeconds });
+        days.push({ date: dateStr, status: "official_holiday_off", holiday_label: holiday.label, counted_seconds: daySeconds, break_seconds: breakSecs });
       }
       continue;
     }
@@ -1036,38 +1086,38 @@ async function monthlyReport(db, employeeId, monthStr) {
     if (leave) {
       totalCountedSeconds += daySeconds;
       if (leave.type === "casual") leaveDaysCasual++; else leaveDaysAnnual++;
-      days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds });
+      days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds, break_seconds: breakSecs });
       continue;
     }
 
-    // A regular required work day (not weekend/holiday/leave) — counts toward
-    // the "required hours so far this month" baseline regardless of outcome.
-    requiredSeconds += daySeconds;
-
     if (!daysWithSignIn.has(dateStr)) {
       if (dateStr < todayStr) absentDays++;
-      days.push({ date: dateStr, status: dateStr < todayStr ? "absent" : "today_pending", actual_seconds: 0, counted_seconds: 0 });
+      days.push({ date: dateStr, status: dateStr < todayStr ? "absent" : "today_pending", actual_seconds: 0, counted_seconds: 0, break_seconds: breakSecs });
       continue;
     }
 
     const actualSeconds = sessionsByDate[dateStr] || 0;
     const overtimeApproved = otDates.has(dateStr);
-    let countedSeconds, overtimeSeconds = 0;
+    let countedSeconds, overtimeSeconds = 0, uncountedOvertimeSeconds = 0;
     if (overtimeApproved) {
       countedSeconds = actualSeconds;
       overtimeSeconds = Math.max(0, actualSeconds - daySeconds);
     } else {
       countedSeconds = Math.min(actualSeconds, daySeconds);
+      uncountedOvertimeSeconds = Math.max(0, actualSeconds - daySeconds);
     }
 
     totalActualSeconds += actualSeconds;
     totalCountedSeconds += countedSeconds;
     totalOvertimeSeconds += overtimeSeconds;
+    totalUncountedOvertimeSeconds += uncountedOvertimeSeconds;
 
     days.push({
       date: dateStr, status: "worked",
       actual_seconds: actualSeconds, counted_seconds: countedSeconds,
       overtime_seconds: overtimeSeconds, overtime_approved: overtimeApproved,
+      uncounted_overtime_seconds: uncountedOvertimeSeconds,
+      sign_in_time: times.in_time || null, sign_out_time: times.out_time || null, break_seconds: breakSecs,
     });
   }
 
@@ -1104,7 +1154,9 @@ async function monthlyReport(db, employeeId, monthStr) {
       actual_hours: +(totalActualSeconds / 3600).toFixed(2),
       overtime_seconds: totalOvertimeSeconds,
       overtime_hours: +(totalOvertimeSeconds / 3600).toFixed(2),
+      uncounted_overtime_hours: +(totalUncountedOvertimeSeconds / 3600).toFixed(2),
       absent_days: absentDays,
+      absent_hours_deducted: +(absentDays * dayHours).toFixed(2),
       leave_days_casual: leaveDaysCasual,
       leave_days_annual: leaveDaysAnnual,
       holiday_bonus_hours: +(totalHolidayBonusSeconds / 3600).toFixed(2),
@@ -1236,6 +1288,10 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   if (path === "/api/admin/employees/status" && method === "GET") {
     return await adminEmployeesStatus(db);
+  }
+
+  if (path === "/api/admin/birthdays" && method === "GET") {
+    return await adminBirthdays(db);
   }
 
   if (path === "/api/admin/tasks-by-day" && method === "GET") {
@@ -1702,6 +1758,17 @@ async function adminTasksByDay(db, employeeId, dateStr) {
   sql += " ORDER BY e.emp_code ASC, t.created_at ASC";
   const res = await db.execute({ sql, args });
   return json({ date, tasks: await attachSegments(db, res.rows) });
+}
+
+async function adminBirthdays(db) {
+  const res = await db.execute("SELECT id, emp_code, name, birth_date FROM employees WHERE birth_date IS NOT NULL ORDER BY emp_code ASC");
+  const list = res.rows.map((e) => ({
+    id: e.id, emp_code: e.emp_code, name: e.name, birth_date: e.birth_date,
+    is_today: isBirthdayToday(e.birth_date),
+    days_until: daysUntilBirthday(e.birth_date),
+  }));
+  list.sort((a, b) => a.days_until - b.days_until);
+  return json({ birthdays: list });
 }
 
 async function adminEmployeesStatus(db) {
