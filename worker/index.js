@@ -994,6 +994,7 @@ async function monthlyReport(db, employeeId, monthStr) {
   let totalHolidayOffSeconds = 0;    // auto-granted 8h on unworked holidays
   let totalWeekendBonusSeconds = 0;  // extra half from doubling worked-weekend hours
   let requiredSeconds = 0;           // baseline hours the employee was expected to work this month so far
+  let totalUncountedOvertimeSeconds = 0; // worked past required, but no overtime-enabled project that day
   let absentDays = 0;
   let leaveDaysCasual = 0;
   let leaveDaysAnnual = 0;
@@ -1027,25 +1028,16 @@ async function monthlyReport(db, employeeId, monthStr) {
     }
   }
 
-  let totalUncountedOvertimeSeconds = 0; // worked past required, but no overtime-enabled project that day
-
   for (let d = 1; d <= lastDayNum; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     if (dateStr > todayStr) break; // don't project future days
-
-    // Every elapsed calendar day counts toward the required baseline now —
-    // weekly off days, official holidays, and approved leave included —
-    // because each of those already grants the employee a normal 8h credit
-    // below, so a "clean" month naturally balances to zero difference.
-    requiredSeconds += daySeconds;
 
     const breakSecs = breakSecondsByDate[dateStr] || 0;
     const times = timesByDate[dateStr] || {};
 
     if (isWeekendStr(dateStr)) {
-      // Weekly off day — normally just gets the same 8h "as if attended"
-      // credit as any other excused day. If the employee actually worked
-      // anyway, pay it double instead, same treatment as a holiday.
+      // Weekly off day — completely neutral: not required, and not counted
+      // either unless the employee actually worked it (then doubled).
       const actualSeconds = sessionsByDate[dateStr] || 0;
       if (actualSeconds > 0) {
         const countedSeconds = actualSeconds * 2;
@@ -1055,14 +1047,15 @@ async function monthlyReport(db, employeeId, monthStr) {
         days.push({ date: dateStr, status: "weekend_worked", actual_seconds: actualSeconds, counted_seconds: countedSeconds,
           sign_in_time: times.in_time || null, sign_out_time: times.out_time || null, break_seconds: breakSecs });
       } else {
-        totalCountedSeconds += daySeconds;
-        days.push({ date: dateStr, status: "weekend", counted_seconds: daySeconds, break_seconds: breakSecs });
+        days.push({ date: dateStr, status: "weekend", counted_seconds: 0, break_seconds: breakSecs });
       }
       continue;
     }
 
     const holiday = holidayByDate[dateStr];
     if (holiday) {
+      // Official holiday — same neutral treatment as a weekly off day: not
+      // required, not counted unless actually worked (then doubled).
       const actualSeconds = sessionsByDate[dateStr] || 0;
       if (actualSeconds > 0) {
         const countedSeconds = actualSeconds * 2;
@@ -1075,20 +1068,24 @@ async function monthlyReport(db, employeeId, monthStr) {
           sign_in_time: times.in_time || null, sign_out_time: times.out_time || null, break_seconds: breakSecs,
         });
       } else {
-        totalCountedSeconds += daySeconds;
-        totalHolidayOffSeconds += daySeconds;
-        days.push({ date: dateStr, status: "official_holiday_off", holiday_label: holiday.label, counted_seconds: daySeconds, break_seconds: breakSecs });
+        days.push({ date: dateStr, status: "official_holiday_off", holiday_label: holiday.label, counted_seconds: 0, break_seconds: breakSecs });
       }
       continue;
     }
 
     const leave = leaveByDate[dateStr];
     if (leave) {
+      // Approved leave — not required, but the employee still gets full
+      // credit for the day as if they'd attended.
       totalCountedSeconds += daySeconds;
       if (leave.type === "casual") leaveDaysCasual++; else leaveDaysAnnual++;
       days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds, break_seconds: breakSecs });
       continue;
     }
+
+    // A regular required work day — the only kind that adds to the
+    // "required hours" baseline.
+    requiredSeconds += daySeconds;
 
     if (!daysWithSignIn.has(dateStr)) {
       if (dateStr < todayStr) absentDays++;
