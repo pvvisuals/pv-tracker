@@ -1075,16 +1075,19 @@ async function monthlyReport(db, employeeId, monthStr) {
 
     const leave = leaveByDate[dateStr];
     if (leave) {
-      // Approved leave — not required, but the employee still gets full
-      // credit for the day as if they'd attended.
+      // Approved leave — the "required" baseline is purely calendar-based
+      // (weekends/holidays only), so leave still counts toward it just like
+      // any other weekday. The employee gets full credit on the counted
+      // side too, so the net difference for this day is exactly zero —
+      // leave neither costs nor benefits the final salary.
+      requiredSeconds += daySeconds;
       totalCountedSeconds += daySeconds;
       if (leave.type === "casual") leaveDaysCasual++; else leaveDaysAnnual++;
       days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds, break_seconds: breakSecs });
       continue;
     }
 
-    // A regular required work day — the only kind that adds to the
-    // "required hours" baseline.
+    // A regular required work day.
     requiredSeconds += daySeconds;
 
     if (!daysWithSignIn.has(dateStr)) {
