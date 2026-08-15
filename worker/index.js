@@ -1056,6 +1056,8 @@ async function monthlyReport(db, employeeId, monthStr) {
   let totalWeekendBonusSeconds = 0;  // extra half from doubling worked-weekend hours
   let requiredSeconds = 0;           // baseline hours the employee was expected to work this month so far
   let totalUncountedOvertimeSeconds = 0; // worked past required, but no overtime-enabled project that day
+  let totalRegularWorkSeconds = 0;   // capped (<=8h/day) portion of ordinary worked days
+  let totalLeaveCreditSeconds = 0;   // auto 8h/day credit for approved leave
   let absentDays = 0;
   let leaveDaysCasual = 0;
   let leaveDaysAnnual = 0;
@@ -1152,6 +1154,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       // calendar-only pre-pass above; the employee just gets full credit
       // on the counted side, so the net effect for this day is zero.
       totalCountedSeconds += daySeconds;
+      totalLeaveCreditSeconds += daySeconds;
       if (leave.type === "casual") leaveDaysCasual++; else leaveDaysAnnual++;
       days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds, break_seconds: breakSecs });
       continue;
@@ -1180,6 +1183,7 @@ async function monthlyReport(db, employeeId, monthStr) {
     totalCountedSeconds += countedSeconds;
     totalOvertimeSeconds += overtimeSeconds;
     totalUncountedOvertimeSeconds += uncountedOvertimeSeconds;
+    totalRegularWorkSeconds += Math.min(countedSeconds, daySeconds);
 
     days.push({
       date: dateStr, status: "worked",
@@ -1223,6 +1227,8 @@ async function monthlyReport(db, employeeId, monthStr) {
       counted_hours: countedHoursFinal,
       actual_seconds: totalActualSeconds,
       actual_hours: +(totalActualSeconds / 3600).toFixed(2),
+      regular_work_hours: +(totalRegularWorkSeconds / 3600).toFixed(2),
+      leave_credit_hours: +(totalLeaveCreditSeconds / 3600).toFixed(2),
       overtime_seconds: totalOvertimeSeconds,
       overtime_hours: +(totalOvertimeSeconds / 3600).toFixed(2),
       uncounted_overtime_hours: +(totalUncountedOvertimeSeconds / 3600).toFixed(2),
@@ -1231,8 +1237,12 @@ async function monthlyReport(db, employeeId, monthStr) {
       leave_days_casual: leaveDaysCasual,
       leave_days_annual: leaveDaysAnnual,
       holiday_bonus_hours: +(totalHolidayBonusSeconds / 3600).toFixed(2),
+      holiday_actual_hours: +(totalHolidayBonusSeconds / 3600).toFixed(2),
+      holiday_counted_hours: +((totalHolidayBonusSeconds * 2) / 3600).toFixed(2),
       holiday_off_hours: +(totalHolidayOffSeconds / 3600).toFixed(2),
       weekend_bonus_hours: +(totalWeekendBonusSeconds / 3600).toFixed(2),
+      weekend_actual_hours: +(totalWeekendBonusSeconds / 3600).toFixed(2),
+      weekend_counted_hours: +((totalWeekendBonusSeconds * 2) / 3600).toFixed(2),
       required_hours: requiredHours,
     },
     late_arrivals: {
