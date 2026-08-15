@@ -99,6 +99,12 @@ function cairoDateStr(date = new Date()) {
   const p = cairoParts(date);
   return `${p.y}-${p.m}-${p.d}`;
 }
+function cairoHourMinute(date = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+  const parts = fmt.formatToParts(date);
+  const get = (t) => Number(parts.find((p) => p.type === t).value);
+  return { hour: get("hour"), minute: get("minute") };
+}
 function isWeekendStr(dateStr) {
   // dateStr = YYYY-MM-DD, treat as a Cairo calendar date (noon avoids DST edge issues)
   const d = new Date(dateStr + "T12:00:00Z");
@@ -299,6 +305,7 @@ export default {
       }
       if (path === "/api/penalties/mine" && method === "GET") return await myPenalties(db, me, url.searchParams.get("month"));
       if (path === "/api/bonuses/mine" && method === "GET") return await myBonuses(db, me, url.searchParams.get("month"));
+      if (path === "/api/late-arrivals/mine" && method === "GET") return await myLateArrivals(db, me, url.searchParams.get("month"));
       if (path === "/api/notices/mine" && method === "GET") return await myNotices(db, me, url.searchParams.get("month"));
 
       if (path === "/api/report/mine" && method === "GET") {
@@ -427,13 +434,36 @@ async function updateProfile(db, me, body) {
 
 async function signIn(db, me) {
   const today = cairoDateStr();
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const now = new Date();
+  const t = now.toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
   const res = await db.execute({
     sql: `INSERT INTO attendance (employee_id, date, action, time, first_name) VALUES (?,?,?,?,?) RETURNING *`,
     args: [me.id, today, "sign_in", t, fn],
   });
-  return json({ entry: res.rows[0] }, 201);
+
+  // Late-arrival check: after 11:10 AM Cairo time — log it for admin review
+  // (they decide penalize vs excuse; nothing is deducted automatically).
+  const { hour, minute } = cairoHourMinute(now);
+  const minutesSinceMidnight = hour * 60 + minute;
+  let lateArrival = null;
+  if (minutesSinceMidnight > 11 * 60 + 10) {
+    const existing = await db.execute({
+      sql: "SELECT * FROM late_arrivals WHERE employee_id = ? AND date = ?",
+      args: [me.id, today],
+    });
+    if (!existing.rows.length) {
+      const laRes = await db.execute({
+        sql: `INSERT INTO late_arrivals (employee_id, date, arrival_time) VALUES (?,?,?) RETURNING *`,
+        args: [me.id, today, t],
+      });
+      lateArrival = laRes.rows[0];
+    } else {
+      lateArrival = existing.rows[0];
+    }
+  }
+
+  return json({ entry: res.rows[0], late_arrival: lateArrival }, 201);
 }
 
 async function signOut(db, me) {
@@ -902,6 +932,15 @@ async function myNotices(db, me, monthStr) {
   return json({ notices: res.rows });
 }
 
+async function myLateArrivals(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const res = await db.execute({
+    sql: "SELECT * FROM late_arrivals WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
+    args: [me.id, month + "%"],
+  });
+  return json({ late_arrivals: res.rows });
+}
+
 async function myBonuses(db, me, monthStr) {
   const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
   const res = await db.execute({
@@ -939,7 +978,7 @@ async function monthlyReport(db, employeeId, monthStr) {
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
   const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
 
-  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows, bonusRows] = await Promise.all([
+  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows, bonusRows, lateRows] = await Promise.all([
     db.execute({
       sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC",
       args: [employeeId, firstDay, addDaysToDateStr(lastDay, 1)],
@@ -989,6 +1028,10 @@ async function monthlyReport(db, employeeId, monthStr) {
     }),
     db.execute({
       sql: "SELECT * FROM bonuses WHERE employee_id = ? AND date BETWEEN ? AND ? AND deleted_at IS NULL",
+      args: [employeeId, firstDay, lastDay],
+    }),
+    db.execute({
+      sql: "SELECT * FROM late_arrivals WHERE employee_id = ? AND date BETWEEN ? AND ?",
       args: [employeeId, firstDay, lastDay],
     }),
   ]);
@@ -1191,6 +1234,10 @@ async function monthlyReport(db, employeeId, monthStr) {
       holiday_off_hours: +(totalHolidayOffSeconds / 3600).toFixed(2),
       weekend_bonus_hours: +(totalWeekendBonusSeconds / 3600).toFixed(2),
       required_hours: requiredHours,
+    },
+    late_arrivals: {
+      count: lateRows.rows.length,
+      list: lateRows.rows.map((l) => ({ date: l.date, arrival_time: l.arrival_time, status: l.status })),
     },
     extras: {
       hourly_rate: +rate.toFixed(2),
@@ -1509,6 +1556,59 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ ok: true });
   }
 
+  // ---------- late arrivals (تأخير) — admin reviews each: excuse or penalize ----------
+  if (path === "/api/admin/late-arrivals" && method === "GET") {
+    const employeeId = url.searchParams.get("employee_id");
+    const status = url.searchParams.get("status"); // optional filter
+    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    let sql = `SELECT la.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM late_arrivals la
+               JOIN employees e ON e.id = la.employee_id
+               LEFT JOIN employees a ON a.id = la.decided_by
+               WHERE la.date LIKE ?`;
+    const args = [month + "%"];
+    if (employeeId) { sql += " AND la.employee_id = ?"; args.push(Number(employeeId)); }
+    if (status) { sql += " AND la.status = ?"; args.push(status); }
+    sql += " ORDER BY la.date DESC";
+    const res = await db.execute({ sql, args });
+    return json({ late_arrivals: res.rows });
+  }
+  const lateExcuseMatch = path.match(/^\/api\/admin\/late-arrivals\/(\d+)\/excuse$/);
+  if (lateExcuseMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const laId = Number(lateExcuseMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM late_arrivals WHERE id = ?", args: [laId] });
+    if (!cur.rows[0]) return err("Late arrival record not found", 404);
+    if (cur.rows[0].status !== "pending") return err("القرار اتاخد بالفعل على التأخيرة دي", 409);
+    await db.execute({
+      sql: "UPDATE late_arrivals SET status = 'excused', decided_by = ?, decided_at = datetime('now') WHERE id = ?",
+      args: [admin.id, laId],
+    });
+    return json({ ok: true });
+  }
+  const latePenalizeMatch = path.match(/^\/api\/admin\/late-arrivals\/(\d+)\/penalize$/);
+  if (latePenalizeMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const laId = Number(latePenalizeMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM late_arrivals WHERE id = ?", args: [laId] });
+    const la = cur.rows[0];
+    if (!la) return err("Late arrival record not found", 404);
+    if (la.status !== "pending") return err("القرار اتاخد بالفعل على التأخيرة دي", 409);
+    const days = Number(body.days);
+    if (!(days > 0)) return err("عدد الأيام/الساعات لازم يكون رقم موجب");
+    const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [la.employee_id] });
+    const emp = empRes.rows[0];
+    const amountEGP = days * 8 * hourlyRate(emp);
+    const penRes = await db.execute({
+      sql: `INSERT INTO penalties (employee_id, amount_egp, days, reason, date, created_by) VALUES (?,?,?,?,?,?) RETURNING *`,
+      args: [la.employee_id, amountEGP, days, "تأخير — وصل الساعة " + la.arrival_time, la.date, admin.id],
+    });
+    await db.execute({
+      sql: "UPDATE late_arrivals SET status = 'penalized', penalty_id = ?, decided_by = ?, decided_at = datetime('now') WHERE id = ?",
+      args: [penRes.rows[0].id, admin.id, laId],
+    });
+    return json({ ok: true, penalty: penRes.rows[0] });
+  }
+
   // ---------- notices (لفت نظر) — same idea as penalties, informational only ----------
   if (path === "/api/admin/notices" && method === "POST") {
     const missing = requireFields(body, ["employee_id", "date"]);
@@ -1676,7 +1776,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const emp = res.rows[0];
     if (!emp) return err("Employee not found", 404);
 
-    const [penRes, notRes] = await Promise.all([
+    const [penRes, notRes, bonRes] = await Promise.all([
       db.execute({
         sql: `SELECT p.*, c.name as created_by_name, d.name as deleted_by_name FROM penalties p
               LEFT JOIN employees c ON c.id = p.created_by
@@ -1691,9 +1791,17 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
               WHERE n.employee_id = ? ORDER BY n.date DESC`,
         args: [empId],
       }),
+      db.execute({
+        sql: `SELECT b.*, c.name as created_by_name, d.name as deleted_by_name FROM bonuses b
+              LEFT JOIN employees c ON c.id = b.created_by
+              LEFT JOIN employees d ON d.id = b.deleted_by
+              WHERE b.employee_id = ? ORDER BY b.date DESC`,
+        args: [empId],
+      }),
     ]);
     const activePenalties = penRes.rows.filter((p) => !p.deleted_at);
     const activeNotices = notRes.rows.filter((n) => !n.deleted_at);
+    const activeBonuses = bonRes.rows.filter((b) => !b.deleted_at);
 
     return json({
       employee: { ...adminEmployeeView(emp), created_at: emp.created_at, secret_q: emp.secret_q },
@@ -1701,6 +1809,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       penalties_active_count: activePenalties.length,
       notices: notRes.rows,
       notices_active_count: activeNotices.length,
+      bonuses: bonRes.rows,
+      bonuses_active_count: activeBonuses.length,
     });
   }
 
