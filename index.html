@@ -1052,6 +1052,135 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div id="projectsReportResult"></div>
 </div>
+
+<div class="task-form">
+<div class="settings-label" id="section-project-cost">Project Cost & Profitability <span class="fla">تكلفة المشاريع والربح/الخسارة</span></div>
+<div class="sec-sub" style="margin-bottom:12px">السعر خاص بالأدمن بس ومش بيظهر للموظف خالص</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Project <span class="fla">حدد المشروع</span></div>
+<select id="projCostProjectSelect"></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Price (EGP) <span class="fla">سعر المشروع</span></div>
+<input type="number" id="projCostPriceInput" min="0" step="1"/>
+</div>
+</div>
+<button class="btn-add" onclick="saveProjectCost()">SAVE PRICE · حفظ السعر</button>
+
+<div class="form-row" style="margin-top:22px">
+<div class="fg" style="margin:0">
+<div class="fl">Project <span class="fla">مصروف خارجي على</span></div>
+<select id="projExpProjectSelect"></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Amount (EGP)</div>
+<input type="number" id="projExpAmount" min="1" step="1"/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date</div>
+<input type="date" id="projExpDate"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Description <span class="fla">البند</span></div>
+<input type="text" id="projExpDesc"/>
+</div>
+</div>
+<button class="btn-add" onclick="addProjectExpense()">+ ADD EXPENSE · إضافة مصروف خارجي</button>
+
+<div class="form-row" style="margin-top:22px">
+<div class="fg" style="margin:0">
+<div class="fl">Mode <span class="fla">نوع الحساب</span></div>
+<select id="projCostMode" onchange="onProjCostModeChange()">
+<option value="total">Total (All Time) · كلي</option>
+<option value="monthly">Monthly · شهري</option>
+</select>
+</div>
+<div class="fg" style="margin:0" id="projCostMonthWrap">
+<div class="fl">Month</div>
+<input type="month" id="projCostMonth"/>
+</div>
+</div>
+<button class="btn-add" onclick="fetchProjectCostReport()">GET REPORT · عرض التقرير</button>
+<div id="projectCostReportResult" style="margin-top:14px"></div>
+</div>
+
+<div class="task-form">
+<div class="settings-label" id="section-income-expense">Company Income &amp; Expenses <span class="fla">إيرادات ومصروفات الشركة</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Type <span class="fla">النوع</span></div>
+<select id="txType" onchange="onTxTypeChange()">
+<option value="income">Income · إيراد</option>
+<option value="expense">Expense · مصروف</option>
+</select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Amount (EGP)</div>
+<input type="number" id="txAmount" min="1" step="1"/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date</div>
+<input type="date" id="txDate"/>
+</div>
+<div class="fg" style="margin:0" id="txProjectWrap">
+<div class="fl">Project (optional) <span class="fla">للإيرادات بس</span></div>
+<select id="txProjectSelect"><option value="">-- بدون ربط --</option></select>
+</div>
+</div>
+<div class="fg">
+<div class="fl">Description <span class="fla">السبب</span></div>
+<input type="text" id="txDesc"/>
+</div>
+<button class="btn-add" onclick="addCompanyTransaction()">+ ADD · إضافة</button>
+
+<div class="form-row" style="margin-top:18px">
+<div class="fg" style="margin:0">
+<div class="fl">Filter Month <span class="fla">فلتر الشهر</span></div>
+<input type="month" id="plMonth" onchange="fetchProfitLossReport()"/>
+</div>
+</div>
+<div id="profitLossReportResult" style="margin-top:14px"></div>
+</div>
+
+<div class="task-form">
+<div class="settings-label" id="section-petty-cash">Petty Cash · العهدة <span class="fla">(منفصلة تماماً عن حسابات الشركة)</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Type <span class="fla">النوع</span></div>
+<select id="pettyType">
+<option value="fund">Fund In · إضافة عهدة</option>
+<option value="expense">Expense Out · صرف من العهدة</option>
+</select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Amount (EGP)</div>
+<input type="number" id="pettyAmount" min="1" step="1"/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date</div>
+<input type="date" id="pettyDate"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Description <span class="fla">صرف إيه</span></div>
+<input type="text" id="pettyDesc"/>
+</div>
+</div>
+<button class="btn-add" onclick="addPettyCash()">+ ADD · إضافة</button>
+<div class="form-row" style="margin-top:18px">
+<div class="fg" style="margin:0">
+<div class="fl">Filter Month (optional)</div>
+<input type="month" id="pettyFilterMonth" onchange="fetchPettyCash()"/>
+</div>
+</div>
+<div id="pettyCashResult" style="margin-top:14px"></div>
+</div>
 <div class="tab-content" id="content-settings">
 <div class="sec-head">
 <div class="sec-title">SETTINGS</div>
@@ -1164,6 +1293,31 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="editBonusModalOverlay">
+<div class="modal">
+<h3>EDIT BONUS · تعديل المكافأة</h3>
+<div class="fg">
+<div class="fl">Amount (EGP)</div>
+<input type="number" id="editBonusAmount" min="1" step="1"/>
+</div>
+<div class="fg">
+<div class="fl">Date</div>
+<input type="date" id="editBonusDate"/>
+</div>
+<div class="fg">
+<div class="fl">Reason</div>
+<input type="text" id="editBonusReason"/>
+</div>
+<div class="fg">
+<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
+<input type="password" id="editBonusPin" placeholder="****" autocomplete="off"/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeEditBonusModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitEditBonus()">Save · حفظ</button>
+</div>
+</div>
+</div>
 <div class="modal-overlay" id="lateArrivalModalOverlay">
 <div class="modal">
 <h3>PENALIZE LATE ARRIVAL · تحديد خصم التأخير</h3>
@@ -1216,6 +1370,9 @@ textarea{resize:vertical;min-height:76px;}
 <a onclick="jumpTo('section-full-info')">بيانات الموظف</a>
 <a onclick="jumpTo('section-report')">تقرير الموظف</a>
 <a onclick="jumpTo('section-projects-report')">تقرير المشاريع</a>
+<a onclick="jumpTo('section-project-cost')">تكلفة المشاريع</a>
+<a onclick="jumpTo('section-income-expense')">إيرادات ومصروفات</a>
+<a onclick="jumpTo('section-petty-cash')">العهدة</a>
 </div>
 <button id="scrollTopBtn" onclick="scrollToTop()" title="Back to top">↑</button>
 <div class="loading-overlay" id="loadingOverlay">
@@ -2059,6 +2216,12 @@ async function loadAdminData() {
     populateEmployeeSelects();
     populateDailyTasksEmployeeSelect();
     loadDailyTasksBrowser();
+    populateProjectCostSelects();
+    onProjCostModeChange();
+    onTxTypeChange();
+    fetchProjectCostReport();
+    fetchProfitLossReport();
+    fetchPettyCash();
 
     await reloadMonthDependentAdminData();
   } catch(e) { /* non-fatal */ }
@@ -2368,6 +2531,7 @@ async function refreshProjectsOnly() {
     adminProjectsFull = res.projects || [];
   } catch(e) { /* non-fatal, e.g. not admin */ }
   renderAdminProjects();
+  populateProjectCostSelects();
 }
 
 function renderAdminProjects() {
@@ -2826,12 +2990,29 @@ function renderAdminLateArrivals() {
     else if (l.status === "penalized") statusNote = "<span style='color:var(--danger)'>تم الخصم بواسطة " + (l.decided_by_name||"-") + "</span>";
     var actions = l.status === "pending"
       ? "<button class='btn-end-task' onclick=\"openLateArrivalModal(" + l.id + ")\">PENALIZE · خصم</button> <button class='btn-end-task' onclick=\"excuseLateArrivalPrompt(" + l.id + ")\">EXCUSE · سماح</button>"
-      : "";
+      : "<button class='btn-end-task' onclick=\"resetLateArrivalPrompt(" + l.id + ")\">EDIT · تعديل القرار</button>";
     html += "<div class='log-entry'><div class='log-type' style='color:var(--danger)'>#" + l.emp_code + "</div>" +
       "<div class='log-time' style='color:var(--danger)'>" + l.date + " — " + l.arrival_time + "</div>" +
       "<div class='log-note'>" + (l.employee_name||"") + (statusNote ? "<br/>" + statusNote : "") + "</div>" + actions + "</div>";
   }
   el.innerHTML = html;
+}
+
+function resetLateArrivalPrompt(id) {
+  openPinModal("EDIT DECISION · تعديل القرار", "هيلغي القرار اللي اتاخد (وأي خصم مرتبط بيه) وترجع تقدر تقرر تاني من الأول. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeResetLateArrival(id, pin);
+  });
+}
+async function executeResetLateArrival(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/late-arrivals/" + id + "/reset", "POST", { pin: pin });
+    showToast("v", "اتلغى القرار، تقدر تقرر تاني");
+    await refreshLateArrivalsOnly();
+    await refreshPenaltiesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
 }
 
 function excuseLateArrivalPrompt(id) {
@@ -2978,10 +3159,42 @@ function renderAdminBonuses() {
     if (isDeleted) {
       note += "<br/><span style='color:var(--danger)'>تم الحذف بواسطة " + (b.deleted_by_name||"-") + " في " + b.deleted_at.slice(0,16) + "</span>";
     }
-    var actions = isDeleted ? "" : "<button class='btn-end-task' onclick=\"deleteBonusPrompt(" + b.id + ")\">DELETE · حذف</button>";
+    var actions = isDeleted ? "" : "<button class='btn-end-task' onclick=\"openEditBonusModal(" + b.id + ")\">EDIT · تعديل</button> <button class='btn-end-task' onclick=\"deleteBonusPrompt(" + b.id + ")\">DELETE · حذف</button>";
     html += "<div class='log-entry'><div class='log-type' style='" + (isDeleted?"color:var(--muted);text-decoration:line-through":"color:var(--ok)") + "'>" + b.date + "</div><div class='log-note'>" + note + "</div>" + actions + "</div>";
   }
   el.innerHTML = html;
+}
+
+var currentEditBonusId = null;
+function openEditBonusModal(id) {
+  var b = adminBonusesMonth.find(function(x) { return String(x.id) === String(id); });
+  if (!b) return;
+  currentEditBonusId = id;
+  document.getElementById("editBonusAmount").value = b.amount_egp;
+  document.getElementById("editBonusDate").value = b.date;
+  document.getElementById("editBonusReason").value = b.reason || "";
+  document.getElementById("editBonusPin").value = "";
+  document.getElementById("editBonusModalOverlay").classList.add("active");
+}
+function closeEditBonusModal() {
+  document.getElementById("editBonusModalOverlay").classList.remove("active");
+  currentEditBonusId = null;
+}
+async function submitEditBonus() {
+  var amount = Number(document.getElementById("editBonusAmount").value);
+  var date = document.getElementById("editBonusDate").value;
+  var reason = document.getElementById("editBonusReason").value.trim();
+  var pin = document.getElementById("editBonusPin").value;
+  if (!(amount > 0) || !date) { showToast("!", "املا كل الحقول"); return; }
+  if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/bonuses/" + currentEditBonusId, "PATCH", { amount_egp: amount, date: date, reason: reason, pin: pin });
+    showToast("v", "تم تعديل المكافأة");
+    closeEditBonusModal();
+    await refreshBonusesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
 }
 
 function deleteBonusPrompt(id) {
@@ -3268,6 +3481,335 @@ async function fetchAdminReport() {
     renderAdminReport(res);
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
+}
+
+// ================= Project Cost & Profitability =================
+
+function uniqueProjectGroups() {
+  var seen = {}, list = [];
+  for (var i = 0; i < adminProjectsFull.length; i++) {
+    var p = adminProjectsFull[i];
+    var k = p.code + "||" + p.name.trim().toLowerCase();
+    if (!seen[k]) { seen[k] = true; list.push({ code: p.code, name: p.name }); }
+  }
+  return list;
+}
+
+function populateProjectCostSelects() {
+  var groups = uniqueProjectGroups();
+  var ids = ["projCostProjectSelect", "projExpProjectSelect"];
+  for (var i = 0; i < ids.length; i++) {
+    var sel = document.getElementById(ids[i]);
+    if (!sel) continue;
+    var cur = sel.value;
+    var html = "";
+    for (var g = 0; g < groups.length; g++) {
+      html += "<option value='" + groups[g].code + "||" + groups[g].name.replace(/'/g,"") + "'>" + groups[g].code + " - " + groups[g].name + "</option>";
+    }
+    sel.innerHTML = html;
+    if (cur) sel.value = cur;
+  }
+  var txSel = document.getElementById("txProjectSelect");
+  if (txSel) {
+    var curTx = txSel.value;
+    var txHtml = "<option value=''>-- بدون ربط --</option>";
+    for (var g2 = 0; g2 < groups.length; g2++) {
+      txHtml += "<option value='" + groups[g2].code + "||" + groups[g2].name.replace(/'/g,"") + "'>" + groups[g2].code + " - " + groups[g2].name + "</option>";
+    }
+    txSel.innerHTML = txHtml;
+    if (curTx) txSel.value = curTx;
+  }
+}
+
+async function saveProjectCost() {
+  var sel = document.getElementById("projCostProjectSelect").value;
+  var price = document.getElementById("projCostPriceInput").value;
+  if (!sel || price === "") { showToast("!", "اختار مشروع واكتب السعر"); return; }
+  var parts = sel.split("||");
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/project-costs", "POST", { project_code: parts[0], project_name: parts[1], cost_egp: Number(price) });
+    showToast("v", "تم حفظ سعر المشروع");
+    document.getElementById("projCostPriceInput").value = "";
+    await fetchProjectCostReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function addProjectExpense() {
+  var sel = document.getElementById("projExpProjectSelect").value;
+  var amount = document.getElementById("projExpAmount").value;
+  var date = document.getElementById("projExpDate").value;
+  var desc = document.getElementById("projExpDesc").value.trim();
+  if (!sel || !amount || !date) { showToast("!", "املا كل الحقول"); return; }
+  var parts = sel.split("||");
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/project-expenses", "POST", { project_code: parts[0], project_name: parts[1], amount_egp: Number(amount), date: date, description: desc });
+    showToast("v", "تم إضافة المصروف");
+    document.getElementById("projExpAmount").value = "";
+    document.getElementById("projExpDesc").value = "";
+    await fetchProjectCostReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function deleteProjectExpensePrompt(id) {
+  openPinModal("DELETE EXPENSE · حذف المصروف", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeDeleteProjectExpense(id, pin);
+  });
+}
+async function executeDeleteProjectExpense(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/project-expenses/" + id, "DELETE", { pin: pin });
+    showToast("v", "تم حذف المصروف");
+    await fetchProjectCostReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function onProjCostModeChange() {
+  var mode = document.getElementById("projCostMode").value;
+  document.getElementById("projCostMonthWrap").style.display = mode === "monthly" ? "block" : "none";
+}
+
+async function fetchProjectCostReport() {
+  var mode = document.getElementById("projCostMode").value;
+  var monthInput = document.getElementById("projCostMonth");
+  if (mode === "monthly" && !monthInput.value) {
+    var d = new Date();
+    monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+  var qs = "mode=" + mode + (mode === "monthly" ? "&month=" + monthInput.value : "");
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/admin/project-cost-report?" + qs, "GET");
+    renderProjectCostReport(res);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function profitColor(v) {
+  if (v > 0) return "var(--ok)";
+  if (v < 0) return "var(--danger)";
+  return "var(--warn)";
+}
+
+function renderProjectCostReport(res) {
+  var el = document.getElementById("projectCostReportResult");
+  if (!res.projects || !res.projects.length) { el.innerHTML = "<div class='log-wrap'><div class='empty-log'>مفيش بيانات</div></div>"; return; }
+  var html = "";
+  for (var i = 0; i < res.projects.length; i++) {
+    var p = res.projects[i];
+    var viewId = "pcview_" + i;
+    html += "<div class='log-wrap' style='margin-top:14px'>";
+    html += "<div class='log-header'><span>" + p.project_code + " - " + p.project_name + "</span></div>";
+    html += "<div style='padding:12px 18px'>";
+    html += "<select id='" + viewId + "' onchange='renderProjectCostView(" + i + ", this.value)' style='width:100%;margin-bottom:10px'>";
+    html += "<option value='whole'>Whole Project · المشروع كامل</option>";
+    for (var t = 0; t < p.types.length; t++) html += "<option value='" + t + "'>" + p.types[t].type + "</option>";
+    html += "</select>";
+    html += "<div id='pcbody_" + i + "'></div>";
+    html += "</div></div>";
+  }
+  el.innerHTML = html;
+  window._pcReportData = res.projects;
+  for (var j = 0; j < res.projects.length; j++) renderProjectCostView(j, "whole");
+}
+
+function projectCostBodyHtml(view, wholePrice) {
+  var html = "";
+  html += "<div class='info-grid'>";
+  html += infoCard("Price <span class='fla'>السعر</span>", view.price_egp + " EGP");
+  html += infoCard("Labor Cost <span class='fla'>تكلفة العمالة</span>", view.labor_cost_egp + " EGP");
+  html += infoCard("External Expenses <span class='fla'>مصروفات خارجية</span>", view.external_expenses_egp + " EGP");
+  html += infoCard("Actual Cost <span class='fla'>التكلفة الفعلية</span>", view.actual_cost_egp + " EGP");
+  html += "</div>";
+  html += "<div style='text-align:center;padding:14px;border:1px solid var(--border);margin-top:10px'>";
+  html += "<div style='font-size:13px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase'>PROFIT / LOSS · الربح أو الخسارة</div>";
+  html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:34px;margin-top:6px;color:" + profitColor(view.profit_loss_egp) + "'>" + (view.profit_loss_egp>=0?"+":"") + view.profit_loss_egp + " EGP</div>";
+  html += "</div>";
+  if (view.employees && view.employees.length) {
+    html += "<div class='fl-hint' style='margin-top:12px;font-weight:700'>Labor breakdown · تفصيل العمالة</div>";
+    for (var e = 0; e < view.employees.length; e++) {
+      var emp = view.employees[e];
+      html += "<div class='log-entry'><div class='log-type'>#" + emp.emp_code + "</div><div class='log-time'>" + emp.name + "</div><div class='log-note'>" + emp.hours + " h × " + emp.hourly_rate + " EGP/h = " + emp.cost_egp + " EGP</div></div>";
+    }
+  }
+  return html;
+}
+
+function renderProjectCostView(idx, viewVal) {
+  var p = window._pcReportData[idx];
+  var bodyEl = document.getElementById("pcbody_" + idx);
+  if (!bodyEl) return;
+  var view = viewVal === "whole" ? p : p.types[Number(viewVal)];
+  var html = projectCostBodyHtml(view, p.price_egp);
+  if (viewVal === "whole" && p.expenses && p.expenses.length) {
+    html += "<div class='fl-hint' style='margin-top:12px;font-weight:700'>External expenses · المصروفات الخارجية</div>";
+    for (var x = 0; x < p.expenses.length; x++) {
+      var ex = p.expenses[x];
+      html += "<div class='log-entry'><div class='log-type'>" + ex.date + "</div><div class='log-note'>" + ex.amount_egp + " EGP — " + (ex.description||"") + "</div><button class='btn-end-task' onclick=\"deleteProjectExpensePrompt(" + ex.id + ")\">DELETE · حذف</button></div>";
+    }
+  }
+  bodyEl.innerHTML = html;
+}
+
+// ================= Company Income & Expenses =================
+
+function onTxTypeChange() {
+  var type = document.getElementById("txType").value;
+  document.getElementById("txProjectWrap").style.display = type === "income" ? "block" : "none";
+}
+
+async function addCompanyTransaction() {
+  var type = document.getElementById("txType").value;
+  var amount = document.getElementById("txAmount").value;
+  var date = document.getElementById("txDate").value;
+  var desc = document.getElementById("txDesc").value.trim();
+  var projSel = document.getElementById("txProjectSelect").value;
+  if (!amount || !date) { showToast("!", "املا كل الحقول"); return; }
+  var body = { type: type, amount_egp: Number(amount), date: date, description: desc };
+  if (type === "income" && projSel) {
+    var parts = projSel.split("||");
+    body.project_code = parts[0]; body.project_name = parts[1];
+  }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/company-transactions", "POST", body);
+    showToast("v", "تم الإضافة");
+    document.getElementById("txAmount").value = "";
+    document.getElementById("txDesc").value = "";
+    await fetchProfitLossReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function deleteCompanyTxPrompt(id) {
+  openPinModal("DELETE · حذف", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeDeleteCompanyTx(id, pin);
+  });
+}
+async function executeDeleteCompanyTx(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/company-transactions/" + id, "DELETE", { pin: pin });
+    showToast("v", "تم الحذف");
+    await fetchProfitLossReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function fetchProfitLossReport() {
+  var monthInput = document.getElementById("plMonth");
+  if (!monthInput.value) {
+    var d = new Date();
+    monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/admin/profit-loss-report?month=" + monthInput.value, "GET");
+    renderProfitLossReport(res);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function renderProfitLossReport(res) {
+  var el = document.getElementById("profitLossReportResult");
+  var html = "<div class='info-grid'>";
+  html += infoCard("Total Income <span class='fla'>إجمالي الإيرادات</span>", "<span style='color:var(--ok)'>+" + res.total_income_egp + " EGP</span>");
+  html += infoCard("Total Expenses <span class='fla'>إجمالي المصروفات</span>", "<span style='color:var(--danger)'>-" + res.total_expense_egp + " EGP</span>");
+  html += "</div>";
+  html += "<div style='text-align:center;padding:16px;border:1px solid var(--border);margin:10px 0'>";
+  html += "<div style='font-size:13px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase'>NET PROFIT / LOSS · صافي الربح أو الخسارة</div>";
+  html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:36px;margin-top:6px;color:" + profitColor(res.net_profit_loss_egp) + "'>" + (res.net_profit_loss_egp>=0?"+":"") + res.net_profit_loss_egp + " EGP</div>";
+  html += "</div>";
+  if (!res.transactions || !res.transactions.length) { html += "<div class='log-wrap'><div class='empty-log'>مفيش عمليات هذا الشهر</div></div>"; el.innerHTML = html; return; }
+  html += "<div class='log-wrap'>";
+  for (var i = 0; i < res.transactions.length; i++) {
+    var tx = res.transactions[i];
+    var isIncome = tx.type === "income";
+    var color = isIncome ? "var(--ok)" : "var(--danger)";
+    var projNote = tx.project_code ? (" — " + tx.project_code + " - " + tx.project_name) : "";
+    html += "<div class='log-entry'><div class='log-type' style='color:" + color + "'>" + (isIncome?"+":"-") + tx.amount_egp + " EGP</div>" +
+      "<div class='log-time'>" + tx.date + "</div>" +
+      "<div class='log-note'>" + (tx.description||"") + projNote + "</div>" +
+      "<button class='btn-end-task' onclick=\"deleteCompanyTxPrompt(" + tx.id + ")\">DELETE · حذف</button></div>";
+  }
+  html += "</div>";
+  el.innerHTML = html;
+}
+
+// ================= Petty Cash =================
+
+async function addPettyCash() {
+  var type = document.getElementById("pettyType").value;
+  var amount = document.getElementById("pettyAmount").value;
+  var date = document.getElementById("pettyDate").value;
+  var desc = document.getElementById("pettyDesc").value.trim();
+  if (!amount || !date) { showToast("!", "املا كل الحقول"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/petty-cash", "POST", { type: type, amount_egp: Number(amount), date: date, description: desc });
+    showToast("v", "تم الإضافة");
+    document.getElementById("pettyAmount").value = "";
+    document.getElementById("pettyDesc").value = "";
+    await fetchPettyCash();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function deletePettyCashPrompt(id) {
+  openPinModal("DELETE · حذف", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeDeletePettyCash(id, pin);
+  });
+}
+async function executeDeletePettyCash(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/petty-cash/" + id, "DELETE", { pin: pin });
+    showToast("v", "تم الحذف");
+    await fetchPettyCash();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function fetchPettyCash() {
+  var monthInput = document.getElementById("pettyFilterMonth");
+  var qs = monthInput && monthInput.value ? ("?month=" + monthInput.value) : "";
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/admin/petty-cash" + qs, "GET");
+    renderPettyCash(res);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function renderPettyCash(res) {
+  var el = document.getElementById("pettyCashResult");
+  var balance = res.balance;
+  var html = "<div style='text-align:center;padding:16px;border:1px solid var(--border);margin-bottom:14px'>";
+  html += "<div style='font-size:13px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase'>CURRENT BALANCE · الرصيد الحالي</div>";
+  html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:36px;margin-top:6px;color:" + (balance>0?"var(--ok)":(balance<0?"var(--danger)":"var(--warn)")) + "'>" + balance + " EGP</div>";
+  if (balance < 0) html += "<div class='fl-hint' style='color:var(--danger);margin-top:6px'>الأدمن مستحق " + Math.abs(balance) + " EGP من الشركة (دفع من جيبه)</div>";
+  html += "</div>";
+  if (!res.entries || !res.entries.length) { html += "<div class='log-wrap'><div class='empty-log'>مفيش عمليات</div></div>"; el.innerHTML = html; return; }
+  html += "<div class='log-wrap'>";
+  for (var i = 0; i < res.entries.length; i++) {
+    var p = res.entries[i];
+    var isFund = p.type === "fund";
+    var color = isFund ? "var(--ok)" : "var(--danger)";
+    html += "<div class='log-entry'><div class='log-type' style='color:" + color + "'>" + (isFund?"+":"-") + p.amount_egp + " EGP</div>" +
+      "<div class='log-time'>" + p.date + "</div>" +
+      "<div class='log-note'>" + (p.description||"") + "</div>" +
+      "<button class='btn-end-task' onclick=\"deletePettyCashPrompt(" + p.id + ")\">DELETE · حذف</button></div>";
+  }
+  html += "</div>";
+  el.innerHTML = html;
 }
 
 async function fetchProjectsReport() {
