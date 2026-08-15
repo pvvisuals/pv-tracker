@@ -78,13 +78,17 @@ select option{background:#111;}
 .tab{padding:13px 20px;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-bottom:1px solid transparent;transition:color 0.2s,border-color 0.2s;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--muted);}.tab.active{color:#fff;border-bottom-color:#fff;}
 .tab-content{display:none;padding:32px 28px;max-width:840px;margin:0 auto;width:100%;}
-#adminSideNav{position:fixed;left:22px;top:130px;width:180px;max-height:75vh;overflow-y:auto;background:var(--card);border:1px solid var(--border);padding:14px;display:none;z-index:50;box-shadow:0 4px 14px rgba(0,0,0,0.4);}
-#adminSideNav.show{display:block;}
-#adminSideNav .nav-title{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;}
-#adminSideNav a{display:block;padding:8px 4px;font-size:13px;color:var(--muted2);cursor:pointer;border-bottom:1px solid var(--border2);transition:color 0.15s,padding-right 0.15s;}
-#adminSideNav a:hover{color:#fff;padding-right:8px;}
+#adminSideNav{position:fixed;left:-260px;top:120px;width:240px;max-height:75vh;overflow-y:auto;background:var(--card);border:1px solid var(--border);padding:22px 20px;display:none;z-index:50;box-shadow:0 6px 24px rgba(0,0,0,0.5);transition:left 0.28s ease;}
+#adminSideNav.enabled{display:block;}
+#adminSideNav.open{left:0;}
+#adminSideNav .nav-title{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:2px;color:var(--muted);margin-bottom:14px;text-transform:uppercase;}
+#adminSideNav a{display:block;padding:10px 6px;font-size:14px;color:var(--muted2);cursor:pointer;border-bottom:1px solid var(--border2);transition:color 0.15s,padding-right 0.15s;}
+#adminSideNav a:hover{color:#fff;padding-right:10px;}
 #adminSideNav a:last-child{border-bottom:none;}
-@media(max-width:1450px){#adminSideNav.show{display:none;}}
+#adminSideNavArrow{position:fixed;left:0;top:150px;width:28px;height:56px;background:var(--card);border:1px solid var(--border);display:none;align-items:center;justify-content:center;cursor:pointer;z-index:51;font-size:15px;color:var(--muted);box-shadow:0 2px 10px rgba(0,0,0,0.4);transition:left 0.28s ease;}
+#adminSideNavArrow.enabled{display:flex;}
+#adminSideNavArrow.open{left:240px;}
+@media(max-width:1450px){#adminSideNav.enabled,#adminSideNavArrow.enabled{display:none;}}
 @media(max-width:600px){.tab-content{padding:18px 16px;}}
 .tab-content.active{display:block;animation:fadeUp 0.35s ease both;}
 .sec-head{margin-bottom:24px;}
@@ -1049,7 +1053,6 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <button class="btn-add" onclick="fetchProjectsReport()">GET PROJECTS REPORT · عرض تقرير المشاريع</button>
-</div>
 <div id="projectsReportResult"></div>
 </div>
 
@@ -1092,13 +1095,19 @@ textarea{resize:vertical;min-height:76px;}
 
 <div class="form-row" style="margin-top:22px">
 <div class="fg" style="margin:0">
+<div class="fl">Project <span class="fla">اختار مشروع (أو كلهم)</span></div>
+<select id="projCostFilterProject" onchange="fetchProjectCostReport()"><option value="">-- All Projects · كل المشاريع --</option></select>
+</div>
+<div class="fg" style="margin:0">
 <div class="fl">Mode <span class="fla">نوع الحساب</span></div>
 <select id="projCostMode" onchange="onProjCostModeChange()">
 <option value="total">Total (All Time) · كلي</option>
 <option value="monthly">Monthly · شهري</option>
 </select>
 </div>
-<div class="fg" style="margin:0" id="projCostMonthWrap">
+</div>
+<div class="form-row" id="projCostMonthWrap">
+<div class="fg" style="margin:0">
 <div class="fl">Month</div>
 <input type="month" id="projCostMonth"/>
 </div>
@@ -1180,6 +1189,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div id="pettyCashResult" style="margin-top:14px"></div>
+</div>
 </div>
 <div class="tab-content" id="content-settings">
 <div class="sec-head">
@@ -1352,6 +1362,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div id="adminSideNavArrow" onclick="toggleAdminSideNav()">▸</div>
 <div id="adminSideNav">
 <div class="nav-title">Quick Jump · تنقل سريع</div>
 <a onclick="jumpTo('section-emp-status')">حالة الموظفين</a>
@@ -3519,6 +3530,16 @@ function populateProjectCostSelects() {
     txSel.innerHTML = txHtml;
     if (curTx) txSel.value = curTx;
   }
+  var filterSel = document.getElementById("projCostFilterProject");
+  if (filterSel) {
+    var curFilter = filterSel.value;
+    var filterHtml = "<option value=''>-- All Projects · كل المشاريع --</option>";
+    for (var g3 = 0; g3 < groups.length; g3++) {
+      filterHtml += "<option value='" + groups[g3].code + "||" + groups[g3].name.replace(/'/g,"") + "'>" + groups[g3].code + " - " + groups[g3].name + "</option>";
+    }
+    filterSel.innerHTML = filterHtml;
+    if (curFilter) filterSel.value = curFilter;
+  }
 }
 
 async function saveProjectCost() {
@@ -3586,6 +3607,11 @@ async function fetchProjectCostReport() {
   showLoading(true);
   try {
     var res = await apiRequest("/api/admin/project-cost-report?" + qs, "GET");
+    var filterVal = document.getElementById("projCostFilterProject").value;
+    if (filterVal) {
+      var parts = filterVal.split("||");
+      res.projects = res.projects.filter(function(p) { return p.project_code === parts[0] && p.project_name === parts[1]; });
+    }
     renderProjectCostReport(res);
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -4543,7 +4569,11 @@ function switchTab(name) {
   document.getElementById("tab-"+name).classList.add("active");
   document.getElementById("content-"+name).classList.add("active");
   var sideNav = document.getElementById("adminSideNav");
-  if (sideNav) sideNav.classList.toggle("show", name === "admin");
+  var sideArrow = document.getElementById("adminSideNavArrow");
+  var isAdmin = name === "admin";
+  if (sideNav) sideNav.classList.toggle("enabled", isAdmin);
+  if (sideArrow) sideArrow.classList.toggle("enabled", isAdmin);
+  if (!isAdmin) { if (sideNav) sideNav.classList.remove("open"); if (sideArrow) sideArrow.classList.remove("open"); }
   if (name === "signin") refreshAttendanceOnly();
   if (name === "break") refreshBreaksOnly();
   if (name === "tasks") refreshTasksOnly();
@@ -4558,9 +4588,25 @@ function switchTab(name) {
   }
 }
 
+function toggleAdminSideNav() {
+  var sideNav = document.getElementById("adminSideNav");
+  var sideArrow = document.getElementById("adminSideNavArrow");
+  var willOpen = !sideNav.classList.contains("open");
+  sideNav.classList.toggle("open", willOpen);
+  sideArrow.classList.toggle("open", willOpen);
+  sideArrow.textContent = willOpen ? "◂" : "▸";
+}
+
 function jumpTo(id) {
   var el = document.getElementById(id);
   if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  var sideNav = document.getElementById("adminSideNav");
+  var sideArrow = document.getElementById("adminSideNavArrow");
+  if (sideNav && sideNav.classList.contains("open")) {
+    sideNav.classList.remove("open");
+    sideArrow.classList.remove("open");
+    sideArrow.textContent = "▸";
+  }
 }
 
 function cairoISODate() {
