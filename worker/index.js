@@ -1306,6 +1306,142 @@ function buildProjectHoursByType(rows) {
 
 // Company-wide project hours — sums task time across ALL employees for the
 // given month, with a per-employee breakdown inside each project.
+// Project cost & profitability — labor cost is computed per employee
+// (hours worked on the project × that employee's own hourly rate), summed
+// per project group (code+name). External expenses add on top; the
+// project's set price minus (labor + external expenses) = profit/loss.
+// mode "total" ignores the month entirely (all-time); mode "monthly" scopes
+// tasks and expenses to the given month.
+async function profitLossReport(db, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const res = await db.execute({
+    sql: `SELECT ct.*, c.name as created_by_name FROM company_transactions ct
+          LEFT JOIN employees c ON c.id = ct.created_by
+          WHERE ct.date LIKE ? ORDER BY ct.date DESC, ct.id DESC`,
+    args: [month + "%"],
+  });
+  let totalIncome = 0, totalExpense = 0;
+  for (const r of res.rows) {
+    if (r.type === "income") totalIncome += Number(r.amount_egp);
+    else totalExpense += Number(r.amount_egp);
+  }
+  const net = +(totalIncome - totalExpense).toFixed(2);
+  return json({
+    month,
+    total_income_egp: +totalIncome.toFixed(2),
+    total_expense_egp: +totalExpense.toFixed(2),
+    net_profit_loss_egp: net,
+    transactions: res.rows,
+  });
+}
+
+async function projectCostReport(db, mode, monthStr) {
+  const isMonthly = mode === "monthly";
+  let firstDay = null, lastDay = null, year = null, month = null;
+  if (isMonthly) {
+    const now = new Date();
+    if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
+      [year, month] = monthStr.split("-").map(Number);
+    } else {
+      const p = cairoParts(now);
+      year = Number(p.y); month = Number(p.m);
+    }
+    firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
+    const lastDayNum = daysInMonth(year, month);
+    lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+  }
+
+  let taskSql = `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
+                        t.employee_id, e.name as employee_name, e.emp_code,
+                        e.monthly_salary, e.work_days_per_month, e.daily_work_hours,
+                        SUM(COALESCE(t.duration,0)) as total_seconds
+                 FROM tasks t
+                 JOIN employees e ON e.id = t.employee_id
+                 JOIN projects p ON p.id = t.project_id`;
+  const taskArgs = [];
+  if (isMonthly) { taskSql += " WHERE t.date BETWEEN ? AND ?"; taskArgs.push(firstDay, lastDay); }
+  taskSql += " GROUP BY p.code, p.name, p.category, p.type, p.sub_code, t.employee_id";
+  const taskRows = await db.execute({ sql: taskSql, args: taskArgs });
+
+  let expSql = "SELECT * FROM project_expenses";
+  const expArgs = [];
+  if (isMonthly) { expSql += " WHERE date BETWEEN ? AND ?"; expArgs.push(firstDay, lastDay); }
+  const [expRows, costRows] = await Promise.all([
+    db.execute({ sql: expSql, args: expArgs }),
+    db.execute("SELECT * FROM project_costs"),
+  ]);
+
+  const byProject = {};
+  const key = (code, name) => code + "||" + name.trim().toLowerCase();
+  const ensure = (code, name) => {
+    const k = key(code, name);
+    if (!byProject[k]) byProject[k] = { project_code: code, project_name: name, labor_cost_egp: 0, employees: [], external_expenses_egp: 0, expenses: [], price_egp: 0, types: {} };
+    return byProject[k];
+  };
+
+  for (const r of taskRows.rows) {
+    const g = ensure(r.code, r.name);
+    const rate = hourlyRate({ monthly_salary: r.monthly_salary, work_days_per_month: r.work_days_per_month, daily_work_hours: r.daily_work_hours });
+    const hours = +((Number(r.total_seconds) || 0) / 3600).toFixed(2);
+    const cost = +(hours * rate).toFixed(2);
+    g.labor_cost_egp += cost;
+    const empEntry = { employee_id: r.employee_id, emp_code: r.emp_code, name: r.employee_name, hours, hourly_rate: +rate.toFixed(2), cost_egp: cost };
+    g.employees.push(empEntry);
+
+    // Same figures, broken down by this specific variant (category/type/sub_code).
+    const typeLabel = r.category + " / " + r.type + (r.sub_code ? " " + r.sub_code : "") + (r.simple_label ? " (" + r.simple_label + ")" : "");
+    if (!g.types[typeLabel]) g.types[typeLabel] = { type: typeLabel, labor_cost_egp: 0, employees: [] };
+    g.types[typeLabel].labor_cost_egp += cost;
+    g.types[typeLabel].employees.push(empEntry);
+  }
+  for (const r of expRows.rows) {
+    const g = ensure(r.project_code, r.project_name);
+    g.external_expenses_egp += Number(r.amount_egp);
+    g.expenses.push({ id: r.id, amount_egp: Number(r.amount_egp), description: r.description, date: r.date });
+  }
+  for (const r of costRows.rows) {
+    const g = ensure(r.project_code, r.project_name);
+    g.price_egp = Number(r.cost_egp);
+  }
+
+  const projects = Object.values(byProject).map((g) => {
+    const laborCost = +g.labor_cost_egp.toFixed(2);
+    const externalExp = +g.external_expenses_egp.toFixed(2);
+    const actualCost = +(laborCost + externalExp).toFixed(2);
+    const profitLoss = +(g.price_egp - actualCost).toFixed(2);
+    // Per-type view: same shared price/expenses (a project has one price
+    // regardless of internal classification), but labor cost narrowed to
+    // just that one variant — useful to compare which type is carrying the
+    // work, not a literal split of the client's payment.
+    const types = Object.values(g.types).map((ty) => {
+      const tyLaborCost = +ty.labor_cost_egp.toFixed(2);
+      const tyActualCost = +(tyLaborCost + externalExp).toFixed(2);
+      return {
+        type: ty.type,
+        labor_cost_egp: tyLaborCost,
+        external_expenses_egp: externalExp,
+        actual_cost_egp: tyActualCost,
+        price_egp: g.price_egp,
+        profit_loss_egp: +(g.price_egp - tyActualCost).toFixed(2),
+        employees: ty.employees.sort((a, b) => b.cost_egp - a.cost_egp),
+      };
+    }).sort((a, b) => b.labor_cost_egp - a.labor_cost_egp);
+    return {
+      project_code: g.project_code, project_name: g.project_name,
+      price_egp: g.price_egp,
+      labor_cost_egp: laborCost,
+      external_expenses_egp: externalExp,
+      actual_cost_egp: actualCost,
+      profit_loss_egp: profitLoss,
+      employees: g.employees.sort((a, b) => b.cost_egp - a.cost_egp),
+      expenses: g.expenses.sort((a, b) => (a.date < b.date ? 1 : -1)),
+      types,
+    };
+  }).sort((a, b) => a.project_code.localeCompare(b.project_code));
+
+  return json({ mode: isMonthly ? "monthly" : "total", year, month, projects });
+}
+
 async function projectsReport(db, monthStr) {
   const now = new Date();
   let year, month;
@@ -1565,6 +1701,24 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     });
     return json({ ok: true });
   }
+  const bonusEditMatch = path.match(/^\/api\/admin\/bonuses\/(\d+)$/);
+  if (bonusEditMatch && method === "PATCH") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const bid = Number(bonusEditMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM bonuses WHERE id = ?", args: [bid] });
+    if (!cur.rows[0]) return err("Bonus not found", 404);
+    if (cur.rows[0].deleted_at) return err("المكافأة دي اتحذفت بالفعل", 409);
+    const amount = body.amount_egp !== undefined ? Number(body.amount_egp) : Number(cur.rows[0].amount_egp);
+    if (!(amount > 0)) return err("قيمة المكافأة لازم تكون رقم موجب");
+    const date = body.date || cur.rows[0].date;
+    const reason = body.reason !== undefined ? body.reason : cur.rows[0].reason;
+    await db.execute({
+      sql: "UPDATE bonuses SET amount_egp = ?, date = ?, reason = ? WHERE id = ?",
+      args: [amount, date, reason, bid],
+    });
+    const updated = await db.execute({ sql: "SELECT * FROM bonuses WHERE id = ?", args: [bid] });
+    return json({ bonus: updated.rows[0] });
+  }
 
   // ---------- late arrivals (تأخير) — admin reviews each: excuse or penalize ----------
   if (path === "/api/admin/late-arrivals" && method === "GET") {
@@ -1617,6 +1771,26 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       args: [penRes.rows[0].id, admin.id, laId],
     });
     return json({ ok: true, penalty: penRes.rows[0] });
+  }
+  const lateEditMatch = path.match(/^\/api\/admin\/late-arrivals\/(\d+)\/reset$/);
+  if (lateEditMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const laId = Number(lateEditMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM late_arrivals WHERE id = ?", args: [laId] });
+    const la = cur.rows[0];
+    if (!la) return err("Late arrival record not found", 404);
+    if (la.status === "pending") return err("التأخيرة دي أصلاً معلقة، مفيش قرار نلغيه", 409);
+    if (la.penalty_id) {
+      await db.execute({
+        sql: "UPDATE penalties SET deleted_at = datetime('now'), deleted_by = ? WHERE id = ?",
+        args: [admin.id, la.penalty_id],
+      });
+    }
+    await db.execute({
+      sql: "UPDATE late_arrivals SET status = 'pending', penalty_id = NULL, decided_by = NULL, decided_at = NULL WHERE id = ?",
+      args: [laId],
+    });
+    return json({ ok: true });
   }
 
   // ---------- notices (لفت نظر) — same idea as penalties, informational only ----------
@@ -1755,6 +1929,132 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   if (path === "/api/admin/projects-report" && method === "GET") {
     return await projectsReport(db, url.searchParams.get("month"));
+  }
+
+  // ---------- project cost & profitability (admin-only, hidden from employees) ----------
+  if (path === "/api/admin/project-costs" && method === "GET") {
+    const res = await db.execute("SELECT * FROM project_costs ORDER BY project_code ASC, project_name COLLATE NOCASE ASC");
+    return json({ costs: res.rows });
+  }
+  if (path === "/api/admin/project-costs" && method === "POST") {
+    const missing = requireFields(body, ["project_code", "project_name", "cost_egp"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const cost = Number(body.cost_egp);
+    if (!(cost >= 0)) return err("تكلفة المشروع لازم تكون رقم موجب أو صفر");
+    await db.execute({
+      sql: `INSERT INTO project_costs (project_code, project_name, cost_egp, updated_by, updated_at)
+            VALUES (?,?,?,?,datetime('now'))
+            ON CONFLICT(project_code, project_name) DO UPDATE SET cost_egp = excluded.cost_egp, updated_by = excluded.updated_by, updated_at = datetime('now')`,
+      args: [body.project_code, body.project_name, cost, admin.id],
+    });
+    return json({ ok: true });
+  }
+
+  if (path === "/api/admin/project-expenses" && method === "GET") {
+    const code = url.searchParams.get("project_code");
+    const name = url.searchParams.get("project_name");
+    let sql = `SELECT pe.*, c.name as created_by_name FROM project_expenses pe
+               LEFT JOIN employees c ON c.id = pe.created_by WHERE 1=1`;
+    const args = [];
+    if (code) { sql += " AND pe.project_code = ?"; args.push(code); }
+    if (name) { sql += " AND pe.project_name = ?"; args.push(name); }
+    sql += " ORDER BY pe.date DESC";
+    const res = await db.execute({ sql, args });
+    return json({ expenses: res.rows });
+  }
+  if (path === "/api/admin/project-expenses" && method === "POST") {
+    const missing = requireFields(body, ["project_code", "project_name", "amount_egp", "date"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const amount = Number(body.amount_egp);
+    if (!(amount > 0)) return err("قيمة المصروف لازم تكون رقم موجب");
+    const res = await db.execute({
+      sql: `INSERT INTO project_expenses (project_code, project_name, amount_egp, description, date, created_by) VALUES (?,?,?,?,?,?) RETURNING *`,
+      args: [body.project_code, body.project_name, amount, body.description || null, body.date, admin.id],
+    });
+    return json({ expense: res.rows[0] }, 201);
+  }
+  const projExpenseDeleteMatch = path.match(/^\/api\/admin\/project-expenses\/(\d+)$/);
+  if (projExpenseDeleteMatch && method === "DELETE") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    await db.execute({ sql: "DELETE FROM project_expenses WHERE id = ?", args: [Number(projExpenseDeleteMatch[1])] });
+    return json({ ok: true });
+  }
+
+  if (path === "/api/admin/project-cost-report" && method === "GET") {
+    return await projectCostReport(db, url.searchParams.get("mode"), url.searchParams.get("month"));
+  }
+
+  // ---------- company income & expenses (profit/loss) ----------
+  if (path === "/api/admin/company-transactions" && method === "GET") {
+    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    const res = await db.execute({
+      sql: `SELECT ct.*, c.name as created_by_name FROM company_transactions ct
+            LEFT JOIN employees c ON c.id = ct.created_by
+            WHERE ct.date LIKE ? ORDER BY ct.date DESC, ct.id DESC`,
+      args: [month + "%"],
+    });
+    return json({ transactions: res.rows });
+  }
+  if (path === "/api/admin/company-transactions" && method === "POST") {
+    const missing = requireFields(body, ["type", "amount_egp", "date"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    if (!["income", "expense"].includes(body.type)) return err("النوع لازم يكون income أو expense");
+    const amount = Number(body.amount_egp);
+    if (!(amount > 0)) return err("القيمة لازم تكون رقم موجب");
+    const res = await db.execute({
+      sql: `INSERT INTO company_transactions (type, amount_egp, date, description, project_code, project_name, created_by)
+            VALUES (?,?,?,?,?,?,?) RETURNING *`,
+      args: [body.type, amount, body.date, body.description || null,
+             body.type === "income" ? (body.project_code || null) : null,
+             body.type === "income" ? (body.project_name || null) : null,
+             admin.id],
+    });
+    return json({ transaction: res.rows[0] }, 201);
+  }
+  const companyTxDeleteMatch = path.match(/^\/api\/admin\/company-transactions\/(\d+)$/);
+  if (companyTxDeleteMatch && method === "DELETE") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    await db.execute({ sql: "DELETE FROM company_transactions WHERE id = ?", args: [Number(companyTxDeleteMatch[1])] });
+    return json({ ok: true });
+  }
+  if (path === "/api/admin/profit-loss-report" && method === "GET") {
+    return await profitLossReport(db, url.searchParams.get("month"));
+  }
+
+  // ---------- petty cash / عهدة — fully standalone, never affects company totals ----------
+  if (path === "/api/admin/petty-cash" && method === "GET") {
+    const month = url.searchParams.get("month");
+    let sql = `SELECT pc.*, c.name as created_by_name FROM petty_cash pc
+               LEFT JOIN employees c ON c.id = pc.created_by WHERE 1=1`;
+    const args = [];
+    if (month) { sql += " AND pc.date LIKE ?"; args.push(month + "%"); }
+    sql += " ORDER BY pc.date DESC, pc.id DESC";
+    const res = await db.execute({ sql, args });
+    const allRes = await db.execute("SELECT type, amount_egp FROM petty_cash");
+    let balance = 0;
+    for (const r of allRes.rows) balance += (r.type === "fund" ? Number(r.amount_egp) : -Number(r.amount_egp));
+    return json({ entries: res.rows, balance: +balance.toFixed(2) });
+  }
+  if (path === "/api/admin/petty-cash" && method === "POST") {
+    const missing = requireFields(body, ["type", "amount_egp", "date"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    if (!["fund", "expense"].includes(body.type)) return err("النوع لازم يكون fund أو expense");
+    const amount = Number(body.amount_egp);
+    if (!(amount > 0)) return err("القيمة لازم تكون رقم موجب");
+    // No cap here on purpose: if an expense pushes the balance below zero,
+    // that negative balance means the admin paid out of their own pocket
+    // and the company owes them that amount back — it's tracked, not blocked.
+    const res = await db.execute({
+      sql: `INSERT INTO petty_cash (type, amount_egp, date, description, created_by) VALUES (?,?,?,?,?) RETURNING *`,
+      args: [body.type, amount, body.date, body.description || null, admin.id],
+    });
+    return json({ entry: res.rows[0] }, 201);
+  }
+  const pettyCashDeleteMatch = path.match(/^\/api\/admin\/petty-cash\/(\d+)$/);
+  if (pettyCashDeleteMatch && method === "DELETE") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    await db.execute({ sql: "DELETE FROM petty_cash WHERE id = ?", args: [Number(pettyCashDeleteMatch[1])] });
+    return json({ ok: true });
   }
 
   if (path === "/api/admin/set-role" && method === "POST") {
