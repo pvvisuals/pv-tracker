@@ -648,6 +648,10 @@ textarea{resize:vertical;min-height:76px;}
 <div id="myPenaltiesList"><div class="empty-log">No deductions</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header" style="color:var(--ok);border-color:var(--ok)"><span>BONUSES · مكافآت <span class="fla">(للاطلاع فقط)</span></span></div>
+<div id="myBonusesList"><div class="empty-log">No bonuses</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>NOTICES · لفت النظر <span class="fla">(للاطلاع فقط)</span></span></div>
 <div id="myNoticesList"><div class="empty-log">No notices</div></div>
 </div>
@@ -880,6 +884,32 @@ textarea{resize:vertical;min-height:76px;}
 <div class="sec-sub" style="margin:8px 0 4px" id="penaltyPreview">المعادلة: عدد الأيام × 8 ساعات × قيمة الساعة = 0.00 EGP</div>
 <button class="btn-add" onclick="addPenalty()">+ ADD PENALTY · إضافة جزاء</button>
 <div id="adminPenaltiesList" style="margin-top:14px"><div class="empty-log">No penalties this month</div></div>
+</div>
+<div class="task-form">
+<div class="settings-label">مكافآت (إضافة للمرتب) <span class="fla">Bonus</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="bonusEmployee" onchange="updateBonusPreview()"></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Amount (EGP) <span class="fla">القيمة بالجنيه</span></div>
+<input type="number" id="bonusAmount" min="1" step="1" oninput="updateBonusPreview()"/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="bonusDate"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Reason <span class="fla">السبب</span></div>
+<input type="text" id="bonusReason"/>
+</div>
+</div>
+<div class="sec-sub" style="margin:8px 0 4px" id="bonusPreview">بيعادل: 0.00 ساعة على حسب قيمة ساعة هذا الموظف</div>
+<button class="btn-add" onclick="addBonus()">+ ADD BONUS · إضافة مكافأة</button>
+<div id="adminBonusesList" style="margin-top:14px"><div class="empty-log">No bonuses this month</div></div>
 </div>
 <div class="task-form">
 <div class="settings-label">لفت النظر <span class="fla">(للاطلاع فقط — من غير خصم)</span></div>
@@ -1149,12 +1179,14 @@ var myOffReqs = [];
 var myPermReqs = [];
 var myHolidays = [];
 var myPenalties = [];
+var myBonuses = [];
 var myNotices = [];
 var leaveBalance = { casual: 6, annual: 15 };
 var adminRequestsData = {};
 var adminHolidaysMonth = [];
 var empStatuses = [];
 var adminPenaltiesMonth = [];
+var adminBonusesMonth = [];
 var adminNoticesMonth = [];
 var adminEmployees = [];
 
@@ -1661,6 +1693,7 @@ async function loadLeaveOvertimeData() {
       apiRequest("/api/official-holidays" + qs, "GET"),
       apiRequest("/api/penalties/mine" + qs, "GET"),
       apiRequest("/api/notices/mine" + qs, "GET"),
+      apiRequest("/api/bonuses/mine" + qs, "GET"),
     ]);
     myLeaveReqs = results[0].requests || [];
     leaveBalance = results[0].balance || leaveBalance;
@@ -1670,12 +1703,29 @@ async function loadLeaveOvertimeData() {
     myHolidays = results[4].holidays || [];
     myPenalties = results[5].penalties || [];
     myNotices = results[6].notices || [];
+    myBonuses = results[7].bonuses || [];
     renderLeaveBalance();
     renderMyRequests();
     renderOfficialHolidaysEmployee();
     renderMyPenalties();
     renderMyNotices();
+    renderMyBonuses();
   } catch(e) { /* non-fatal */ }
+}
+
+function renderMyBonuses() {
+  var el = document.getElementById("myBonusesList");
+  if (!el) return;
+  if (!myBonuses.length) { el.innerHTML = "<div class='empty-log'>No bonuses</div>"; return; }
+  var html = "";
+  for (var i = 0; i < myBonuses.length; i++) {
+    var b = myBonuses[i];
+    var deletedNote = b.deleted_at ? ("<br/><span style='opacity:.6'>تم إلغاؤها بواسطة " + (b.deleted_by_name||"-") + " في " + b.deleted_at.slice(0,10) + "</span>") : "";
+    html += "<div class='log-entry'><div class='log-type' style='color:" + (b.deleted_at?"var(--muted)":"var(--ok)") + (b.deleted_at?";text-decoration:line-through":"") + "'>+" + b.amount_egp + " EGP</div>" +
+      "<div class='log-time'>" + b.date + "</div>" +
+      "<div class='log-note'>" + (b.reason || "") + " (≈ " + b.hours_equivalent + " h)" + deletedNote + "</div></div>";
+  }
+  el.innerHTML = html;
 }
 
 function renderMyNotices() {
@@ -1938,6 +1988,7 @@ async function reloadMonthDependentAdminData() {
   }
   jobs.push(apiRequest("/api/admin/penalties?month=" + reqMonth, "GET"));
   jobs.push(apiRequest("/api/admin/notices?month=" + reqMonth, "GET"));
+  jobs.push(apiRequest("/api/admin/bonuses?month=" + reqMonth, "GET"));
 
   var results = await Promise.all(jobs);
 
@@ -1948,11 +1999,13 @@ async function reloadMonthDependentAdminData() {
   }
   adminPenaltiesMonth = results[jobKeys.length].penalties || [];
   adminNoticesMonth = results[jobKeys.length + 1].notices || [];
+  adminBonusesMonth = results[jobKeys.length + 2].bonuses || [];
 
   populateRequestFilter();
   renderRequestsOverview();
   renderAdminPenalties();
   renderAdminNotices();
+  renderAdminBonuses();
 }
 
 function requestRowHtml(cfg, r, status) {
@@ -2394,6 +2447,7 @@ async function refreshEmployeesOnly() {
   showEmployeeFullInfo();
   showProbationStatus();
   updatePenaltyPreview();
+  updateBonusPreview();
 }
 
 function populateDailyTasksEmployeeSelect() {
@@ -2678,6 +2732,83 @@ async function executeDeletePenalty(id, pin) {
   showLoading(false);
 }
 
+// ---------------- Bonuses (مكافآت) ----------------
+
+function updateBonusPreview() {
+  var empId = document.getElementById("bonusEmployee").value;
+  var amount = Number(document.getElementById("bonusAmount").value) || 0;
+  var emp = adminEmployees.find(function(e) { return String(e.id) === String(empId); });
+  var rate = emp ? (Number(emp.hourly_rate) || 0) : 0;
+  var hours = rate > 0 ? amount / rate : 0;
+  document.getElementById("bonusPreview").textContent =
+    "بيعادل: " + hours.toFixed(2) + " ساعة (على حسب قيمة ساعة هذا الموظف: " + rate.toFixed(2) + " ج.م/ساعة)";
+}
+
+async function addBonus() {
+  var empId = document.getElementById("bonusEmployee").value;
+  var amount = document.getElementById("bonusAmount").value;
+  var date = document.getElementById("bonusDate").value;
+  var reason = document.getElementById("bonusReason").value.trim();
+  if (!empId || !amount || !date) { showToast("!", "املا كل الحقول"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/bonuses", "POST", { employee_id: empId, amount_egp: Number(amount), date: date, reason: reason });
+    showToast("v", "تم إضافة المكافأة");
+    document.getElementById("bonusAmount").value = "";
+    document.getElementById("bonusReason").value = "";
+    updateBonusPreview();
+    await refreshBonusesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function refreshBonusesOnly() {
+  var monthInput = document.getElementById("reqFilterMonth");
+  var reqMonth = monthInput ? monthInput.value : "";
+  var res = await apiRequest("/api/admin/bonuses?month=" + reqMonth, "GET");
+  adminBonusesMonth = res.bonuses || [];
+  renderAdminBonuses();
+}
+
+function renderAdminBonuses() {
+  var el = document.getElementById("adminBonusesList");
+  if (!el) return;
+  if (!adminBonusesMonth.length) { el.innerHTML = "<div class='empty-log'>No bonuses this month</div>"; return; }
+  var html = "";
+  for (var i = 0; i < adminBonusesMonth.length; i++) {
+    var b = adminBonusesMonth[i];
+    var isDeleted = !!b.deleted_at;
+    var note = "#" + b.emp_code + " " + (b.employee_name||"") + " — " + b.amount_egp + " EGP — " + (b.reason||"") +
+      "<br/><span style='opacity:.6'>أضافه " + (b.created_by_name||"-") + " في " + (b.created_at?b.created_at.slice(0,16):"-") + "</span>";
+    if (isDeleted) {
+      note += "<br/><span style='color:var(--danger)'>تم الحذف بواسطة " + (b.deleted_by_name||"-") + " في " + b.deleted_at.slice(0,16) + "</span>";
+    }
+    var actions = isDeleted ? "" : "<button class='btn-end-task' onclick=\"deleteBonusPrompt(" + b.id + ")\">DELETE · حذف</button>";
+    html += "<div class='log-entry'><div class='log-type' style='" + (isDeleted?"color:var(--muted);text-decoration:line-through":"color:var(--ok)") + "'>" + b.date + "</div><div class='log-note'>" + note + "</div>" + actions + "</div>";
+  }
+  el.innerHTML = html;
+}
+
+function deleteBonusPrompt(id) {
+  openPinModal(
+    "DELETE BONUS · حذف المكافأة",
+    "متأكد عايز تحذف المكافأة دي؟ هتفضل ظاهرة في السجل كـ'محذوفة' مع تاريخها ومين حذفها. ادخل كود الأمان:",
+    function(pin) {
+      if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+      executeDeleteBonus(id, pin);
+    }
+  );
+}
+async function executeDeleteBonus(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/bonuses/" + id + "/delete", "POST", { pin: pin });
+    showToast("v", "تم حذف المكافأة");
+    await refreshBonusesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
 // ---------------- Notices (لفت نظر) ----------------
 
 async function addNotice() {
@@ -2743,7 +2874,7 @@ async function executeDeleteNotice(id, pin) {
 }
 
 function populateEmployeeSelects() {
-  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee", "roleEmployee", "infoEmployee", "probationEmployee", "noticeEmployee"];
+  var selectIds = ["reportEmployee", "salaryEmployee", "penaltyEmployee", "bonusEmployee", "roleEmployee", "infoEmployee", "probationEmployee", "noticeEmployee"];
   for (var s = 0; s < selectIds.length; s++) {
     var sel = document.getElementById(selectIds[s]);
     if (!sel || sel.options.length === adminEmployees.length) continue;
@@ -2761,7 +2892,7 @@ function populateEmployeeSelects() {
     var d = new Date();
     monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
   }
-  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); showEmployeeFullInfo(); updatePenaltyPreview(); showProbationStatus(); }
+  if (adminEmployees.length) { fillSalaryForm(); showRoleStatus(); showEmployeeFullInfo(); updatePenaltyPreview(); updateBonusPreview(); showProbationStatus(); }
 }
 
 function showRoleStatus() {
@@ -3009,12 +3140,13 @@ function renderAdminReport(res) {
   html += infoCard("Counted Hours <span class='fla'>الساعات المحسوبة</span>", s.counted_hours + " h");
   html += infoCard("Hours Diff <span class='fla'>الفرق</span>", "<span style='color:" + diffColor + "'>" + diffSign + s.hours_diff + " h</span>");
   html += infoCard("Salary Adjustment <span class='fla'>تعديل المرتب</span>", "<span style='color:" + diffColor + "'>" + diffSign + s.salary_adjustment + " EGP</span>");
+  html += infoCard("Bonuses <span class='fla'>مكافآت</span>", "<span style='color:var(--ok)'>+" + s.bonuses_total_egp + " EGP</span>");
   html += infoCard("Penalties <span class='fla'>الجزاءات</span>", "<span style='color:var(--danger)'>-" + s.penalties_total_egp + " EGP</span>");
   html += "</div>";
   html += "<div style='text-align:center;padding:18px;border:1px solid var(--border);margin-top:4px;'>";
   html += "<div style='font-size:15px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;'>FINAL SALARY · صافي المرتب</div>";
   html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:44px;color:#fff;margin-top:6px;'>" + s.final_salary.toLocaleString() + " EGP</div>";
-  html += "<div class='fl-hint' style='margin-top:8px'>= المرتب الأساسي + تعديل الساعات − الجزاءات · Base + Hours Adjustment − Penalties</div>";
+  html += "<div class='fl-hint' style='margin-top:8px'>= المرتب الأساسي + تعديل الساعات + المكافآت − الجزاءات · Base + Hours Adjustment + Bonuses − Penalties</div>";
   html += "</div></div>";
 
   // ---- Hours breakdown ----
@@ -3022,13 +3154,14 @@ function renderAdminReport(res) {
   html += logRow("Actual Hours Worked <span class='fla'>الساعات الفعلية</span>", t.actual_hours + " h");
   html += logRow("Overtime — Counted <span class='fla' style='color:var(--ok)'>محسوب</span>", "<span style='color:var(--ok)'>" + t.overtime_hours + " h</span>");
   if (t.uncounted_overtime_hours > 0) {
-    html += logRow("Extra Hours — Not Counted <span class='fla' style='color:var(--warn)'>زيادة مش محسوبة (مفيش أوفرتايم مفعّل)</span>", "<span style='color:var(--warn)'>" + t.uncounted_overtime_hours + " h</span>");
+    html += logRow("Overtime — Not Counted <span class='fla' style='color:var(--warn)'>مش محسوب (مفيش أوفرتايم مفعّل)</span>", "<span style='color:var(--warn)'>" + t.uncounted_overtime_hours + " h</span>");
   }
   html += logRow("Official Holiday (worked ×2) <span class='fla'>إجازة رسمية اشتغل فيها</span>", "<span style='color:var(--ok)'>" + t.holiday_bonus_hours + " h</span>");
   html += logRow("Weekend Worked ×2 <span class='fla'>جمعة/سبت اشتغل فيهم</span>", "<span style='color:var(--ok)'>" + t.weekend_bonus_hours + " h</span>");
   html += logRow("Financial Requests → Hours <span class='fla'>مستحقات مالية</span>", x.financial_total_egp + " EGP → <span style='color:var(--ok)'>" + x.financial_hours + " h</span>");
   html += logRow("Off-clock Hours <span class='fla'>ساعات خارج البصمة</span>", "<span style='color:var(--ok)'>" + x.offclock_hours + " h</span>");
   html += logRow("Unused Permission → Bonus <span class='fla'>إذن انصراف غير مستخدم</span>", "<span style='color:var(--ok)'>" + x.permission_bonus_hours + "</span> / " + x.permission_monthly_limit + " h");
+  html += logRow("Bonuses → Hours Equivalent <span class='fla'>مكافآت (بالساعات)</span>", x.bonuses_total_egp + " EGP → <span style='color:var(--ok)'>" + x.bonuses_hours_equivalent + " h</span>");
   if (t.absent_hours_deducted > 0) {
     html += logRow("Absence — Deducted <span class='fla' style='color:var(--danger)'>خصم الغياب</span>", "<span style='color:var(--danger)'>-" + t.absent_hours_deducted + " h</span>");
   }
