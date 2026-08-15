@@ -51,7 +51,8 @@ select option{background:#111;}
 .link-btn:hover{color:#fff;}
 #app{display:none;min-height:100vh;flex-direction:column;}
 #app.active{display:flex;}
-.app-header{background:#000;border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;height:54px;}
+#stickyTopWrap{position:sticky;top:0;z-index:10;}
+.app-header{background:#000;border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:54px;}
 .header-left{display:flex;align-items:center;gap:14px;}
 .header-left img{height:22px;object-fit:contain;}
 .hd{width:1px;height:18px;background:var(--border);}
@@ -72,11 +73,18 @@ select option{background:#111;}
   .user-badge{gap:6px;}
   .user-name{font-size:12px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 }
-.tabs{display:flex;background:#000;border-bottom:1px solid var(--border);padding:0 28px;overflow-x:auto;}
+.tabs{display:flex;background:#000;border-bottom:1px solid var(--border);padding:0 28px;overflow-x:auto;justify-content:center;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{padding:13px 20px;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-bottom:1px solid transparent;transition:color 0.2s,border-color 0.2s;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--muted);}.tab.active{color:#fff;border-bottom-color:#fff;}
 .tab-content{display:none;padding:32px 28px;max-width:840px;margin:0 auto;width:100%;}
+#adminSideNav{position:fixed;left:22px;top:130px;width:180px;max-height:75vh;overflow-y:auto;background:var(--card);border:1px solid var(--border);padding:14px;display:none;z-index:50;box-shadow:0 4px 14px rgba(0,0,0,0.4);}
+#adminSideNav.show{display:block;}
+#adminSideNav .nav-title{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;}
+#adminSideNav a{display:block;padding:8px 4px;font-size:13px;color:var(--muted2);cursor:pointer;border-bottom:1px solid var(--border2);transition:color 0.15s,padding-right 0.15s;}
+#adminSideNav a:hover{color:#fff;padding-right:8px;}
+#adminSideNav a:last-child{border-bottom:none;}
+@media(max-width:1450px){#adminSideNav.show{display:none;}}
 @media(max-width:600px){.tab-content{padding:18px 16px;}}
 .tab-content.active{display:block;animation:fadeUp 0.35s ease both;}
 .sec-head{margin-bottom:24px;}
@@ -389,6 +397,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div id="app">
+<div id="stickyTopWrap">
 <header class="app-header">
 <div class="header-left">
 <img src="data:image/png;base64,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AAAAAAAAAA1y0T8LJSwS5ZFR6Z5nRPwslLBLlkVHpgAAAAAAAAAAAAAAEm6yjceUsStspWSTdZRuPKWJW2UCGQAAAAAAAAAAAAAAAGuWifhZKWCXLIqMjX2VIpE6lSipUiN8q1atHsooot61FFFH/kGxgx0+tor95339et/s+tor95339et/sGxYx0+tor95339et/s+tor95339et/sGxYx0+tor95339et/s+tor95339et/sGxYx0+tor95339et/s+tor95339et/sGxYx0+tor95339et/s+tor95339et/sGxYx0+tor95339et/s+tor95339et/sGxYx0+tor95339et/s+tor95339et/sGxYx0+tor95339et/s+tor95339et/sFs6yjceUsStspDL+95vl8vVWireb3b29FWn20UWlpTW9n/AJfwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVNq3OKcx4JTn2SWVTatzinMeCU59kC8gAAAAAAAAAAAAAAAGQM978R7Erxm1mvzIGe9+I9iV4zawOKAAAAAAAAAAAAAAAALZ1aPuOd/ibn8tqr8GM42YAYzjZgBjONmAGM42YAYzjZgBjONmAGM42YAYzjZhxp73Ij2G3jKrA+LRPwslLBLlkVHpnmdE/CyUsEuWRUemAAAAAAAAAAAAAAASbrKNx5SxK2ylZJN1lG48pYlbZQIZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVNq3OKcx4JTn2SWVTatzinMeCU59kC8gAAAAAAAAAAAAAAAGQM978R7Erxm1mvzIGe9+I9iV4zawOKAAAAAAAAAAAAAAAC2dWj7jnf4m5/Laq/SBq0fcc7/ABNz+W1V+AAAAAAAAAAAAAAA4097kR7DbxlVnZcae9yI9ht4yqwPi0T8LJSwS5ZFR6Z5nRPwslLBLlkVHpgAAAAAAAAAAAAAAEm6yjceUsStspWSTdZRuPKWJW2UCGQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFTatzinMeCU59kllU2rc4pzHglOfZAvIAAAAAAAAAAAAAAABkDPe/EexK8ZtZr8yBnvfiPYleM2sDigAAAAAAAAAAAAAAA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" alt="PV"/>
@@ -412,6 +421,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="tab" onclick="switchTab('admin')" id="tab-admin" style="display:none">ADMIN · الإدارة</div>
 <div class="tab" onclick="switchTab('settings')" id="tab-settings">SETTINGS · الإعدادات</div>
 </nav>
+</div>
 <div class="tab-content active" id="content-signin">
 <div class="sec-head">
 <div class="sec-title">ATTENDANCE</div>
@@ -644,7 +654,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="officialHolidaysList"><div class="empty-log">No holidays set</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>DEDUCTIONS · الخصومات <span class="fla">(للاطلاع فقط)</span></span></div>
+<div class="log-header" style="color:var(--danger);border-color:var(--danger)"><span>DEDUCTIONS · الخصومات <span class="fla">(للاطلاع فقط)</span></span></div>
 <div id="myPenaltiesList"><div class="empty-log">No deductions</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
@@ -652,7 +662,11 @@ textarea{resize:vertical;min-height:76px;}
 <div id="myBonusesList"><div class="empty-log">No bonuses</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>NOTICES · لفت النظر <span class="fla">(للاطلاع فقط)</span></span></div>
+<div class="log-header" style="color:var(--danger);border-color:var(--danger)"><span>LATE ARRIVALS · تأخيرات <span class="fla">(للاطلاع فقط)</span></span></div>
+<div id="myLateArrivalsList"><div class="empty-log">No late arrivals</div></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header" style="color:var(--warn);border-color:var(--warn)"><span>NOTICES · لفت النظر <span class="fla">(للاطلاع فقط)</span></span></div>
 <div id="myNoticesList"><div class="empty-log">No notices</div></div>
 </div>
 <div class="log-wrap" style="margin-bottom:18px;">
@@ -679,17 +693,17 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>EMPLOYEE STATUS NOW · حالة الموظفين الآن</span></div>
+<div class="log-header" id="section-emp-status"><span>EMPLOYEE STATUS NOW · حالة الموظفين الآن</span></div>
 <div id="empStatusList"><div class="empty-log">Loading...</div></div>
 </div>
 
 <div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header"><span>BIRTHDAYS · أعياد الميلاد</span></div>
+<div class="log-header" id="section-birthdays"><span>BIRTHDAYS · أعياد الميلاد</span></div>
 <div id="adminBirthdaysList"><div class="empty-log">Loading...</div></div>
 </div>
 
 <div class="task-form">
-<div class="settings-label">Daily Tasks Browser <span class="fla">مين شغال في إيه</span></div>
+<div class="settings-label" id="section-daily-tasks">Daily Tasks Browser <span class="fla">مين شغال في إيه</span></div>
 <div class="sec-sub" style="margin-bottom:12px">هنا التصنيف الكامل (Category/Type) ظاهر زي ما دخّلته بالظبط</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -706,7 +720,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div id="dailyTasksResult"></div>
 
-<div class="settings-label" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
+<div class="settings-label" id="section-requests" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
 <span>REQUESTS · الطلبات</span>
 <button class="btn-end-task" style="margin-top:0" onclick="loadAdminData()">↻ REFRESH · تحديث</button>
 </div>
@@ -758,7 +772,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 
 <div class="task-form">
-<div class="settings-label">إدارة الإجازات الرسمية</div>
+<div class="settings-label" id="section-holidays">إدارة الإجازات الرسمية</div>
 <div class="fg">
 <div class="fl">Filter Month <span class="fla">فلتر الشهر</span></div>
 <input type="month" id="holidayFilterMonth" onchange="refreshHolidaysOnly()"/>
@@ -777,7 +791,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="adminHolidaysList" style="margin-top:14px"><div class="empty-log">No holidays this month</div></div>
 </div>
 <div class="task-form">
-<div class="settings-label">Manage Projects <span class="fla">إدارة المشاريع</span></div>
+<div class="settings-label" id="section-projects">Manage Projects <span class="fla">إدارة المشاريع</span></div>
 <div class="sec-sub" style="margin-bottom:16px">الموظف بيشوف بس الكود والاسم والرمز — مش الـ Category ولا الـ Type</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -830,7 +844,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="adminProjectsList" style="margin-top:14px"><div class="empty-log">No projects yet</div></div>
 </div>
 <div class="task-form">
-<div class="settings-label">إعدادات الراتب لكل موظف</div>
+<div class="settings-label" id="section-salary">إعدادات الراتب لكل موظف</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -859,34 +873,46 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <button class="btn-add" onclick="saveSalarySettings()">SAVE / حفظ</button>
 </div>
+<div class="task-form" id="section-late-arrivals">
+<div class="settings-label" id="section-late-arrivals-title" style="color:var(--danger)">Late Arrivals <span class="fla">تأخيرات (بعد 11:10 ص)</span></div>
+<div class="sec-sub" style="margin-bottom:12px">أي حضور بعد 11:10 صباحاً بيتسجل هنا تلقائي — اختار خصم أو سماح لكل حالة</div>
+<div id="adminLateArrivalsList"><div class="empty-log">No late arrivals this month</div></div>
+</div>
 <div class="task-form">
-<div class="settings-label">جزاءات (خصم من المرتب)</div>
+<div class="settings-label" id="section-penalties">جزاءات (خصم من المرتب)</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
 <select id="penaltyEmployee" onchange="updatePenaltyPreview()"></select>
 </div>
 <div class="fg" style="margin:0">
-<div class="fl">Days <span class="fla">عدد الأيام</span></div>
-<input type="number" id="penaltyDays" min="0.25" step="0.25" oninput="updatePenaltyPreview()"/>
+<div class="fl">Unit <span class="fla">الوحدة</span></div>
+<select id="penaltyUnit" onchange="onPenaltyUnitChange()">
+<option value="days">Days · أيام</option>
+<option value="hours">Hours · ساعات</option>
+</select>
 </div>
 </div>
 <div class="form-row">
 <div class="fg" style="margin:0">
+<div class="fl" id="penaltyAmountLabel">Days <span class="fla">عدد الأيام</span></div>
+<input type="number" id="penaltyDays" min="0.25" step="0.25" oninput="updatePenaltyPreview()"/>
+</div>
+<div class="fg" style="margin:0">
 <div class="fl">Date <span class="fla">التاريخ</span></div>
 <input type="date" id="penaltyDate"/>
 </div>
-<div class="fg" style="margin:0">
+</div>
+<div class="fg">
 <div class="fl">Reason <span class="fla">السبب</span></div>
 <input type="text" id="penaltyReason"/>
-</div>
 </div>
 <div class="sec-sub" style="margin:8px 0 4px" id="penaltyPreview">المعادلة: عدد الأيام × 8 ساعات × قيمة الساعة = 0.00 EGP</div>
 <button class="btn-add" onclick="addPenalty()">+ ADD PENALTY · إضافة جزاء</button>
 <div id="adminPenaltiesList" style="margin-top:14px"><div class="empty-log">No penalties this month</div></div>
 </div>
 <div class="task-form">
-<div class="settings-label">مكافآت (إضافة للمرتب) <span class="fla">Bonus</span></div>
+<div class="settings-label" id="section-bonuses">مكافآت (إضافة للمرتب) <span class="fla">Bonus</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -912,7 +938,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="adminBonusesList" style="margin-top:14px"><div class="empty-log">No bonuses this month</div></div>
 </div>
 <div class="task-form">
-<div class="settings-label">لفت النظر <span class="fla">(للاطلاع فقط — من غير خصم)</span></div>
+<div class="settings-label" id="section-notices">لفت النظر <span class="fla">(للاطلاع فقط — من غير خصم)</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -931,7 +957,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="adminNoticesList" style="margin-top:14px"><div class="empty-log">No notices this month</div></div>
 </div>
 <div class="task-form">
-<div class="settings-label">Manage Admins · إدارة صلاحيات الأدمن</div>
+<div class="settings-label" id="section-manage-admins">Manage Admins · إدارة صلاحيات الأدمن</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -945,7 +971,7 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-add" onclick="toggleAdminRole()" id="roleToggleBtn">MAKE ADMIN · ترقية لأدمن</button>
 </div>
 <div class="task-form">
-<div class="settings-label">Probation Status <span class="fla">فترة الاختبار</span></div>
+<div class="settings-label" id="section-probation">Probation Status <span class="fla">فترة الاختبار</span></div>
 <div class="sec-sub" style="margin-bottom:12px">تحويل الموظف من تحت الاختبار لأساسي بيفتح له الإجازات — محتاج كود الأمان</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -960,7 +986,7 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-add" onclick="toggleProbationPrompt()" id="probationToggleBtn">MAKE PERMANENT · تثبيت الموظف</button>
 </div>
 <div class="task-form">
-<div class="settings-label">Employee Full Info · بيانات الموظف الكاملة</div>
+<div class="settings-label" id="section-full-info">Employee Full Info · بيانات الموظف الكاملة</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -996,7 +1022,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="task-form">
-<div class="settings-label">Employee Monthly Report</div>
+<div class="settings-label" id="section-report">Employee Monthly Report</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -1011,7 +1037,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div id="adminReportResult"></div>
 <div class="task-form">
-<div class="settings-label">Projects Report <span class="fla">تقرير المشاريع (كل الموظفين)</span></div>
+<div class="settings-label" id="section-projects-report">Projects Report <span class="fla">تقرير المشاريع (كل الموظفين)</span></div>
 <div class="sec-sub" style="margin-bottom:12px">إجمالي ساعات كل مشروع، مجمّعة من كل الموظفين اللي اشتغلوا فيه</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -1135,6 +1161,30 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="lateArrivalModalOverlay">
+<div class="modal">
+<h3>PENALIZE LATE ARRIVAL · تحديد خصم التأخير</h3>
+<div class="fg">
+<div class="fl">Unit <span class="fla">الوحدة</span></div>
+<select id="lateArrivalUnit">
+<option value="days">Days · أيام</option>
+<option value="hours">Hours · ساعات</option>
+</select>
+</div>
+<div class="fg">
+<div class="fl">Amount <span class="fla">القيمة</span></div>
+<input type="number" id="lateArrivalAmount" min="0.25" step="0.25"/>
+</div>
+<div class="fg">
+<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
+<input type="password" id="lateArrivalPin" placeholder="****" autocomplete="off"/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeLateArrivalModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitLateArrivalPenalty()">Confirm · تأكيد</button>
+</div>
+</div>
+</div>
 <div class="modal-overlay" id="birthdayModalOverlay">
 <div class="modal" style="text-align:center;border-color:var(--warn);">
 <div style="font-size:52px;margin-bottom:10px;">🎂</div>
@@ -1144,6 +1194,25 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-mo" onclick="closeBirthdayModal()">شكراً · Thank You</button>
 </div>
 </div>
+</div>
+<div id="adminSideNav">
+<div class="nav-title">Quick Jump · تنقل سريع</div>
+<a onclick="jumpTo('section-emp-status')">حالة الموظفين</a>
+<a onclick="jumpTo('section-birthdays')">أعياد الميلاد</a>
+<a onclick="jumpTo('section-daily-tasks')">مين شغال في إيه</a>
+<a onclick="jumpTo('section-requests')">الطلبات</a>
+<a onclick="jumpTo('section-holidays')">الإجازات الرسمية</a>
+<a onclick="jumpTo('section-projects')">المشاريع</a>
+<a onclick="jumpTo('section-salary')">إعدادات الراتب</a>
+<a onclick="jumpTo('section-late-arrivals-title')">التأخيرات</a>
+<a onclick="jumpTo('section-penalties')">الجزاءات</a>
+<a onclick="jumpTo('section-bonuses')">المكافآت</a>
+<a onclick="jumpTo('section-notices')">لفت النظر</a>
+<a onclick="jumpTo('section-manage-admins')">إدارة الأدمن</a>
+<a onclick="jumpTo('section-probation')">فترة الاختبار</a>
+<a onclick="jumpTo('section-full-info')">بيانات الموظف</a>
+<a onclick="jumpTo('section-report')">تقرير الموظف</a>
+<a onclick="jumpTo('section-projects-report')">تقرير المشاريع</a>
 </div>
 <button id="scrollTopBtn" onclick="scrollToTop()" title="Back to top">↑</button>
 <div class="loading-overlay" id="loadingOverlay">
@@ -1180,6 +1249,7 @@ var myPermReqs = [];
 var myHolidays = [];
 var myPenalties = [];
 var myBonuses = [];
+var myLateArrivals = [];
 var myNotices = [];
 var leaveBalance = { casual: 6, annual: 15 };
 var adminRequestsData = {};
@@ -1187,6 +1257,7 @@ var adminHolidaysMonth = [];
 var empStatuses = [];
 var adminPenaltiesMonth = [];
 var adminBonusesMonth = [];
+var adminLateArrivalsMonth = [];
 var adminNoticesMonth = [];
 var adminEmployees = [];
 
@@ -1694,6 +1765,7 @@ async function loadLeaveOvertimeData() {
       apiRequest("/api/penalties/mine" + qs, "GET"),
       apiRequest("/api/notices/mine" + qs, "GET"),
       apiRequest("/api/bonuses/mine" + qs, "GET"),
+      apiRequest("/api/late-arrivals/mine" + qs, "GET"),
     ]);
     myLeaveReqs = results[0].requests || [];
     leaveBalance = results[0].balance || leaveBalance;
@@ -1704,13 +1776,31 @@ async function loadLeaveOvertimeData() {
     myPenalties = results[5].penalties || [];
     myNotices = results[6].notices || [];
     myBonuses = results[7].bonuses || [];
+    myLateArrivals = results[8].late_arrivals || [];
     renderLeaveBalance();
     renderMyRequests();
     renderOfficialHolidaysEmployee();
     renderMyPenalties();
     renderMyNotices();
     renderMyBonuses();
+    renderMyLateArrivals();
   } catch(e) { /* non-fatal */ }
+}
+
+function renderMyLateArrivals() {
+  var el = document.getElementById("myLateArrivalsList");
+  if (!el) return;
+  if (!myLateArrivals.length) { el.innerHTML = "<div class='empty-log'>No late arrivals</div>"; return; }
+  var html = "";
+  for (var i = 0; i < myLateArrivals.length; i++) {
+    var l = myLateArrivals[i];
+    var statusNote = "";
+    if (l.status === "pending") statusNote = "<span style='color:var(--muted)'>لسه ماحدش قرر</span>";
+    else if (l.status === "excused") statusNote = "<span style='color:var(--warn)'>فيه سماح — مفيش خصم</span>";
+    else if (l.status === "penalized") statusNote = "<span style='color:var(--danger)'>اتحط عليها خصم</span>";
+    html += "<div class='log-entry'><div class='log-type' style='color:var(--danger)'>" + l.arrival_time + "</div><div class='log-time'>" + l.date + "</div><div class='log-note'>" + statusNote + "</div></div>";
+  }
+  el.innerHTML = html;
 }
 
 function renderMyBonuses() {
@@ -1989,6 +2079,7 @@ async function reloadMonthDependentAdminData() {
   jobs.push(apiRequest("/api/admin/penalties?month=" + reqMonth, "GET"));
   jobs.push(apiRequest("/api/admin/notices?month=" + reqMonth, "GET"));
   jobs.push(apiRequest("/api/admin/bonuses?month=" + reqMonth, "GET"));
+  jobs.push(apiRequest("/api/admin/late-arrivals?month=" + reqMonth, "GET"));
 
   var results = await Promise.all(jobs);
 
@@ -2000,12 +2091,14 @@ async function reloadMonthDependentAdminData() {
   adminPenaltiesMonth = results[jobKeys.length].penalties || [];
   adminNoticesMonth = results[jobKeys.length + 1].notices || [];
   adminBonusesMonth = results[jobKeys.length + 2].bonuses || [];
+  adminLateArrivalsMonth = results[jobKeys.length + 3].late_arrivals || [];
 
   populateRequestFilter();
   renderRequestsOverview();
   renderAdminPenalties();
   renderAdminNotices();
   renderAdminBonuses();
+  renderAdminLateArrivals();
 }
 
 function requestRowHtml(cfg, r, status) {
@@ -2657,29 +2750,128 @@ async function saveSalarySettings() {
   showLoading(false);
 }
 
+function onPenaltyUnitChange() {
+  var unit = document.getElementById("penaltyUnit").value;
+  var input = document.getElementById("penaltyDays");
+  var label = document.getElementById("penaltyAmountLabel");
+  if (unit === "hours") {
+    label.innerHTML = "Hours <span class='fla'>عدد الساعات</span>";
+    input.min = "0.5"; input.step = "0.5";
+  } else {
+    label.innerHTML = "Days <span class='fla'>عدد الأيام</span>";
+    input.min = "0.25"; input.step = "0.25";
+  }
+  updatePenaltyPreview();
+}
+
 function updatePenaltyPreview() {
   var empId = document.getElementById("penaltyEmployee").value;
-  var days = Number(document.getElementById("penaltyDays").value) || 0;
+  var unit = document.getElementById("penaltyUnit") ? document.getElementById("penaltyUnit").value : "days";
+  var entered = Number(document.getElementById("penaltyDays").value) || 0;
+  var days = unit === "hours" ? entered / 8 : entered;
   var emp = adminEmployees.find(function(e) { return String(e.id) === String(empId); });
   var rate = emp ? (Number(emp.hourly_rate) || 0) : 0;
   var amount = days * 8 * rate;
-  document.getElementById("penaltyPreview").textContent =
-    "المعادلة: " + days + " يوم × 8 ساعات × " + rate.toFixed(2) + " ج.م/ساعة = " + amount.toFixed(2) + " EGP";
+  if (unit === "hours") {
+    document.getElementById("penaltyPreview").textContent =
+      "المعادلة: " + entered + " ساعة × " + rate.toFixed(2) + " ج.م/ساعة = " + amount.toFixed(2) + " EGP (= " + days.toFixed(2) + " يوم)";
+  } else {
+    document.getElementById("penaltyPreview").textContent =
+      "المعادلة: " + entered + " يوم × 8 ساعات × " + rate.toFixed(2) + " ج.م/ساعة = " + amount.toFixed(2) + " EGP";
+  }
 }
 
 async function addPenalty() {
   var empId = document.getElementById("penaltyEmployee").value;
-  var days = document.getElementById("penaltyDays").value;
+  var unit = document.getElementById("penaltyUnit").value;
+  var entered = document.getElementById("penaltyDays").value;
   var date = document.getElementById("penaltyDate").value;
   var reason = document.getElementById("penaltyReason").value.trim();
-  if (!empId || !days || !date) { showToast("!", "املا كل الحقول"); return; }
+  if (!empId || !entered || !date) { showToast("!", "املا كل الحقول"); return; }
+  var days = unit === "hours" ? Number(entered) / 8 : Number(entered);
   showLoading(true);
   try {
-    await apiRequest("/api/admin/penalties", "POST", { employee_id: empId, days: Number(days), date: date, reason: reason });
+    await apiRequest("/api/admin/penalties", "POST", { employee_id: empId, days: days, date: date, reason: reason });
     showToast("v", "تم إضافة الجزاء");
     document.getElementById("penaltyDays").value = "";
     document.getElementById("penaltyReason").value = "";
     updatePenaltyPreview();
+    await refreshPenaltiesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+// ---------------- Late Arrivals (تأخيرات) ----------------
+
+async function refreshLateArrivalsOnly() {
+  var monthInput = document.getElementById("reqFilterMonth");
+  var reqMonth = monthInput ? monthInput.value : "";
+  var res = await apiRequest("/api/admin/late-arrivals?month=" + reqMonth, "GET");
+  adminLateArrivalsMonth = res.late_arrivals || [];
+  renderAdminLateArrivals();
+}
+
+function renderAdminLateArrivals() {
+  var el = document.getElementById("adminLateArrivalsList");
+  if (!el) return;
+  if (!adminLateArrivalsMonth.length) { el.innerHTML = "<div class='empty-log'>No late arrivals this month</div>"; return; }
+  var html = "";
+  for (var i = 0; i < adminLateArrivalsMonth.length; i++) {
+    var l = adminLateArrivalsMonth[i];
+    var statusNote = "";
+    if (l.status === "excused") statusNote = "<span style='color:var(--warn)'>تم السماح بواسطة " + (l.decided_by_name||"-") + "</span>";
+    else if (l.status === "penalized") statusNote = "<span style='color:var(--danger)'>تم الخصم بواسطة " + (l.decided_by_name||"-") + "</span>";
+    var actions = l.status === "pending"
+      ? "<button class='btn-end-task' onclick=\"openLateArrivalModal(" + l.id + ")\">PENALIZE · خصم</button> <button class='btn-end-task' onclick=\"excuseLateArrivalPrompt(" + l.id + ")\">EXCUSE · سماح</button>"
+      : "";
+    html += "<div class='log-entry'><div class='log-type' style='color:var(--danger)'>#" + l.emp_code + "</div>" +
+      "<div class='log-time' style='color:var(--danger)'>" + l.date + " — " + l.arrival_time + "</div>" +
+      "<div class='log-note'>" + (l.employee_name||"") + (statusNote ? "<br/>" + statusNote : "") + "</div>" + actions + "</div>";
+  }
+  el.innerHTML = html;
+}
+
+function excuseLateArrivalPrompt(id) {
+  openPinModal("EXCUSE LATE ARRIVAL · سماح بالتأخير", "مش هيتحط أي خصم، والموظف هيشوف إن فيه سماح. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeExcuseLateArrival(id, pin);
+  });
+}
+async function executeExcuseLateArrival(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/late-arrivals/" + id + "/excuse", "POST", { pin: pin });
+    showToast("v", "تم السماح بالتأخير");
+    await refreshLateArrivalsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+var currentLateArrivalId = null;
+function openLateArrivalModal(id) {
+  currentLateArrivalId = id;
+  document.getElementById("lateArrivalUnit").value = "days";
+  document.getElementById("lateArrivalAmount").value = "";
+  document.getElementById("lateArrivalPin").value = "";
+  document.getElementById("lateArrivalModalOverlay").classList.add("active");
+}
+function closeLateArrivalModal() {
+  document.getElementById("lateArrivalModalOverlay").classList.remove("active");
+  currentLateArrivalId = null;
+}
+async function submitLateArrivalPenalty() {
+  var unit = document.getElementById("lateArrivalUnit").value;
+  var amount = Number(document.getElementById("lateArrivalAmount").value);
+  var pin = document.getElementById("lateArrivalPin").value;
+  if (!(amount > 0)) { showToast("!", "اكتب قيمة صحيحة"); return; }
+  if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+  var days = unit === "hours" ? amount / 8 : amount;
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/late-arrivals/" + currentLateArrivalId + "/penalize", "POST", { days: days, pin: pin });
+    showToast("v", "تم تسجيل الخصم");
+    closeLateArrivalModal();
+    await refreshLateArrivalsOnly();
     await refreshPenaltiesOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -2989,8 +3181,9 @@ async function showEmployeeFullInfo() {
       "<div class='profile-row'><span class='profile-key'>Hourly Rate</span><span class='profile-val'>" + e.hourly_rate + " EGP</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Casual Balance</span><span class='profile-val'>" + e.casual_balance + " / 6</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Annual Balance</span><span class='profile-val'>" + e.annual_balance + " / 15</span></div>" +
-      "<div class='profile-row'><span class='profile-key'>Active Penalties</span><span class='profile-val' style='color:#ff4444'>" + res.penalties_active_count + "</span></div>" +
-      "<div class='profile-row'><span class='profile-key'>Active Notices</span><span class='profile-val' style='color:#ffd54a'>" + res.notices_active_count + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Active Penalties</span><span class='profile-val' style='color:var(--danger)'>" + res.penalties_active_count + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Active Bonuses</span><span class='profile-val' style='color:var(--ok)'>" + res.bonuses_active_count + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Active Notices</span><span class='profile-val' style='color:var(--warn)'>" + res.notices_active_count + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Password</span><span class='profile-val' style='opacity:.5'>🔒 مشفر — استخدم Reset تحت</span></div>";
 
     if (res.penalties && res.penalties.length) {
@@ -2998,7 +3191,15 @@ async function showEmployeeFullInfo() {
       for (var i = 0; i < res.penalties.length; i++) {
         var p = res.penalties[i];
         var pDeleted = !!p.deleted_at;
-        html += "<div class='profile-row" + (pDeleted?"" : "") + "'><span class='profile-key' style='" + (pDeleted?"text-decoration:line-through;color:var(--muted)":"color:#ff4444") + "'>" + p.date + "</span><span class='profile-val' style='font-size:13px'>" + p.days + "d (" + p.amount_egp + " EGP) — " + (p.reason||"") + (pDeleted ? " — محذوف بواسطة " + (p.deleted_by_name||"-") : "") + "</span></div>";
+        html += "<div class='profile-row" + (pDeleted?"" : "") + "'><span class='profile-key' style='" + (pDeleted?"text-decoration:line-through;color:var(--muted)":"color:var(--danger)") + "'>" + p.date + "</span><span class='profile-val' style='font-size:13px'>" + p.days + "d (" + p.amount_egp + " EGP) — " + (p.reason||"") + (pDeleted ? " — محذوف بواسطة " + (p.deleted_by_name||"-") : "") + "</span></div>";
+      }
+    }
+    if (res.bonuses && res.bonuses.length) {
+      html += "<div class='settings-label' style='margin-top:16px;font-size:15px'>Bonus History · سجل المكافآت</div>";
+      for (var k = 0; k < res.bonuses.length; k++) {
+        var b = res.bonuses[k];
+        var bDeleted = !!b.deleted_at;
+        html += "<div class='profile-row'><span class='profile-key' style='" + (bDeleted?"text-decoration:line-through;color:var(--muted)":"color:var(--ok)") + "'>" + b.date + "</span><span class='profile-val' style='font-size:13px'>+" + b.amount_egp + " EGP — " + (b.reason||"") + (bDeleted ? " — محذوف بواسطة " + (b.deleted_by_name||"-") : "") + "</span></div>";
       }
     }
     if (res.notices && res.notices.length) {
@@ -3006,7 +3207,7 @@ async function showEmployeeFullInfo() {
       for (var j = 0; j < res.notices.length; j++) {
         var n = res.notices[j];
         var nDeleted = !!n.deleted_at;
-        html += "<div class='profile-row'><span class='profile-key' style='" + (nDeleted?"text-decoration:line-through;color:var(--muted)":"color:#ffd54a") + "'>" + n.date + "</span><span class='profile-val' style='font-size:13px'>" + (n.reason||"") + (nDeleted ? " — محذوف بواسطة " + (n.deleted_by_name||"-") : "") + "</span></div>";
+        html += "<div class='profile-row'><span class='profile-key' style='" + (nDeleted?"text-decoration:line-through;color:var(--muted)":"color:var(--warn)") + "'>" + n.date + "</span><span class='profile-val' style='font-size:13px'>" + (n.reason||"") + (nDeleted ? " — محذوف بواسطة " + (n.deleted_by_name||"-") : "") + "</span></div>";
       }
     }
 
@@ -3153,9 +3354,7 @@ function renderAdminReport(res) {
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>HOURS BREAKDOWN · تفصيل الساعات</span></div>";
   html += logRow("Actual Hours Worked <span class='fla'>الساعات الفعلية</span>", t.actual_hours + " h");
   html += logRow("Overtime — Counted <span class='fla' style='color:var(--ok)'>محسوب</span>", "<span style='color:var(--ok)'>" + t.overtime_hours + " h</span>");
-  if (t.uncounted_overtime_hours > 0) {
-    html += logRow("Overtime — Not Counted <span class='fla' style='color:var(--warn)'>مش محسوب (مفيش أوفرتايم مفعّل)</span>", "<span style='color:var(--warn)'>" + t.uncounted_overtime_hours + " h</span>");
-  }
+  html += logRow("Overtime — Not Counted <span class='fla' style='color:var(--warn)'>مش محسوب (مفيش أوفرتايم مفعّل)</span>", "<span style='color:var(--warn)'>" + t.uncounted_overtime_hours + " h</span>");
   html += logRow("Official Holiday (worked ×2) <span class='fla'>إجازة رسمية اشتغل فيها</span>", "<span style='color:var(--ok)'>" + t.holiday_bonus_hours + " h</span>");
   html += logRow("Weekend Worked ×2 <span class='fla'>جمعة/سبت اشتغل فيهم</span>", "<span style='color:var(--ok)'>" + t.weekend_bonus_hours + " h</span>");
   html += logRow("Financial Requests → Hours <span class='fla'>مستحقات مالية</span>", x.financial_total_egp + " EGP → <span style='color:var(--ok)'>" + x.financial_hours + " h</span>");
@@ -3172,6 +3371,17 @@ function renderAdminReport(res) {
   html += logRow("Absent Days <span class='fla'>أيام غياب بدون إجازة</span>", "<span style='color:" + (t.absent_days>0?"var(--danger)":"var(--text)") + "'>" + t.absent_days + "</span>");
   html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " (رصيد متبقي / left: " + res.leave_balance.casual + "/6)");
   html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " (رصيد متبقي / left: " + res.leave_balance.annual + "/15)");
+  if (res.late_arrivals) {
+    var laNote = "<span style='color:" + (res.late_arrivals.count>0?"var(--danger)":"var(--text)") + "'>" + res.late_arrivals.count + "</span>";
+    if (res.late_arrivals.count > 0) {
+      var laDetails = res.late_arrivals.list.map(function(l) {
+        var statusAr = l.status === "excused" ? "سماح" : (l.status === "penalized" ? "خصم" : "معلق");
+        return l.date + " (" + l.arrival_time + " — " + statusAr + ")";
+      }).join("، ");
+      laNote += "<div class='fl-hint'>" + laDetails + "</div>";
+    }
+    html += logRow("Late Arrivals <span class='fla'>مرات التأخير</span>", laNote);
+  }
   html += "</div>";
 
   // ---- Day by day (fully detailed) ----
@@ -3727,6 +3937,8 @@ function switchTab(name) {
   document.querySelectorAll(".tab-content").forEach(function(c) { c.classList.remove("active"); });
   document.getElementById("tab-"+name).classList.add("active");
   document.getElementById("content-"+name).classList.add("active");
+  var sideNav = document.getElementById("adminSideNav");
+  if (sideNav) sideNav.classList.toggle("show", name === "admin");
   if (name === "signin") refreshAttendanceOnly();
   if (name === "break") refreshBreaksOnly();
   if (name === "tasks") refreshTasksOnly();
@@ -3739,6 +3951,11 @@ function switchTab(name) {
   if (name === "admin" && user && user.role === "admin") {
     loadAdminData();
   }
+}
+
+function jumpTo(id) {
+  var el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function cairoISODate() {
