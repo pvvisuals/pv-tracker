@@ -298,6 +298,7 @@ export default {
         return await officialHolidays(db, url.searchParams.get("month"));
       }
       if (path === "/api/penalties/mine" && method === "GET") return await myPenalties(db, me, url.searchParams.get("month"));
+      if (path === "/api/bonuses/mine" && method === "GET") return await myBonuses(db, me, url.searchParams.get("month"));
       if (path === "/api/notices/mine" && method === "GET") return await myNotices(db, me, url.searchParams.get("month"));
 
       if (path === "/api/report/mine" && method === "GET") {
@@ -901,6 +902,19 @@ async function myNotices(db, me, monthStr) {
   return json({ notices: res.rows });
 }
 
+async function myBonuses(db, me, monthStr) {
+  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const res = await db.execute({
+    sql: `SELECT b.*, a.name as deleted_by_name FROM bonuses b
+          LEFT JOIN employees a ON a.id = b.deleted_by
+          WHERE b.employee_id = ? AND b.date LIKE ? ORDER BY b.date DESC`,
+    args: [me.id, month + "%"],
+  });
+  const rate = hourlyRate(me);
+  const bonuses = res.rows.map((b) => ({ ...b, hours_equivalent: rate > 0 ? +(Number(b.amount_egp) / rate).toFixed(2) : 0 }));
+  return json({ bonuses });
+}
+
 // ---------------------------------------------------------------- monthly report (core hours logic)
 
 async function monthlyReport(db, employeeId, monthStr) {
@@ -925,7 +939,7 @@ async function monthlyReport(db, employeeId, monthStr) {
   const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
   const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
 
-  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows] = await Promise.all([
+  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows, bonusRows] = await Promise.all([
     db.execute({
       sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC",
       args: [employeeId, firstDay, addDaysToDateStr(lastDay, 1)],
@@ -971,6 +985,10 @@ async function monthlyReport(db, employeeId, monthStr) {
     }),
     db.execute({
       sql: "SELECT * FROM breaks WHERE employee_id = ? AND date BETWEEN ? AND ?",
+      args: [employeeId, firstDay, lastDay],
+    }),
+    db.execute({
+      sql: "SELECT * FROM bonuses WHERE employee_id = ? AND date BETWEEN ? AND ? AND deleted_at IS NULL",
       args: [employeeId, firstDay, lastDay],
     }),
   ]);
@@ -1028,6 +1046,18 @@ async function monthlyReport(db, employeeId, monthStr) {
     }
   }
 
+  // "Required hours" is a pure calendar figure for the WHOLE month — total
+  // days minus weekly-off days minus official holidays — known in advance
+  // and completely independent of attendance/leave/absence, so it doesn't
+  // wait for the month (or even today) to happen, and it updates instantly
+  // whenever an official holiday is added/removed.
+  for (let d = 1; d <= lastDayNum; d++) {
+    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (isWeekendStr(dateStr)) continue;
+    if (holidayByDate[dateStr]) continue;
+    requiredSeconds += daySeconds;
+  }
+
   for (let d = 1; d <= lastDayNum; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     if (dateStr > todayStr) break; // don't project future days
@@ -1075,20 +1105,16 @@ async function monthlyReport(db, employeeId, monthStr) {
 
     const leave = leaveByDate[dateStr];
     if (leave) {
-      // Approved leave — the "required" baseline is purely calendar-based
-      // (weekends/holidays only), so leave still counts toward it just like
-      // any other weekday. The employee gets full credit on the counted
-      // side too, so the net difference for this day is exactly zero —
-      // leave neither costs nor benefits the final salary.
-      requiredSeconds += daySeconds;
+      // Approved leave — required already includes this day via the
+      // calendar-only pre-pass above; the employee just gets full credit
+      // on the counted side, so the net effect for this day is zero.
       totalCountedSeconds += daySeconds;
       if (leave.type === "casual") leaveDaysCasual++; else leaveDaysAnnual++;
       days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds, break_seconds: breakSecs });
       continue;
     }
 
-    // A regular required work day.
-    requiredSeconds += daySeconds;
+    // A regular required work day (already counted in the pre-pass above).
 
     if (!daysWithSignIn.has(dateStr)) {
       if (dateStr < todayStr) absentDays++;
@@ -1132,6 +1158,8 @@ async function monthlyReport(db, employeeId, monthStr) {
   const permissionBonusHours = Math.max(0, PERMISSION_MONTHLY_HOURS - permissionUsedHours);
 
   const penaltiesTotalEGP = penaltyRows.rows.reduce((s, r) => s + Number(r.amount_egp), 0);
+  const bonusesTotalEGP = bonusRows.rows.reduce((s, r) => s + Number(r.amount_egp), 0);
+  const bonusesHoursEquivalent = rate > 0 ? bonusesTotalEGP / rate : 0;
 
   const extraSeconds = Math.round((financialHours + offclockHours + permissionBonusHours) * 3600);
   totalCountedSeconds += extraSeconds;
@@ -1141,7 +1169,7 @@ async function monthlyReport(db, employeeId, monthStr) {
   const hoursDiff = +(countedHoursFinal - requiredHours).toFixed(2);
   const baseSalary = Number(emp.monthly_salary) || 0;
   const salaryAdjustment = +(hoursDiff * rate).toFixed(2);
-  const finalSalary = +(baseSalary + salaryAdjustment - penaltiesTotalEGP).toFixed(2);
+  const finalSalary = +(baseSalary + salaryAdjustment + bonusesTotalEGP - penaltiesTotalEGP).toFixed(2);
 
   return json({
     employee: publicEmployee(emp),
@@ -1173,6 +1201,8 @@ async function monthlyReport(db, employeeId, monthStr) {
       permission_used_hours: +permissionUsedHours.toFixed(2),
       permission_bonus_hours: +permissionBonusHours.toFixed(2),
       penalties_total_egp: +penaltiesTotalEGP.toFixed(2),
+      bonuses_total_egp: +bonusesTotalEGP.toFixed(2),
+      bonuses_hours_equivalent: +bonusesHoursEquivalent.toFixed(2),
     },
     salary: {
       base_salary: baseSalary,
@@ -1184,6 +1214,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       hours_diff: hoursDiff,
       salary_adjustment: salaryAdjustment,
       penalties_total_egp: +penaltiesTotalEGP.toFixed(2),
+      bonuses_total_egp: +bonusesTotalEGP.toFixed(2),
       final_salary: finalSalary,
     },
     leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance },
@@ -1434,6 +1465,50 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ ok: true });
   }
 
+  // ---------- bonuses (مكافآت) — same pattern as penalties, but entered in
+  // EGP directly (not days) and ADDS to the final salary instead of subtracting ----------
+  if (path === "/api/admin/bonuses" && method === "POST") {
+    const missing = requireFields(body, ["employee_id", "amount_egp", "date"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const amount = Number(body.amount_egp);
+    if (!(amount > 0)) return err("قيمة المكافأة لازم تكون رقم موجب");
+    const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [body.employee_id] });
+    const emp = empRes.rows[0];
+    if (!emp) return err("Employee not found", 404);
+    const res = await db.execute({
+      sql: `INSERT INTO bonuses (employee_id, amount_egp, reason, date, created_by) VALUES (?,?,?,?,?) RETURNING *`,
+      args: [body.employee_id, amount, body.reason || null, body.date, admin.id],
+    });
+    return json({ bonus: res.rows[0] }, 201);
+  }
+  if (path === "/api/admin/bonuses" && method === "GET") {
+    const employeeId = url.searchParams.get("employee_id");
+    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    let sql = `SELECT b.*, e.name as employee_name, e.emp_code, c.name as created_by_name, d.name as deleted_by_name FROM bonuses b
+               JOIN employees e ON e.id = b.employee_id
+               LEFT JOIN employees c ON c.id = b.created_by
+               LEFT JOIN employees d ON d.id = b.deleted_by
+               WHERE b.date LIKE ?`;
+    const args = [month + "%"];
+    if (employeeId) { sql += " AND b.employee_id = ?"; args.push(Number(employeeId)); }
+    sql += " ORDER BY b.date DESC";
+    const res = await db.execute({ sql, args });
+    return json({ bonuses: res.rows });
+  }
+  const bonusDeleteMatch = path.match(/^\/api\/admin\/bonuses\/(\d+)\/delete$/);
+  if (bonusDeleteMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const bid = Number(bonusDeleteMatch[1]);
+    const res = await db.execute({ sql: "SELECT * FROM bonuses WHERE id = ?", args: [bid] });
+    if (!res.rows[0]) return err("Bonus not found", 404);
+    if (res.rows[0].deleted_at) return err("المكافأة دي اتحذفت بالفعل", 409);
+    await db.execute({
+      sql: "UPDATE bonuses SET deleted_at = datetime('now'), deleted_by = ? WHERE id = ?",
+      args: [admin.id, bid],
+    });
+    return json({ ok: true });
+  }
+
   // ---------- notices (لفت نظر) — same idea as penalties, informational only ----------
   if (path === "/api/admin/notices" && method === "POST") {
     const missing = requireFields(body, ["employee_id", "date"]);
@@ -1653,7 +1728,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (targetId === admin.id) return err("منقدرش تمسح حسابك انت نفسك", 400);
     const ownedTables = [
       "sessions", "attendance", "breaks", "tasks", "leave_requests",
-      "financial_requests", "offclock_requests", "permission_requests", "penalties", "notices", "task_segments",
+      "financial_requests", "offclock_requests", "permission_requests", "penalties", "bonuses", "notices", "task_segments",
     ];
     for (const t of ownedTables) {
       await db.execute({ sql: `DELETE FROM ${t} WHERE employee_id = ?`, args: [targetId] });
