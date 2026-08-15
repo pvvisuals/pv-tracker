@@ -165,6 +165,9 @@ select option{background:#111;}
 .log-header{padding:14px 18px;background:var(--card);border-bottom:1px solid var(--border);font-size:17px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);display:flex;justify-content:space-between;}
 .log-entry{padding:13px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border2);font-size:17px;transition:background 0.15s;}
 .log-entry:hover{background:rgba(255,255,255,0.03);}
+.exp-row:hover{background:rgba(255,255,255,0.06);}
+.exp-caret{font-size:11px;color:var(--muted2);margin-right:4px;}
+.exp-detail{background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border2);max-height:220px;overflow-y:auto;}
 .log-entry:last-child{border-bottom:none;}
 .log-type{font-size:12px;font-weight:700;letter-spacing:1.5px;border:1px solid var(--border);padding:3px 8px;text-transform:uppercase;min-width:72px;text-align:center;color:var(--muted);}
 .log-type.in{border-color:var(--ok);color:var(--ok);}
@@ -3313,6 +3316,34 @@ function breakColorFor(seconds) {
   return "var(--warn)";
 }
 
+function expandableRow(rowId, label, value, detailHtml) {
+  var html = "<div class='log-entry exp-row' onclick=\"toggleExpandRow('" + rowId + "')\" style='cursor:pointer'>";
+  html += "<div class='log-type'>" + label + " <span class='exp-caret' id='caret-" + rowId + "'>▾</span></div>";
+  html += "<div class='log-note'>" + value + "</div></div>";
+  html += "<div class='exp-detail' id='detail-" + rowId + "' style='display:none'>" + detailHtml + "</div>";
+  return html;
+}
+function toggleExpandRow(rowId) {
+  var d = document.getElementById("detail-" + rowId);
+  var c = document.getElementById("caret-" + rowId);
+  if (!d) return;
+  var showing = d.style.display !== "none";
+  d.style.display = showing ? "none" : "block";
+  if (c) c.textContent = showing ? "▾" : "▴";
+}
+
+function dayLabelAr(d) {
+  if (d.status === "weekend") return "إجازة أسبوعية";
+  if (d.status === "weekend_worked") return "جمعة/سبت — اشتغل";
+  if (d.status === "leave") return "إجازة " + (d.leave_type === "casual" ? "عارضة" : "اعتيادية");
+  if (d.status === "absent") return "غياب";
+  if (d.status === "today_pending") return "النهارده (لسه)";
+  if (d.status === "official_holiday_off") return "إجازة رسمية";
+  if (d.status === "official_holiday_worked") return "إجازة رسمية — اشتغل";
+  if (d.status === "worked") return "يوم عمل";
+  return d.status;
+}
+
 function renderAdminReport(res) {
   var el = document.getElementById("adminReportResult");
   var t = res.totals;
@@ -3347,28 +3378,48 @@ function renderAdminReport(res) {
   html += "<div style='text-align:center;padding:18px;border:1px solid var(--border);margin-top:4px;'>";
   html += "<div style='font-size:15px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;'>FINAL SALARY · صافي المرتب</div>";
   html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:44px;color:#fff;margin-top:6px;'>" + s.final_salary.toLocaleString() + " EGP</div>";
-  html += "<div class='fl-hint' style='margin-top:8px'>= المرتب الأساسي + تعديل الساعات + المكافآت − الجزاءات · Base + Hours Adjustment + Bonuses − Penalties</div>";
-  html += "</div></div>";
+  html += "</div>";
 
-  // ---- Hours breakdown ----
-  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>HOURS BREAKDOWN · تفصيل الساعات</span></div>";
-  html += logRow("Actual Hours Worked <span class='fla'>الساعات الفعلية</span>", t.actual_hours + " h");
-  html += logRow("Overtime — Counted <span class='fla' style='color:var(--ok)'>محسوب</span>", "<span style='color:var(--ok)'>" + t.overtime_hours + " h</span>");
-  html += logRow("Overtime — Not Counted <span class='fla' style='color:var(--warn)'>مش محسوب (مفيش أوفرتايم مفعّل)</span>", "<span style='color:var(--warn)'>" + t.uncounted_overtime_hours + " h</span>");
-  html += logRow("Official Holiday (worked ×2) <span class='fla'>إجازة رسمية اشتغل فيها</span>", "<span style='color:var(--ok)'>" + t.holiday_bonus_hours + " h</span>");
-  html += logRow("Weekend Worked ×2 <span class='fla'>جمعة/سبت اشتغل فيهم</span>", "<span style='color:var(--ok)'>" + t.weekend_bonus_hours + " h</span>");
+  // ---- Step-by-step calculation, accountant style ----
+  html += "<div style='margin-top:16px;padding:16px;border:1px solid var(--border);'>";
+  html += "<div style='font-size:13px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px'>HOW THIS WAS CALCULATED · إزاي اتحسب الرقم ده</div>";
+  html += "<table style='width:100%;border-collapse:collapse;font-size:14px'>";
+  html += "<tr style='border-bottom:1px solid var(--border2)'><td style='padding:6px 0'>1. المرتب الأساسي · Base Salary</td><td style='text-align:left;padding:6px 0'>" + s.base_salary + " EGP</td></tr>";
+  html += "<tr style='border-bottom:1px solid var(--border2)'><td style='padding:6px 0'>2. الفرق بين الساعات المحسوبة والمطلوبة · Hours Diff (" + s.counted_hours + " − " + s.required_hours + ")</td><td style='text-align:left;padding:6px 0'>" + diffSign + s.hours_diff + " h</td></tr>";
+  html += "<tr style='border-bottom:1px solid var(--border2)'><td style='padding:6px 0'>3. تعديل المرتب · Hours Adjustment (" + diffSign + s.hours_diff + " × " + s.hourly_rate + ")</td><td style='text-align:left;padding:6px 0;color:" + diffColor + "'>" + diffSign + s.salary_adjustment + " EGP</td></tr>";
+  html += "<tr style='border-bottom:1px solid var(--border2)'><td style='padding:6px 0'>4. + مكافآت · Bonuses</td><td style='text-align:left;padding:6px 0;color:var(--ok)'>+" + s.bonuses_total_egp + " EGP</td></tr>";
+  html += "<tr style='border-bottom:1px solid var(--border2)'><td style='padding:6px 0'>5. − جزاءات · Penalties</td><td style='text-align:left;padding:6px 0;color:var(--danger)'>-" + s.penalties_total_egp + " EGP</td></tr>";
+  html += "<tr><td style='padding:8px 0;font-weight:700'>= صافي المرتب · Final Salary</td><td style='text-align:left;padding:8px 0;font-weight:700'>" + s.final_salary + " EGP</td></tr>";
+  html += "</table></div></div>";
+
+  // ---- Hours breakdown: COUNTED toward salary ----
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>COUNTED TOWARD SALARY · محسوب فعلياً في المرتب</span></div>";
+  html += logRow("Regular Work Days (up to 8h/day) <span class='fla'>أيام عمل عادية</span>", t.regular_work_hours + " h");
+  html += logRow("Overtime — Counted <span class='fla' style='color:var(--ok)'>أوفرتايم محسوب</span>", "<span style='color:var(--ok)'>" + t.overtime_hours + " h</span>");
+  html += logRow("Weekend Worked <span class='fla'>جمعة/سبت اشتغل فيهم (" + t.weekend_actual_hours + "h × 2)</span>", "<span style='color:var(--ok)'>" + t.weekend_counted_hours + " h</span>");
+  html += logRow("Official Holiday Worked <span class='fla'>إجازة رسمية اشتغل فيها (" + t.holiday_actual_hours + "h × 2)</span>", "<span style='color:var(--ok)'>" + t.holiday_counted_hours + " h</span>");
+  html += logRow("Approved Leave (auto 8h/day) <span class='fla'>إجازة معتمدة</span>", t.leave_credit_hours + " h");
   html += logRow("Financial Requests → Hours <span class='fla'>مستحقات مالية</span>", x.financial_total_egp + " EGP → <span style='color:var(--ok)'>" + x.financial_hours + " h</span>");
   html += logRow("Off-clock Hours <span class='fla'>ساعات خارج البصمة</span>", "<span style='color:var(--ok)'>" + x.offclock_hours + " h</span>");
   html += logRow("Unused Permission → Bonus <span class='fla'>إذن انصراف غير مستخدم</span>", "<span style='color:var(--ok)'>" + x.permission_bonus_hours + "</span> / " + x.permission_monthly_limit + " h");
-  html += logRow("Bonuses → Hours Equivalent <span class='fla'>مكافآت (بالساعات)</span>", x.bonuses_total_egp + " EGP → <span style='color:var(--ok)'>" + x.bonuses_hours_equivalent + " h</span>");
-  if (t.absent_hours_deducted > 0) {
-    html += logRow("Absence — Deducted <span class='fla' style='color:var(--danger)'>خصم الغياب</span>", "<span style='color:var(--danger)'>-" + t.absent_hours_deducted + " h</span>");
-  }
+  html += "<div class='log-entry' style='background:rgba(61,220,132,0.06)'><div class='log-type' style='color:var(--ok)'>= TOTAL COUNTED · الإجمالي</div><div class='log-note' style='font-weight:700'>" + t.counted_hours + " h</div></div>";
+  html += "</div>";
+
+  // ---- Hours breakdown: INFORMATIONAL ONLY (not part of salary math) ----
+  var absentDaysList = res.days.filter(function(d){ return d.status === "absent"; });
+  var absentDetailHtml = absentDaysList.length
+    ? absentDaysList.map(function(d){ return "<div class='fl-hint'>" + d.date + "</div>"; }).join("")
+    : "<div class='fl-hint'>لا توجد أيام غياب</div>";
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--muted);border-color:var(--border)'><span>INFORMATIONAL ONLY · للتوضيح فقط — مش داخل في حساب المرتب</span></div>";
+  html += logRow("Overtime — Not Counted <span class='fla' style='color:var(--warn)'>اشتغل زيادة بس مفيش أوفرتايم مفعّل</span>", "<span style='color:var(--warn)'>" + t.uncounted_overtime_hours + " h</span>");
+  html += expandableRow("absence", "Absence <span class='fla' style='color:var(--danger)'>غياب بدون إجازة (" + t.absent_days + " يوم)</span>",
+    "<span style='color:var(--danger)'>" + t.absent_days + " يوم · = " + t.absent_hours_deducted + " h لو كانت هتتحسب</span>",
+    "<div style='padding:10px 18px'>" + absentDetailHtml + "</div>");
   html += "</div>";
 
   // ---- Attendance summary ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>ATTENDANCE SUMMARY · ملخص الحضور</span></div>";
-  html += logRow("Absent Days <span class='fla'>أيام غياب بدون إجازة</span>", "<span style='color:" + (t.absent_days>0?"var(--danger)":"var(--text)") + "'>" + t.absent_days + "</span>");
+  html += logRow("Absent Days <span class='fla'>أيام غياب بدون إجازة</span>", "<span style='color:" + (t.absent_days>0?"var(--danger)":"var(--text)") + "'>" + t.absent_days + " يوم</span>");
   html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " (رصيد متبقي / left: " + res.leave_balance.casual + "/6)");
   html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " (رصيد متبقي / left: " + res.leave_balance.annual + "/15)");
   if (res.late_arrivals) {
@@ -3383,6 +3434,18 @@ function renderAdminReport(res) {
     html += logRow("Late Arrivals <span class='fla'>مرات التأخير</span>", laNote);
   }
   html += "</div>";
+
+  // ---- Actual hours worked, expandable ----
+  var actualDaysList = res.days.filter(function(d){ return d.actual_seconds > 0; });
+  var actualDetailHtml = actualDaysList.length
+    ? actualDaysList.map(function(d){
+        return "<div class='fl-hint'>" + d.date + " — " + dayLabelAr(d) + " — " +
+          (d.sign_in_time ? ("In: " + d.sign_in_time + (d.sign_out_time ? " Out: " + d.sign_out_time : "")) : "") +
+          " — فعلي: " + formatDuration(d.actual_seconds) + "</div>";
+      }).join("")
+    : "<div class='fl-hint'>لا توجد ساعات فعلية</div>";
+  html += "<div class='log-wrap' style='margin-top:14px'>" + expandableRow("actual", "Actual Hours Worked <span class='fla'>الساعات الفعلية (اضغط للتفاصيل)</span>", t.actual_hours + " h",
+    "<div style='padding:10px 18px'>" + actualDetailHtml + "</div>") + "</div>";
 
   // ---- Day by day (fully detailed) ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>DAY BY DAY · تفاصيل يومية</span></div>";
