@@ -3906,16 +3906,25 @@ async function executeDeletePcPayment(id, pin) {
   showLoading(false);
 }
 
-async function addProjectExpense() {
+function addProjectExpense() {
+  var sel = document.getElementById("projExpProjectSelect").value;
+  var amount = document.getElementById("projExpAmount").value;
+  var date = document.getElementById("projExpDate").value;
+  if (!sel || !amount || !date) { showToast("!", "املا كل الحقول"); return; }
+  openPinModal("ADD EXPENSE · إضافة مصروف خارجي", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeAddProjectExpense(pin);
+  });
+}
+async function executeAddProjectExpense(pin) {
   var sel = document.getElementById("projExpProjectSelect").value;
   var amount = document.getElementById("projExpAmount").value;
   var date = document.getElementById("projExpDate").value;
   var desc = document.getElementById("projExpDesc").value.trim();
-  if (!sel || !amount || !date) { showToast("!", "املا كل الحقول"); return; }
   var parts = sel.split("||");
   showLoading(true);
   try {
-    await apiRequest("/api/admin/project-expenses", "POST", { project_code: parts[0], project_name: parts[1], amount_egp: Number(amount), date: date, description: desc });
+    await apiRequest("/api/admin/project-expenses", "POST", { project_code: parts[0], project_name: parts[1], amount_egp: Number(amount), date: date, description: desc, pin: pin });
     showToast("v", "تم إضافة المصروف");
     document.getElementById("projExpAmount").value = "";
     document.getElementById("projExpDesc").value = "";
