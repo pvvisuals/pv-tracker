@@ -172,6 +172,8 @@ select option{background:#111;}
 .exp-row:hover{background:rgba(255,255,255,0.06);}
 .exp-caret{font-size:11px;color:var(--muted2);margin-right:4px;}
 .exp-detail{background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border2);max-height:220px;overflow-y:auto;}
+.all-months-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted2);margin-top:6px;cursor:pointer;user-select:none;}
+.all-months-toggle input{width:auto;margin:0;}
 .log-entry:last-child{border-bottom:none;}
 .log-type{font-size:12px;font-weight:700;letter-spacing:1.5px;border:1px solid var(--border);padding:3px 8px;text-transform:uppercase;min-width:72px;text-align:center;color:var(--muted);}
 .log-type.in{border-color:var(--ok);color:var(--ok);}
@@ -756,6 +758,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg" style="margin:0">
 <div class="fl">Month Filter <span class="fla">فلتر الشهر</span></div>
 <input type="month" id="reqFilterMonth" onchange="reloadMonthDependentAdminData()"/>
+<label class="all-months-toggle"><input type="checkbox" id="reqFilterMonthAll" onchange="onAllMonthsToggle('reqFilterMonth','reqFilterMonthAll'); reloadMonthDependentAdminData();"/><span>All Months · كل الشهور</span></label>
 </div>
 </div>
 
@@ -797,6 +800,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg">
 <div class="fl">Filter Month <span class="fla">فلتر الشهر</span></div>
 <input type="month" id="holidayFilterMonth" onchange="refreshHolidaysOnly()"/>
+<label class="all-months-toggle"><input type="checkbox" id="holidayFilterMonthAll" onchange="onAllMonthsToggle('holidayFilterMonth','holidayFilterMonthAll'); refreshHolidaysOnly();"/><span>All Months · كل الشهور</span></label>
 </div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -1052,6 +1056,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg" style="margin:0">
 <div class="fl">Month</div>
 <input type="month" id="reportMonth"/>
+<label class="all-months-toggle"><input type="checkbox" id="reportMonthAll" onchange="onAllMonthsToggle('reportMonth','reportMonthAll')"/><span>All Months · كل الشهور</span></label>
 </div>
 </div>
 <button class="btn-add" onclick="fetchAdminReport()">GET REPORT · عرض التقرير</button>
@@ -1064,6 +1069,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg" style="margin:0">
 <div class="fl">Month</div>
 <input type="month" id="projectsReportMonth"/>
+<label class="all-months-toggle"><input type="checkbox" id="projectsReportMonthAll" onchange="onAllMonthsToggle('projectsReportMonth','projectsReportMonthAll')"/><span>All Months · كل الشهور</span></label>
 </div>
 </div>
 <button class="btn-add" onclick="fetchProjectsReport()">GET PROJECTS REPORT · عرض تقرير المشاريع</button>
@@ -1207,6 +1213,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg" style="margin:0">
 <div class="fl">Filter Month <span class="fla">فلتر الشهر</span></div>
 <input type="month" id="plMonth" onchange="fetchProfitLossReport()"/>
+<label class="all-months-toggle"><input type="checkbox" id="plMonthAll" onchange="onAllMonthsToggle('plMonth','plMonthAll'); fetchProfitLossReport();"/><span>All Months · كل الشهور</span></label>
 </div>
 </div>
 <div id="profitLossReportResult" style="margin-top:14px"></div>
@@ -1242,6 +1249,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg" style="margin:0">
 <div class="fl">Filter Month (optional)</div>
 <input type="month" id="pettyFilterMonth" onchange="fetchPettyCash()"/>
+<label class="all-months-toggle"><input type="checkbox" id="pettyFilterMonthAll" onchange="onAllMonthsToggle('pettyFilterMonth','pettyFilterMonthAll'); fetchPettyCash();"/><span>All Months · كل الشهور</span></label>
 </div>
 </div>
 <div id="pettyCashResult" style="margin-top:14px"></div>
@@ -2354,8 +2362,7 @@ async function loadAdminData() {
 // month filter changes, so we don't re-fetch employees/projects/holidays/
 // status every time (those are unaffected by which month is picked).
 async function reloadMonthDependentAdminData() {
-  var monthInput = document.getElementById("reqFilterMonth");
-  var reqMonth = monthInput ? monthInput.value : "";
+  var reqMonth = getMonthFilterValue("reqFilterMonth", "reqFilterMonthAll");
 
   var jobs = [];
   var jobKeys = [];
@@ -2555,13 +2562,8 @@ async function refreshRequestKind(kind) {
 
 // Re-fetches only official holidays (1 call) instead of everything.
 async function refreshHolidaysOnly() {
-  var monthInput = document.getElementById("holidayFilterMonth");
-  if (monthInput && !monthInput.value) {
-    var d = new Date();
-    monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
-  }
-  var qs = monthInput && monthInput.value ? ("?month=" + monthInput.value) : "";
-  var hol = await apiRequest("/api/admin/official-holidays" + qs, "GET");
+  var month = getMonthFilterValue("holidayFilterMonth", "holidayFilterMonthAll");
+  var hol = await apiRequest("/api/admin/official-holidays?month=" + month, "GET");
   adminHolidaysMonth = hol.holidays || [];
   renderAdminHolidays();
 }
@@ -3596,7 +3598,7 @@ async function deleteEmployeeExecute(id, pin) {
 
 async function fetchAdminReport() {
   var empId = document.getElementById("reportEmployee").value;
-  var month = document.getElementById("reportMonth").value;
+  var month = getMonthFilterValue("reportMonth", "reportMonthAll");
   if (!empId) { showToast("!", "اختار موظف"); return; }
   showLoading(true);
   try {
@@ -4069,14 +4071,10 @@ async function executeDeleteCompanyTx(id, pin) {
 }
 
 async function fetchProfitLossReport() {
-  var monthInput = document.getElementById("plMonth");
-  if (!monthInput.value) {
-    var d = new Date();
-    monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
-  }
+  var month = getMonthFilterValue("plMonth", "plMonthAll");
   showLoading(true);
   try {
-    var res = await apiRequest("/api/admin/profit-loss-report?month=" + monthInput.value, "GET");
+    var res = await apiRequest("/api/admin/profit-loss-report?month=" + month, "GET");
     renderProfitLossReport(res);
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -4144,11 +4142,10 @@ async function executeDeletePettyCash(id, pin) {
 }
 
 async function fetchPettyCash() {
-  var monthInput = document.getElementById("pettyFilterMonth");
-  var qs = monthInput && monthInput.value ? ("?month=" + monthInput.value) : "";
+  var month = getMonthFilterValue("pettyFilterMonth", "pettyFilterMonthAll");
   showLoading(true);
   try {
-    var res = await apiRequest("/api/admin/petty-cash" + qs, "GET");
+    var res = await apiRequest("/api/admin/petty-cash?month=" + month, "GET");
     renderPettyCash(res);
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -4178,14 +4175,10 @@ function renderPettyCash(res) {
 }
 
 async function fetchProjectsReport() {
-  var monthInput = document.getElementById("projectsReportMonth");
-  if (!monthInput.value) {
-    var d = new Date();
-    monthInput.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
-  }
+  var month = getMonthFilterValue("projectsReportMonth", "projectsReportMonthAll");
   showLoading(true);
   try {
-    var res = await apiRequest("/api/admin/projects-report?month=" + monthInput.value, "GET");
+    var res = await apiRequest("/api/admin/projects-report?month=" + month, "GET");
     renderProjectsReport(res);
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -4257,14 +4250,16 @@ function renderAdminReport(res) {
   var x = res.extras;
   var s = res.salary;
   var e = res.employee;
-  var monthName = new Date(res.year, res.month - 1, 1).toLocaleString("en-US", { month: "long" });
+  var periodLabel = res.month === "all"
+    ? "كل الشهور · All Time (" + res.range.start + " → " + res.range.end + ")"
+    : new Date(res.year, res.month - 1, 1).toLocaleString("en-US", { month: "long" }) + " " + res.year;
 
   var html = "";
 
   // ---- Employee header ----
   html += "<div class='task-form' style='margin-top:18px'>";
   html += "<div class='settings-label'>" + e.name + " · #" + e.emp_code + "</div>";
-  html += "<div class='sec-sub'>" + (e.title||"") + " — " + (e.dept||"") + " · العمر / Age: " + (e.age!=null?e.age:"-") + " · " + monthName + " " + res.year + "</div>";
+  html += "<div class='sec-sub'>" + (e.title||"") + " — " + (e.dept||"") + " · العمر / Age: " + (e.age!=null?e.age:"-") + " · " + periodLabel + "</div>";
   html += "</div>";
 
   // ---- Salary summary (bilingual, the headline) ----
@@ -4272,6 +4267,9 @@ function renderAdminReport(res) {
   var diffSign = s.hours_diff >= 0 ? "+" : "";
   html += "<div class='task-form' style='border-color:#fff;'>";
   html += "<div class='settings-label'>SALARY SUMMARY · ملخص حساب المرتب</div>";
+  if (res.month === "all") {
+    html += "<div class='fl-hint' style='color:var(--warn);margin-bottom:10px'>ده إجمالي تجميعي لكل الشهور مع بعض — للاطلاع والتحليل، مش رقم صرف شهري فعلي</div>";
+  }
   html += "<div class='info-grid'>";
   html += infoCard("Base Salary <span class='fla'>المرتب الأساسي</span>", s.base_salary + " EGP");
   html += infoCard("Hourly Rate <span class='fla'>قيمة الساعة</span>", s.hourly_rate + " EGP");
@@ -4934,6 +4932,22 @@ function toggleAdminSideNav() {
   sideNav.classList.toggle("open", willOpen);
   sideArrow.classList.toggle("open", willOpen);
   sideArrow.textContent = willOpen ? "◂" : "▸";
+}
+
+function onAllMonthsToggle(monthInputId, checkboxId) {
+  var checked = document.getElementById(checkboxId).checked;
+  document.getElementById(monthInputId).disabled = checked;
+}
+function getMonthFilterValue(monthInputId, checkboxId) {
+  var cb = document.getElementById(checkboxId);
+  if (cb && cb.checked) return "all";
+  var input = document.getElementById(monthInputId);
+  if (!input) return "";
+  if (!input.value) {
+    var d = new Date();
+    input.value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+  return input.value;
 }
 
 function jumpTo(id) {
