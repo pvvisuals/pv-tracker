@@ -111,6 +111,21 @@ function isWeekendStr(dateStr) {
   const p = cairoParts(d);
   return p.weekday === "Fri" || p.weekday === "Sat";
 }
+// Every date from startStr to endStr inclusive that isn't a weekly off day —
+// this is what actually gets deducted from a leave balance (weekends inside
+// a multi-day leave span don't cost the employee anything, same as any
+// other week).
+function workingDaysInRange(startStr, endStr) {
+  const dates = [];
+  let cur = startStr;
+  let guard = 0;
+  while (cur <= endStr && guard < 400) {
+    if (!isWeekendStr(cur)) dates.push(cur);
+    cur = addDaysToDateStr(cur, 1);
+    guard++;
+  }
+  return dates;
+}
 function addDaysToDateStr(dateStr, days) {
   const d = new Date(dateStr + "T12:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
@@ -784,19 +799,26 @@ async function requestLeave(db, me, body) {
   const missing = requireFields(body, ["date", "type"]);
   if (missing) return err(`Missing field: ${missing}`);
   if (!["casual", "annual"].includes(body.type)) return err("type must be casual or annual");
-  if (isWeekendStr(body.date)) return err("اليوم ده اجازة اسبوعية اصلا (جمعة/سبت)");
 
+  const endDate = body.end_date || body.date;
+  if (endDate < body.date) return err("تاريخ النهاية لازم يكون بعد أو يساوي تاريخ البداية");
+  const workingDays = workingDaysInRange(body.date, endDate);
+  if (!workingDays.length) return err("الفترة دي كلها جمعة/سبت — مفيش يوم عمل فعلي فيها");
+
+  // No overlap with any existing (pending/approved) request across the
+  // WHOLE span, not just the exact start date.
   const existing = await db.execute({
-    sql: "SELECT * FROM leave_requests WHERE employee_id = ? AND date = ?",
-    args: [me.id, body.date],
+    sql: `SELECT * FROM leave_requests WHERE employee_id = ? AND status != 'rejected'
+          AND date <= ? AND COALESCE(end_date, date) >= ?`,
+    args: [me.id, endDate, body.date],
   });
-  if (existing.rows.length) return err("فيه طلب اجازة لليوم ده بالفعل", 409);
+  if (existing.rows.length) return err("فيه طلب إجازة بيتداخل مع الفترة دي بالفعل", 409);
 
   const res = await db.execute({
-    sql: `INSERT INTO leave_requests (employee_id, date, type, note) VALUES (?,?,?,?) RETURNING *`,
-    args: [me.id, body.date, body.type, body.reason || body.note || null],
+    sql: `INSERT INTO leave_requests (employee_id, date, end_date, type, note) VALUES (?,?,?,?,?) RETURNING *`,
+    args: [me.id, body.date, body.end_date || null, body.type, body.reason || body.note || null],
   });
-  return json({ request: res.rows[0] }, 201);
+  return json({ request: res.rows[0], working_days: workingDays.length }, 201);
 }
 
 async function myLeaveRequests(db, me, monthStr) {
@@ -984,7 +1006,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       args: [employeeId, firstDay, addDaysToDateStr(lastDay, 1)],
     }),
     db.execute({
-      sql: "SELECT * FROM leave_requests WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'approved'",
+      sql: "SELECT * FROM leave_requests WHERE employee_id = ? AND COALESCE(end_date, date) >= ? AND date <= ? AND status = 'approved'",
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
@@ -1037,7 +1059,17 @@ async function monthlyReport(db, employeeId, monthStr) {
   ]);
 
   const leaveByDate = {};
-  for (const r of leaveRows.rows) leaveByDate[r.date] = r;
+  for (const r of leaveRows.rows) {
+    const rangeEnd = r.end_date || r.date;
+    let cur = r.date > firstDay ? r.date : firstDay;
+    const stop = rangeEnd < lastDay ? rangeEnd : lastDay;
+    let guard = 0;
+    while (cur <= stop && guard < 400) {
+      leaveByDate[cur] = r;
+      cur = addDaysToDateStr(cur, 1);
+      guard++;
+    }
+  }
   const otDates = new Set(otRows.rows.map((r) => r.date));
   const holidayByDate = {};
   for (const r of holidayRows.rows) holidayByDate[r.date] = r;
@@ -1931,22 +1963,114 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return await projectsReport(db, url.searchParams.get("month"));
   }
 
+  // ---------- clients registry (client_code = first 2 digits of project codes) ----------
+  if (path === "/api/admin/clients" && method === "GET") {
+    const res = await db.execute("SELECT * FROM clients ORDER BY client_code ASC");
+    return json({ clients: res.rows });
+  }
+  if (path === "/api/admin/clients" && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const missing = requireFields(body, ["client_code", "client_name"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const code = String(body.client_code).trim();
+    if (!/^\d{2}$/.test(code)) return err("كود الكلاينت لازم يكون رقمين بالظبط (مثال: 01)");
+    try {
+      const res = await db.execute({
+        sql: `INSERT INTO clients (client_code, client_name, created_by) VALUES (?,?,?) RETURNING *`,
+        args: [code, body.client_name.trim(), admin.id],
+      });
+      return json({ client: res.rows[0] }, 201);
+    } catch (e) {
+      return err("الكود ده متسجل قبل كده لعميل تاني", 409);
+    }
+  }
+  const clientEditMatch = path.match(/^\/api\/admin\/clients\/(\d+)$/);
+  if (clientEditMatch && method === "PATCH") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    if (!body.client_name) return err("اكتب اسم العميل");
+    await db.execute({ sql: "UPDATE clients SET client_name = ? WHERE id = ?", args: [body.client_name.trim(), Number(clientEditMatch[1])] });
+    return json({ ok: true });
+  }
+  if (clientEditMatch && method === "DELETE") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    await db.execute({ sql: "DELETE FROM clients WHERE id = ?", args: [Number(clientEditMatch[1])] });
+    return json({ ok: true });
+  }
+
   // ---------- project cost & profitability (admin-only, hidden from employees) ----------
   if (path === "/api/admin/project-costs" && method === "GET") {
     const res = await db.execute("SELECT * FROM project_costs ORDER BY project_code ASC, project_name COLLATE NOCASE ASC");
     return json({ costs: res.rows });
   }
   if (path === "/api/admin/project-costs" && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
     const missing = requireFields(body, ["project_code", "project_name", "cost_egp"]);
     if (missing) return err(`Missing field: ${missing}`);
     const cost = Number(body.cost_egp);
     if (!(cost >= 0)) return err("تكلفة المشروع لازم تكون رقم موجب أو صفر");
     await db.execute({
-      sql: `INSERT INTO project_costs (project_code, project_name, cost_egp, updated_by, updated_at)
-            VALUES (?,?,?,?,datetime('now'))
-            ON CONFLICT(project_code, project_name) DO UPDATE SET cost_egp = excluded.cost_egp, updated_by = excluded.updated_by, updated_at = datetime('now')`,
-      args: [body.project_code, body.project_name, cost, admin.id],
+      sql: `INSERT INTO project_costs (project_code, project_name, cost_egp, details, updated_by, updated_at)
+            VALUES (?,?,?,?,?,datetime('now'))
+            ON CONFLICT(project_code, project_name) DO UPDATE SET cost_egp = excluded.cost_egp, details = excluded.details, updated_by = excluded.updated_by, updated_at = datetime('now')`,
+      args: [body.project_code, body.project_name, cost, body.details || null, admin.id],
     });
+    return json({ ok: true });
+  }
+
+  // ---------- project payment schedule (installments) ----------
+  if (path === "/api/admin/project-payments" && method === "GET") {
+    const code = url.searchParams.get("project_code");
+    const name = url.searchParams.get("project_name");
+    if (!code || !name) return err("project_code و project_name مطلوبين");
+    const res = await db.execute({
+      sql: "SELECT * FROM project_payments WHERE project_code = ? AND project_name = ? ORDER BY COALESCE(planned_date, date('now')) ASC, id ASC",
+      args: [code, name],
+    });
+    return json({ payments: res.rows });
+  }
+  if (path === "/api/admin/project-payments" && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const missing = requireFields(body, ["project_code", "project_name", "amount_egp"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const amount = Number(body.amount_egp);
+    if (!(amount > 0)) return err("قيمة الدفعة لازم تكون رقم موجب");
+    const res = await db.execute({
+      sql: `INSERT INTO project_payments (project_code, project_name, amount_egp, planned_date, created_by) VALUES (?,?,?,?,?) RETURNING *`,
+      args: [body.project_code, body.project_name, amount, body.planned_date || null, admin.id],
+    });
+    return json({ payment: res.rows[0] }, 201);
+  }
+  const payMarkPaidMatch = path.match(/^\/api\/admin\/project-payments\/(\d+)\/mark-paid$/);
+  if (payMarkPaidMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const missing = requireFields(body, ["paid_date"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const pid = Number(payMarkPaidMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM project_payments WHERE id = ?", args: [pid] });
+    const payment = cur.rows[0];
+    if (!payment) return err("Payment not found", 404);
+    if (payment.paid) return err("الدفعة دي متسجلة كمدفوعة بالفعل", 409);
+    const txRes = await db.execute({
+      sql: `INSERT INTO company_transactions (type, amount_egp, date, description, project_code, project_name, created_by)
+            VALUES ('income',?,?,?,?,?,?) RETURNING *`,
+      args: [payment.amount_egp, body.paid_date, "دفعة مشروع " + payment.project_code + " - " + payment.project_name, payment.project_code, payment.project_name, admin.id],
+    });
+    await db.execute({
+      sql: "UPDATE project_payments SET paid = 1, paid_date = ?, transaction_id = ? WHERE id = ?",
+      args: [body.paid_date, txRes.rows[0].id, pid],
+    });
+    return json({ ok: true, transaction: txRes.rows[0] });
+  }
+  const payDeleteMatch = path.match(/^\/api\/admin\/project-payments\/(\d+)$/);
+  if (payDeleteMatch && method === "DELETE") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const pid = Number(payDeleteMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM project_payments WHERE id = ?", args: [pid] });
+    const payment = cur.rows[0];
+    if (payment && payment.transaction_id) {
+      await db.execute({ sql: "DELETE FROM company_transactions WHERE id = ?", args: [payment.transaction_id] });
+    }
+    await db.execute({ sql: "DELETE FROM project_payments WHERE id = ?", args: [pid] });
     return json({ ok: true });
   }
 
@@ -1963,6 +2087,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ expenses: res.rows });
   }
   if (path === "/api/admin/project-expenses" && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
     const missing = requireFields(body, ["project_code", "project_name", "amount_egp", "date"]);
     if (missing) return err(`Missing field: ${missing}`);
     const amount = Number(body.amount_egp);
@@ -2179,8 +2304,9 @@ async function decideLeave(db, admin, requestId, body) {
     const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [request.employee_id] });
     const emp = empRes.rows[0];
     const field = request.type === "casual" ? "casual_balance" : "annual_balance";
-    if (Number(emp[field]) <= 0) return err("رصيد الاجازة خلص لهذا الموظف", 409);
-    await db.execute({ sql: `UPDATE employees SET ${field} = ${field} - 1 WHERE id = ?`, args: [request.employee_id] });
+    const days = workingDaysInRange(request.date, request.end_date || request.date).length;
+    if (Number(emp[field]) < days) return err(`رصيد الإجازة مش كفاية (متاح ${emp[field]}، مطلوب ${days})`, 409);
+    await db.execute({ sql: `UPDATE employees SET ${field} = ${field} - ? WHERE id = ?`, args: [days, request.employee_id] });
   }
 
   await db.execute({
@@ -2213,15 +2339,16 @@ async function redecideRequest(db, admin, kind, requestId, action) {
 
   if (kind === "leave") {
     const field = request.type === "casual" ? "casual_balance" : "annual_balance";
+    const days = workingDaysInRange(request.date, request.end_date || request.date).length;
     if (request.status === "approved" && newStatus === "rejected") {
-      // was approved (day already deducted) → now reversed to rejected: give the day back
-      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} + 1 WHERE id = ?`, args: [request.employee_id] });
+      // was approved (days already deducted) → now reversed to rejected: give the days back
+      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} + ? WHERE id = ?`, args: [days, request.employee_id] });
     } else if (request.status === "rejected" && newStatus === "approved") {
-      // was rejected (no day deducted) → now approved: deduct the day, but check balance first
+      // was rejected (no days deducted) → now approved: deduct the days, but check balance first
       const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [request.employee_id] });
       const emp = empRes.rows[0];
-      if (Number(emp[field]) <= 0) return err("رصيد الاجازة خلص لهذا الموظف", 409);
-      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} - 1 WHERE id = ?`, args: [request.employee_id] });
+      if (Number(emp[field]) < days) return err(`رصيد الإجازة مش كفاية (متاح ${emp[field]}، مطلوب ${days})`, 409);
+      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} - ? WHERE id = ?`, args: [days, request.employee_id] });
     }
   }
 
