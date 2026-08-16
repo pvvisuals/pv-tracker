@@ -583,8 +583,11 @@ textarea{resize:vertical;min-height:76px;}
 <div class="settings-label">طلب اجازة</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
-<div class="fl">Date <span class="fla">التاريخ</span></div>
-<input type="date" id="leaveDate"/>
+<div class="fl">Duration <span class="fla">مدة الإجازة</span></div>
+<select id="leaveDuration" onchange="onLeaveDurationChange()">
+<option value="single">يوم واحد · Single Day</option>
+<option value="long">إجازة طويلة · Long Leave</option>
+</select>
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Type <span class="fla">النوع</span></div>
@@ -594,6 +597,17 @@ textarea{resize:vertical;min-height:76px;}
 </select>
 </div>
 </div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl" id="leaveDateLabel">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="leaveDate" onchange="updateLeaveDaysPreview()"/>
+</div>
+<div class="fg" style="margin:0;display:none" id="leaveEndDateWrap">
+<div class="fl">End Date <span class="fla">تاريخ النهاية</span></div>
+<input type="date" id="leaveEndDate" onchange="updateLeaveDaysPreview()"/>
+</div>
+</div>
+<div class="fl-hint" id="leaveDaysPreview" style="margin-bottom:10px"></div>
 <div class="fg" style="margin:10px 0 0">
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="leaveReason" placeholder="اكتب السبب..."/>
@@ -1059,17 +1073,59 @@ textarea{resize:vertical;min-height:76px;}
 <div class="task-form">
 <div class="settings-label" id="section-project-cost">Project Cost & Profitability <span class="fla">تكلفة المشاريع والربح/الخسارة</span></div>
 <div class="sec-sub" style="margin-bottom:12px">السعر خاص بالأدمن بس ومش بيظهر للموظف خالص</div>
+
+<div class="settings-label" style="font-size:15px;margin-top:6px">Clients Registry <span class="fla">سجل العملاء (أول رقمين من كود المشروع)</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
-<div class="fl">Project <span class="fla">حدد المشروع</span></div>
-<select id="projCostProjectSelect"></select>
+<div class="fl">Client Code <span class="fla">رقمين بالظبط، مثال: 01</span></div>
+<input type="text" id="newClientCode" maxlength="2" placeholder="01"/>
 </div>
 <div class="fg" style="margin:0">
-<div class="fl">Price (EGP) <span class="fla">سعر المشروع</span></div>
-<input type="number" id="projCostPriceInput" min="0" step="1"/>
+<div class="fl">Client Name <span class="fla">اسم العميل</span></div>
+<input type="text" id="newClientName"/>
 </div>
 </div>
-<button class="btn-add" onclick="saveProjectCost()">SAVE PRICE · حفظ السعر</button>
+<button class="btn-add" onclick="addClientPrompt()">+ ADD CLIENT · إضافة عميل</button>
+<div id="clientsListResult" style="margin-top:12px"></div>
+
+<div class="settings-label" style="font-size:15px;margin-top:24px">Project Price, Details &amp; Payments <span class="fla">سعر المشروع وتفاصيله ودفعاته</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Client Code <span class="fla">فلتر العميل</span></div>
+<select id="pcClientSelect" onchange="onPcClientChange()"><option value="">-- All Clients · كل العملاء --</option></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Project <span class="fla">اختار مشروع</span></div>
+<select id="pcProjectSelect" onchange="onPcProjectChange()"></select>
+</div>
+</div>
+<div id="pcProjectDetailWrap" style="display:none">
+<div class="fg">
+<div class="fl">Price (EGP) <span class="fla">سعر المشروع الكلي</span></div>
+<input type="number" id="pcPriceInput" min="0" step="1"/>
+</div>
+<div class="fg">
+<div class="fl">Project Details <span class="fla">تفاصيل المشروع</span></div>
+<textarea id="pcDetailsInput" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;font-family:inherit"></textarea>
+</div>
+<button class="btn-add" onclick="savePcPricePrompt()">SAVE · حفظ</button>
+
+<div class="settings-label" style="font-size:14px;margin-top:20px">Payment Schedule <span class="fla">جدول الدفعات</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Amount (EGP) <span class="fla">قيمة الدفعة</span></div>
+<input type="number" id="pcPayAmount" min="1" step="1"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Planned Date (optional) <span class="fla">تاريخ متوقع</span></div>
+<input type="date" id="pcPayPlannedDate"/>
+</div>
+</div>
+<button class="btn-add" onclick="addPcPaymentPrompt()">+ ADD PAYMENT · إضافة دفعة</button>
+
+<div id="pcPaymentsSummary" style="margin-top:16px"></div>
+<div id="pcPaymentsList" style="margin-top:10px"></div>
+</div>
 
 <div class="form-row" style="margin-top:22px">
 <div class="fg" style="margin:0">
@@ -1325,6 +1381,24 @@ textarea{resize:vertical;min-height:76px;}
 <div class="modal-actions">
 <button class="btn-mc" onclick="closeEditBonusModal()">Cancel · إلغاء</button>
 <button class="btn-mo" onclick="submitEditBonus()">Save · حفظ</button>
+</div>
+</div>
+</div>
+<div class="modal-overlay" id="markPaidModalOverlay">
+<div class="modal">
+<h3>MARK AS PAID · تسجيل الدفع</h3>
+<div class="fl-hint" style="margin-bottom:14px">هيتسجل قيد إيراد تلقائي في الإيرادات بنفس التاريخ ده</div>
+<div class="fg">
+<div class="fl">Paid Date <span class="fla">تاريخ الدفع الفعلي</span></div>
+<input type="date" id="markPaidDate"/>
+</div>
+<div class="fg">
+<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
+<input type="password" id="markPaidPin" placeholder="****" autocomplete="off"/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeMarkPaidModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitMarkPaid()">Confirm · تأكيد</button>
 </div>
 </div>
 </div>
@@ -2076,7 +2150,8 @@ function renderMyRequests() {
     var html = "";
     for (var i = 0; i < myLeaveReqs.length; i++) {
       var r = myLeaveReqs[i];
-      html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + r.date + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + "</div>";
+      var dateDisplay = r.end_date && r.end_date !== r.date ? (r.date + " → " + r.end_date) : r.date;
+      html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + dateDisplay + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + "</div>";
     }
     lEl.innerHTML = html;
   }
@@ -2112,16 +2187,52 @@ function renderMyRequests() {
   }
 }
 
+function onLeaveDurationChange() {
+  var isLong = document.getElementById("leaveDuration").value === "long";
+  document.getElementById("leaveEndDateWrap").style.display = isLong ? "block" : "none";
+  document.getElementById("leaveDateLabel").innerHTML = isLong
+    ? "Start Date <span class='fla'>تاريخ البداية</span>"
+    : "Date <span class='fla'>التاريخ</span>";
+  updateLeaveDaysPreview();
+}
+
+function updateLeaveDaysPreview() {
+  var isLong = document.getElementById("leaveDuration").value === "long";
+  var start = document.getElementById("leaveDate").value;
+  var previewEl = document.getElementById("leaveDaysPreview");
+  if (!start) { previewEl.textContent = ""; return; }
+  if (!isLong) { previewEl.textContent = "يوم شغل واحد هيتخصم من الرصيد"; return; }
+  var end = document.getElementById("leaveEndDate").value;
+  if (!end || end < start) { previewEl.textContent = ""; return; }
+  var count = 0;
+  var cur = new Date(start + "T12:00:00Z");
+  var stop = new Date(end + "T12:00:00Z");
+  while (cur <= stop) {
+    var wd = cur.getUTCDay(); // 0=Sun ... 5=Fri, 6=Sat
+    if (wd !== 5 && wd !== 6) count++;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  previewEl.textContent = "هيتخصم " + count + " يوم عمل من الرصيد (الجمعة/السبت مستثناة تلقائياً)";
+}
+
 async function submitLeaveRequest() {
+  var isLong = document.getElementById("leaveDuration").value === "long";
   var date = document.getElementById("leaveDate").value;
+  var endDate = isLong ? document.getElementById("leaveEndDate").value : null;
   var type = document.getElementById("leaveType").value;
   var reason = document.getElementById("leaveReason").value.trim();
   if (!date) { showToast("!", "اختار التاريخ"); return; }
+  if (isLong && !endDate) { showToast("!", "اختار تاريخ النهاية"); return; }
+  if (isLong && endDate < date) { showToast("!", "تاريخ النهاية لازم يكون بعد البداية"); return; }
   showLoading(true);
   try {
-    await apiRequest("/api/leave-requests", "POST", { date: date, type: type, reason: reason });
+    var body = { date: date, type: type, reason: reason };
+    if (endDate) body.end_date = endDate;
+    await apiRequest("/api/leave-requests", "POST", body);
     showToast("v", "تم ارسال طلب الاجازة");
     document.getElementById("leaveReason").value = "";
+    document.getElementById("leaveEndDate").value = "";
+    document.getElementById("leaveDaysPreview").textContent = "";
     await loadLeaveOvertimeData();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -2187,7 +2298,7 @@ async function saveMyBirthDate() {
 
 var REQUEST_KINDS = [
   { kind: "leave", listPath: "/api/admin/leave-requests", pendingEl: "adminLeaveList", approvedEl: "adminLeaveApprovedList", rejectedEl: "adminLeaveRejectedList",
-    label: function(r) { return r.type === "casual" ? "CASUAL" : "ANNUAL"; }, date: function(r) { return r.date; } },
+    label: function(r) { return r.type === "casual" ? "CASUAL" : "ANNUAL"; }, date: function(r) { return (r.end_date && r.end_date !== r.date) ? (r.date + " → " + r.end_date) : r.date; } },
   { kind: "financial", listPath: "/api/admin/financial-requests", pendingEl: "adminFinList", approvedEl: "adminFinApprovedList", rejectedEl: "adminFinRejectedList",
     label: function(r) { return "EGP " + r.amount_egp; }, date: function(r) { return r.requested_at ? r.requested_at.slice(0,10) : ""; } },
   { kind: "offclock", listPath: "/api/admin/offclock-requests", pendingEl: "adminOffList", approvedEl: "adminOffApprovedList", rejectedEl: "adminOffRejectedList",
@@ -2233,6 +2344,7 @@ async function loadAdminData() {
     fetchProjectCostReport();
     fetchProfitLossReport();
     fetchPettyCash();
+    loadClients();
 
     await reloadMonthDependentAdminData();
   } catch(e) { /* non-fatal */ }
@@ -3508,17 +3620,15 @@ function uniqueProjectGroups() {
 
 function populateProjectCostSelects() {
   var groups = uniqueProjectGroups();
-  var ids = ["projCostProjectSelect", "projExpProjectSelect"];
-  for (var i = 0; i < ids.length; i++) {
-    var sel = document.getElementById(ids[i]);
-    if (!sel) continue;
-    var cur = sel.value;
-    var html = "";
+  var expSel = document.getElementById("projExpProjectSelect");
+  if (expSel) {
+    var curExp = expSel.value;
+    var expHtml = "";
     for (var g = 0; g < groups.length; g++) {
-      html += "<option value='" + groups[g].code + "||" + groups[g].name.replace(/'/g,"") + "'>" + groups[g].code + " - " + groups[g].name + "</option>";
+      expHtml += "<option value='" + groups[g].code + "||" + groups[g].name.replace(/'/g,"") + "'>" + groups[g].code + " - " + groups[g].name + "</option>";
     }
-    sel.innerHTML = html;
-    if (cur) sel.value = cur;
+    expSel.innerHTML = expHtml;
+    if (curExp) expSel.value = curExp;
   }
   var txSel = document.getElementById("txProjectSelect");
   if (txSel) {
@@ -3540,19 +3650,248 @@ function populateProjectCostSelects() {
     filterSel.innerHTML = filterHtml;
     if (curFilter) filterSel.value = curFilter;
   }
+  onPcClientChange(); // re-filter the client/payments project select too
 }
 
-async function saveProjectCost() {
-  var sel = document.getElementById("projCostProjectSelect").value;
-  var price = document.getElementById("projCostPriceInput").value;
-  if (!sel || price === "") { showToast("!", "اختار مشروع واكتب السعر"); return; }
+// ============ Clients registry ============
+var adminClients = [];
+
+async function loadClients() {
+  try {
+    var res = await apiRequest("/api/admin/clients", "GET");
+    adminClients = res.clients || [];
+    renderClientsList();
+    populatePcClientSelect();
+    onPcClientChange();
+  } catch(e) { /* non-fatal */ }
+}
+
+function renderClientsList() {
+  var el = document.getElementById("clientsListResult");
+  if (!el) return;
+  if (!adminClients.length) { el.innerHTML = "<div class='empty-log'>لسه مفيش عملاء متسجلين</div>"; return; }
+  var html = "";
+  for (var i = 0; i < adminClients.length; i++) {
+    var c = adminClients[i];
+    html += "<div class='log-entry'><div class='log-type'>" + c.client_code + "</div><div class='log-note'>" + c.client_name + "</div>" +
+      "<button class='btn-end-task' onclick=\"deleteClientPrompt(" + c.id + ")\">DELETE · حذف</button></div>";
+  }
+  el.innerHTML = html;
+}
+
+function populatePcClientSelect() {
+  var sel = document.getElementById("pcClientSelect");
+  if (!sel) return;
+  var cur = sel.value;
+  var html = "<option value=''>-- All Clients · كل العملاء --</option>";
+  for (var i = 0; i < adminClients.length; i++) {
+    html += "<option value='" + adminClients[i].client_code + "'>" + adminClients[i].client_code + " - " + adminClients[i].client_name + "</option>";
+  }
+  sel.innerHTML = html;
+  if (cur) sel.value = cur;
+}
+
+function addClientPrompt() {
+  var code = document.getElementById("newClientCode").value.trim();
+  var name = document.getElementById("newClientName").value.trim();
+  if (!/^\d{2}$/.test(code) || !name) { showToast("!", "الكود لازم يكون رقمين، والاسم مطلوب"); return; }
+  openPinModal("ADD CLIENT · إضافة عميل", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeAddClient(code, name, pin);
+  });
+}
+async function executeAddClient(code, name, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/clients", "POST", { client_code: code, client_name: name, pin: pin });
+    showToast("v", "تم إضافة العميل");
+    document.getElementById("newClientCode").value = "";
+    document.getElementById("newClientName").value = "";
+    await loadClients();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function deleteClientPrompt(id) {
+  openPinModal("DELETE CLIENT · حذف عميل", "ده مش هيمسح المشاريع نفسها، بس هيلغي ربط الكود بالاسم. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeDeleteClient(id, pin);
+  });
+}
+async function executeDeleteClient(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/clients/" + id, "DELETE", { pin: pin });
+    showToast("v", "تم حذف العميل");
+    await loadClients();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+// ============ Client-filtered project price/details/payments ============
+
+function onPcClientChange() {
+  var clientCode = document.getElementById("pcClientSelect").value;
+  var groups = uniqueProjectGroups();
+  var filtered = clientCode ? groups.filter(function(g) { return g.code.slice(0,2) === clientCode; }) : groups;
+  var sel = document.getElementById("pcProjectSelect");
+  var cur = sel.value;
+  var html = "<option value=''>-- اختار مشروع --</option>";
+  for (var i = 0; i < filtered.length; i++) {
+    html += "<option value='" + filtered[i].code + "||" + filtered[i].name.replace(/'/g,"") + "'>" + filtered[i].code + " - " + filtered[i].name + "</option>";
+  }
+  sel.innerHTML = html;
+  if (cur && filtered.some(function(g){ return (g.code+"||"+g.name) === cur; })) sel.value = cur;
+  else onPcProjectChange();
+}
+
+var pcCurrentCosts = [];
+async function onPcProjectChange() {
+  var sel = document.getElementById("pcProjectSelect").value;
+  var wrap = document.getElementById("pcProjectDetailWrap");
+  if (!sel) { wrap.style.display = "none"; return; }
+  wrap.style.display = "block";
   var parts = sel.split("||");
   showLoading(true);
   try {
-    await apiRequest("/api/admin/project-costs", "POST", { project_code: parts[0], project_name: parts[1], cost_egp: Number(price) });
-    showToast("v", "تم حفظ سعر المشروع");
-    document.getElementById("projCostPriceInput").value = "";
-    await fetchProjectCostReport();
+    var res = await apiRequest("/api/admin/project-costs", "GET");
+    pcCurrentCosts = res.costs || [];
+    var existing = pcCurrentCosts.find(function(c) { return c.project_code === parts[0] && c.project_name === parts[1]; });
+    document.getElementById("pcPriceInput").value = existing ? existing.cost_egp : "";
+    document.getElementById("pcDetailsInput").value = existing ? (existing.details || "") : "";
+    await loadPcPayments(parts[0], parts[1]);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function savePcPricePrompt() {
+  var sel = document.getElementById("pcProjectSelect").value;
+  var price = document.getElementById("pcPriceInput").value;
+  if (!sel || price === "") { showToast("!", "اختار مشروع واكتب السعر"); return; }
+  openPinModal("SAVE PROJECT PRICE · حفظ سعر المشروع", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeSavePcPrice(pin);
+  });
+}
+async function executeSavePcPrice(pin) {
+  var sel = document.getElementById("pcProjectSelect").value;
+  var parts = sel.split("||");
+  var price = document.getElementById("pcPriceInput").value;
+  var details = document.getElementById("pcDetailsInput").value;
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/project-costs", "POST", { project_code: parts[0], project_name: parts[1], cost_egp: Number(price), details: details, pin: pin });
+    showToast("v", "تم الحفظ");
+    await loadPcPayments(parts[0], parts[1]);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+var pcCurrentPayments = [];
+async function loadPcPayments(code, name) {
+  try {
+    var res = await apiRequest("/api/admin/project-payments?project_code=" + encodeURIComponent(code) + "&project_name=" + encodeURIComponent(name), "GET");
+    pcCurrentPayments = res.payments || [];
+    renderPcPayments();
+  } catch(e) { /* non-fatal */ }
+}
+
+function renderPcPayments() {
+  var price = Number(document.getElementById("pcPriceInput").value) || 0;
+  var totalPaid = 0;
+  for (var i = 0; i < pcCurrentPayments.length; i++) if (pcCurrentPayments[i].paid) totalPaid += Number(pcCurrentPayments[i].amount_egp);
+  var remaining = +(price - totalPaid).toFixed(2);
+
+  var sumHtml = "<div class='info-grid'>";
+  sumHtml += infoCard("Price <span class='fla'>السعر</span>", price + " EGP");
+  sumHtml += infoCard("Paid So Far <span class='fla'>المدفوع</span>", "<span style='color:var(--ok)'>" + totalPaid.toFixed(2) + " EGP</span>");
+  sumHtml += infoCard("Remaining <span class='fla'>الباقي</span>", "<span style='color:" + (remaining>0?"var(--warn)":(remaining<0?"var(--danger)":"var(--ok)")) + "'>" + remaining + " EGP</span>");
+  sumHtml += "</div>";
+  document.getElementById("pcPaymentsSummary").innerHTML = sumHtml;
+
+  var el = document.getElementById("pcPaymentsList");
+  if (!pcCurrentPayments.length) { el.innerHTML = "<div class='log-wrap'><div class='empty-log'>لسه مفيش دفعات</div></div>"; return; }
+  var html = "<div class='log-wrap'>";
+  for (var j = 0; j < pcCurrentPayments.length; j++) {
+    var p = pcCurrentPayments[j];
+    var statusNote = p.paid ? ("<span style='color:var(--ok)'>تم الدفع في " + p.paid_date + "</span>") : ("<span style='color:var(--warn)'>لسه ماتدفعتش" + (p.planned_date ? " — متوقعة " + p.planned_date : "") + "</span>");
+    var actions = p.paid ? "" : "<button class='btn-end-task' onclick=\"markPcPaymentPaidModal(" + p.id + ")\">PAID · تم الدفع</button> ";
+    actions += "<button class='btn-end-task' onclick=\"deletePcPaymentPrompt(" + p.id + ")\">DELETE · حذف</button>";
+    html += "<div class='log-entry'><div class='log-type' style='color:" + (p.paid?"var(--ok)":"var(--warn)") + "'>" + p.amount_egp + " EGP</div><div class='log-note'>" + statusNote + "</div>" + actions + "</div>";
+  }
+  html += "</div>";
+  el.innerHTML = html;
+}
+
+function addPcPaymentPrompt() {
+  var sel = document.getElementById("pcProjectSelect").value;
+  var amount = document.getElementById("pcPayAmount").value;
+  if (!sel || !(Number(amount) > 0)) { showToast("!", "اختار مشروع واكتب قيمة صحيحة"); return; }
+  openPinModal("ADD PAYMENT · إضافة دفعة", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeAddPcPayment(pin);
+  });
+}
+async function executeAddPcPayment(pin) {
+  var sel = document.getElementById("pcProjectSelect").value;
+  var parts = sel.split("||");
+  var amount = document.getElementById("pcPayAmount").value;
+  var plannedDate = document.getElementById("pcPayPlannedDate").value;
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/project-payments", "POST", { project_code: parts[0], project_name: parts[1], amount_egp: Number(amount), planned_date: plannedDate || null, pin: pin });
+    showToast("v", "تم إضافة الدفعة");
+    document.getElementById("pcPayAmount").value = "";
+    document.getElementById("pcPayPlannedDate").value = "";
+    await loadPcPayments(parts[0], parts[1]);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+var currentMarkPaidId = null;
+function markPcPaymentPaidModal(id) {
+  currentMarkPaidId = id;
+  document.getElementById("markPaidDate").value = cairoISODate();
+  document.getElementById("markPaidPin").value = "";
+  document.getElementById("markPaidModalOverlay").classList.add("active");
+}
+function closeMarkPaidModal() {
+  document.getElementById("markPaidModalOverlay").classList.remove("active");
+  currentMarkPaidId = null;
+}
+async function submitMarkPaid() {
+  var paidDate = document.getElementById("markPaidDate").value;
+  var pin = document.getElementById("markPaidPin").value;
+  if (!paidDate) { showToast("!", "اختار تاريخ الدفع"); return; }
+  if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+  var sel = document.getElementById("pcProjectSelect").value;
+  var parts = sel.split("||");
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/project-payments/" + currentMarkPaidId + "/mark-paid", "POST", { paid_date: paidDate, pin: pin });
+    showToast("v", "تم تسجيل الدفع وإضافته للإيرادات");
+    closeMarkPaidModal();
+    await loadPcPayments(parts[0], parts[1]);
+    await fetchProfitLossReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function deletePcPaymentPrompt(id) {
+  openPinModal("DELETE PAYMENT · حذف الدفعة", "لو الدفعة دي متسجلة كمدفوعة، هيتشال قيد الإيراد المرتبط بيها كمان. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeDeletePcPayment(id, pin);
+  });
+}
+async function executeDeletePcPayment(id, pin) {
+  var sel = document.getElementById("pcProjectSelect").value;
+  var parts = sel.split("||");
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/project-payments/" + id, "DELETE", { pin: pin });
+    showToast("v", "تم الحذف");
+    await loadPcPayments(parts[0], parts[1]);
+    await fetchProfitLossReport();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
