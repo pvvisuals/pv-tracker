@@ -822,10 +822,10 @@ async function requestLeave(db, me, body) {
 }
 
 async function myLeaveRequests(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: "SELECT * FROM leave_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
-    args: [me.id, month + "%"],
+    args: [me.id, month],
   });
   return json({
     requests: res.rows,
@@ -851,10 +851,10 @@ async function requestFinancial(db, me, body) {
 }
 
 async function myFinancialRequests(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: "SELECT * FROM financial_requests WHERE employee_id = ? AND requested_at LIKE ? ORDER BY requested_at DESC",
-    args: [me.id, month + "%"],
+    args: [me.id, month],
   });
   return json({ requests: res.rows });
 }
@@ -875,10 +875,10 @@ async function requestOffclock(db, me, body) {
 }
 
 async function myOffclockRequests(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: "SELECT * FROM offclock_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
-    args: [me.id, month + "%"],
+    args: [me.id, month],
   });
   return json({ requests: res.rows });
 }
@@ -913,63 +913,71 @@ async function requestPermission(db, me, body) {
 }
 
 async function myPermissionRequests(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: "SELECT * FROM permission_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
-    args: [me.id, month + "%"],
+    args: [me.id, month],
   });
   return json({ requests: res.rows });
 }
 
 // ---------------------------------------------------------------- official holidays (read-only for employees)
 
-async function officialHolidays(db, monthStr) {
+// Every "month filter" list/report in the system accepts monthStr === "all"
+// to mean "don't filter by month at all" — this builds the matching LIKE
+// pattern (or a default of the current month when nothing valid was given).
+function monthLikePattern(monthStr) {
+  if (monthStr === "all") return "%";
   const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  return month + "%";
+}
+
+async function officialHolidays(db, monthStr) {
   const res = await db.execute({
     sql: "SELECT * FROM official_holidays WHERE date LIKE ? ORDER BY date ASC",
-    args: [month + "%"],
+    args: [monthLikePattern(monthStr)],
   });
   return json({ holidays: res.rows });
 }
 
 async function myPenalties(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: `SELECT p.*, a.name as deleted_by_name FROM penalties p
           LEFT JOIN employees a ON a.id = p.deleted_by
           WHERE p.employee_id = ? AND p.date LIKE ? ORDER BY p.date DESC`,
-    args: [me.id, month + "%"],
+    args: [me.id, month],
   });
   return json({ penalties: res.rows });
 }
 
 async function myNotices(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: `SELECT n.*, a.name as deleted_by_name FROM notices n
           LEFT JOIN employees a ON a.id = n.deleted_by
           WHERE n.employee_id = ? AND n.date LIKE ? ORDER BY n.date DESC`,
-    args: [me.id, month + "%"],
+    args: [me.id, month],
   });
   return json({ notices: res.rows });
 }
 
 async function myLateArrivals(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: "SELECT * FROM late_arrivals WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
-    args: [me.id, month + "%"],
+    args: [me.id, month],
   });
   return json({ late_arrivals: res.rows });
 }
 
 async function myBonuses(db, me, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: `SELECT b.*, a.name as deleted_by_name FROM bonuses b
           LEFT JOIN employees a ON a.id = b.deleted_by
           WHERE b.employee_id = ? AND b.date LIKE ? ORDER BY b.date DESC`,
-    args: [me.id, month + "%"],
+    args: [me.id, month],
   });
   const rate = hourlyRate(me);
   const bonuses = res.rows.map((b) => ({ ...b, hours_equivalent: rate > 0 ? +(Number(b.amount_egp) / rate).toFixed(2) : 0 }));
@@ -979,13 +987,16 @@ async function myBonuses(db, me, monthStr) {
 // ---------------------------------------------------------------- monthly report (core hours logic)
 
 async function monthlyReport(db, employeeId, monthStr) {
+  const isAllMonths = monthStr === "all";
   const now = new Date();
   let year, month;
-  if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
-    [year, month] = monthStr.split("-").map(Number);
-  } else {
-    const p = cairoParts(now);
-    year = Number(p.y); month = Number(p.m);
+  if (!isAllMonths) {
+    if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
+      [year, month] = monthStr.split("-").map(Number);
+    } else {
+      const p = cairoParts(now);
+      year = Number(p.y); month = Number(p.m);
+    }
   }
 
   const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [employeeId] });
@@ -995,10 +1006,18 @@ async function monthlyReport(db, employeeId, monthStr) {
   const dayHours = Number(emp.daily_work_hours) || 8;
   const daySeconds = dayHours * 3600;
 
-  const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
-  const lastDayNum = daysInMonth(year, month);
-  const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
-  const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+  let firstDay, lastDay, monthPrefix;
+  if (isAllMonths) {
+    // Full history: from the day the employee was registered through today.
+    firstDay = (emp.created_at || cairoDateStr()).slice(0, 10);
+    lastDay = cairoDateStr();
+    monthPrefix = null; // no single-month prefix makes sense in "all" mode
+  } else {
+    firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
+    const lastDayNum = daysInMonth(year, month);
+    lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+    monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+  }
 
   const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows, bonusRows, lateRows] = await Promise.all([
     db.execute({
@@ -1022,7 +1041,7 @@ async function monthlyReport(db, employeeId, monthStr) {
     }),
     db.execute({
       sql: "SELECT * FROM financial_requests WHERE employee_id = ? AND status = 'approved' AND requested_at LIKE ?",
-      args: [employeeId, monthPrefix + "%"],
+      args: [employeeId, isAllMonths ? "%" : monthPrefix + "%"],
     }),
     db.execute({
       sql: "SELECT * FROM offclock_requests WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'approved'",
@@ -1128,15 +1147,13 @@ async function monthlyReport(db, employeeId, monthStr) {
   // and completely independent of attendance/leave/absence, so it doesn't
   // wait for the month (or even today) to happen, and it updates instantly
   // whenever an official holiday is added/removed.
-  for (let d = 1; d <= lastDayNum; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  for (let dateStr = firstDay; dateStr <= lastDay; dateStr = addDaysToDateStr(dateStr, 1)) {
     if (isWeekendStr(dateStr)) continue;
     if (holidayByDate[dateStr]) continue;
     requiredSeconds += daySeconds;
   }
 
-  for (let d = 1; d <= lastDayNum; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  for (let dateStr = firstDay; dateStr <= lastDay; dateStr = addDaysToDateStr(dateStr, 1)) {
     if (dateStr > todayStr) break; // don't project future days
 
     const breakSecs = breakSecondsByDate[dateStr] || 0;
@@ -1234,7 +1251,27 @@ async function monthlyReport(db, employeeId, monthStr) {
   const offclockHours = offRows.rows.reduce((s, r) => s + Number(r.hours), 0);
 
   const permissionUsedHours = permRows.rows.reduce((s, r) => s + Number(r.hours), 0);
-  const permissionBonusHours = Math.max(0, PERMISSION_MONTHLY_HOURS - permissionUsedHours);
+  let permissionBonusHours;
+  if (isAllMonths) {
+    // The 2h cap is a PER-MONTH allowance — summing every month's unused
+    // portion (including months with zero requests, which still earn the
+    // full bonus) instead of applying one flat cap across the whole history.
+    const usedByMonth = {};
+    for (const r of permRows.rows) {
+      const mk = r.date.slice(0, 7);
+      usedByMonth[mk] = (usedByMonth[mk] || 0) + Number(r.hours);
+    }
+    permissionBonusHours = 0;
+    let my = Number(firstDay.slice(0, 4)), mm = Number(firstDay.slice(5, 7));
+    const endY = Number(lastDay.slice(0, 4)), endM = Number(lastDay.slice(5, 7));
+    while (my < endY || (my === endY && mm <= endM)) {
+      const mk = `${my}-${String(mm).padStart(2, "0")}`;
+      permissionBonusHours += Math.max(0, PERMISSION_MONTHLY_HOURS - (usedByMonth[mk] || 0));
+      mm++; if (mm > 12) { mm = 1; my++; }
+    }
+  } else {
+    permissionBonusHours = Math.max(0, PERMISSION_MONTHLY_HOURS - permissionUsedHours);
+  }
 
   const penaltiesTotalEGP = penaltyRows.rows.reduce((s, r) => s + Number(r.amount_egp), 0);
   const bonusesTotalEGP = bonusRows.rows.reduce((s, r) => s + Number(r.amount_egp), 0);
@@ -1252,7 +1289,9 @@ async function monthlyReport(db, employeeId, monthStr) {
 
   return json({
     employee: publicEmployee(emp),
-    year, month,
+    year: isAllMonths ? null : year,
+    month: isAllMonths ? "all" : month,
+    range: { start: firstDay, end: lastDay },
     days,
     totals: {
       counted_seconds: totalCountedSeconds,
@@ -1345,12 +1384,12 @@ function buildProjectHoursByType(rows) {
 // mode "total" ignores the month entirely (all-time); mode "monthly" scopes
 // tasks and expenses to the given month.
 async function profitLossReport(db, monthStr) {
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const res = await db.execute({
     sql: `SELECT ct.*, c.name as created_by_name FROM company_transactions ct
           LEFT JOIN employees c ON c.id = ct.created_by
           WHERE ct.date LIKE ? ORDER BY ct.date DESC, ct.id DESC`,
-    args: [month + "%"],
+    args: [month],
   });
   let totalIncome = 0, totalExpense = 0;
   for (const r of res.rows) {
@@ -1359,7 +1398,7 @@ async function profitLossReport(db, monthStr) {
   }
   const net = +(totalIncome - totalExpense).toFixed(2);
   return json({
-    month,
+    month: monthStr === "all" ? "all" : month.replace("%", ""),
     total_income_egp: +totalIncome.toFixed(2),
     total_expense_egp: +totalExpense.toFixed(2),
     net_profit_loss_egp: net,
@@ -1475,30 +1514,31 @@ async function projectCostReport(db, mode, monthStr) {
 }
 
 async function projectsReport(db, monthStr) {
-  const now = new Date();
-  let year, month;
-  if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
-    [year, month] = monthStr.split("-").map(Number);
-  } else {
-    const p = cairoParts(now);
-    year = Number(p.y); month = Number(p.m);
+  const isAll = monthStr === "all";
+  let year, month, firstDay, lastDay;
+  if (!isAll) {
+    const now = new Date();
+    if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
+      [year, month] = monthStr.split("-").map(Number);
+    } else {
+      const p = cairoParts(now);
+      year = Number(p.y); month = Number(p.m);
+    }
+    firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
+    const lastDayNum = daysInMonth(year, month);
+    lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
   }
-  const firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
-  const lastDayNum = daysInMonth(year, month);
-  const lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
 
-  const res = await db.execute({
-    sql: `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
+  let sql = `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
                  t.employee_id, e.name as employee_name, e.emp_code,
                  SUM(COALESCE(t.duration,0)) as total_seconds, COUNT(*) as task_count
           FROM tasks t
           JOIN employees e ON e.id = t.employee_id
-          JOIN projects p ON p.id = t.project_id
-          WHERE t.date BETWEEN ? AND ?
-          GROUP BY p.code, p.name, p.category, p.type, p.sub_code, t.employee_id
-          ORDER BY p.code ASC, p.name COLLATE NOCASE ASC, total_seconds DESC`,
-    args: [firstDay, lastDay],
-  });
+          JOIN projects p ON p.id = t.project_id`;
+  const args = [];
+  if (!isAll) { sql += " WHERE t.date BETWEEN ? AND ?"; args.push(firstDay, lastDay); }
+  sql += " GROUP BY p.code, p.name, p.category, p.type, p.sub_code, t.employee_id ORDER BY p.code ASC, p.name COLLATE NOCASE ASC, total_seconds DESC";
+  const res = await db.execute({ sql, args });
 
   const byProject = {};
   for (const r of res.rows) {
@@ -1556,14 +1596,14 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   if (path === "/api/admin/leave-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
-    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    const month = monthLikePattern(url.searchParams.get("month"));
     const orderBy = status === "pending" ? "lr.requested_at ASC" : "lr.decided_at DESC";
     const res = await db.execute({
       sql: `SELECT lr.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM leave_requests lr
             JOIN employees e ON e.id = lr.employee_id
             LEFT JOIN employees a ON a.id = lr.decided_by
             WHERE lr.status = ? AND lr.date LIKE ? ORDER BY ${orderBy}`,
-      args: [status, month + "%"],
+      args: [status, month],
     });
     return json({ requests: res.rows });
   }
@@ -1664,13 +1704,13 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   }
   if (path === "/api/admin/penalties" && method === "GET") {
     const employeeId = url.searchParams.get("employee_id");
-    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    const month = monthLikePattern(url.searchParams.get("month"));
     let sql = `SELECT p.*, e.name as employee_name, e.emp_code, c.name as created_by_name, d.name as deleted_by_name FROM penalties p
                JOIN employees e ON e.id = p.employee_id
                LEFT JOIN employees c ON c.id = p.created_by
                LEFT JOIN employees d ON d.id = p.deleted_by
                WHERE p.date LIKE ?`;
-    const args = [month + "%"];
+    const args = [month];
     if (employeeId) { sql += " AND p.employee_id = ?"; args.push(Number(employeeId)); }
     sql += " ORDER BY p.date DESC";
     const res = await db.execute({ sql, args });
@@ -1708,13 +1748,13 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   }
   if (path === "/api/admin/bonuses" && method === "GET") {
     const employeeId = url.searchParams.get("employee_id");
-    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    const month = monthLikePattern(url.searchParams.get("month"));
     let sql = `SELECT b.*, e.name as employee_name, e.emp_code, c.name as created_by_name, d.name as deleted_by_name FROM bonuses b
                JOIN employees e ON e.id = b.employee_id
                LEFT JOIN employees c ON c.id = b.created_by
                LEFT JOIN employees d ON d.id = b.deleted_by
                WHERE b.date LIKE ?`;
-    const args = [month + "%"];
+    const args = [month];
     if (employeeId) { sql += " AND b.employee_id = ?"; args.push(Number(employeeId)); }
     sql += " ORDER BY b.date DESC";
     const res = await db.execute({ sql, args });
@@ -1756,12 +1796,12 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/late-arrivals" && method === "GET") {
     const employeeId = url.searchParams.get("employee_id");
     const status = url.searchParams.get("status"); // optional filter
-    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    const month = monthLikePattern(url.searchParams.get("month"));
     let sql = `SELECT la.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM late_arrivals la
                JOIN employees e ON e.id = la.employee_id
                LEFT JOIN employees a ON a.id = la.decided_by
                WHERE la.date LIKE ?`;
-    const args = [month + "%"];
+    const args = [month];
     if (employeeId) { sql += " AND la.employee_id = ?"; args.push(Number(employeeId)); }
     if (status) { sql += " AND la.status = ?"; args.push(status); }
     sql += " ORDER BY la.date DESC";
@@ -1837,13 +1877,13 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   }
   if (path === "/api/admin/notices" && method === "GET") {
     const employeeId = url.searchParams.get("employee_id");
-    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    const month = monthLikePattern(url.searchParams.get("month"));
     let sql = `SELECT n.*, e.name as employee_name, e.emp_code, c.name as created_by_name, d.name as deleted_by_name FROM notices n
                JOIN employees e ON e.id = n.employee_id
                LEFT JOIN employees c ON c.id = n.created_by
                LEFT JOIN employees d ON d.id = n.deleted_by
                WHERE n.date LIKE ?`;
-    const args = [month + "%"];
+    const args = [month];
     if (employeeId) { sql += " AND n.employee_id = ?"; args.push(Number(employeeId)); }
     sql += " ORDER BY n.date DESC";
     const res = await db.execute({ sql, args });
@@ -2111,12 +2151,12 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- company income & expenses (profit/loss) ----------
   if (path === "/api/admin/company-transactions" && method === "GET") {
-    const month = url.searchParams.get("month") || cairoDateStr().slice(0, 7);
+    const month = monthLikePattern(url.searchParams.get("month"));
     const res = await db.execute({
       sql: `SELECT ct.*, c.name as created_by_name FROM company_transactions ct
             LEFT JOIN employees c ON c.id = ct.created_by
             WHERE ct.date LIKE ? ORDER BY ct.date DESC, ct.id DESC`,
-      args: [month + "%"],
+      args: [month],
     });
     return json({ transactions: res.rows });
   }
@@ -2148,11 +2188,11 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- petty cash / عهدة — fully standalone, never affects company totals ----------
   if (path === "/api/admin/petty-cash" && method === "GET") {
-    const month = url.searchParams.get("month");
+    const monthParam = url.searchParams.get("month");
     let sql = `SELECT pc.*, c.name as created_by_name FROM petty_cash pc
                LEFT JOIN employees c ON c.id = pc.created_by WHERE 1=1`;
     const args = [];
-    if (month) { sql += " AND pc.date LIKE ?"; args.push(month + "%"); }
+    if (monthParam && monthParam !== "all") { sql += " AND pc.date LIKE ?"; args.push(monthLikePattern(monthParam)); }
     sql += " ORDER BY pc.date DESC, pc.id DESC";
     const res = await db.execute({ sql, args });
     const allRes = await db.execute("SELECT type, amount_egp FROM petty_cash");
@@ -2455,7 +2495,7 @@ async function adminEmployeesStatus(db) {
 
 async function adminListRequests(db, table, status, monthStr) {
   if (!REQUEST_TABLES.has(table)) return err("invalid table", 400);
-  const month = (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) ? monthStr : cairoDateStr().slice(0, 7);
+  const month = monthLikePattern(monthStr);
   const dateCol = table === "financial_requests" ? "r.requested_at" : "r.date";
   const orderBy = status === "pending" ? "r.requested_at ASC" : "r.decided_at DESC";
   const res = await db.execute({
@@ -2463,7 +2503,7 @@ async function adminListRequests(db, table, status, monthStr) {
           JOIN employees e ON e.id = r.employee_id
           LEFT JOIN employees a ON a.id = r.decided_by
           WHERE r.status = ? AND ${dateCol} LIKE ? ORDER BY ${orderBy}`,
-    args: [status, month + "%"],
+    args: [status, month],
   });
   return json({ requests: res.rows });
 }
