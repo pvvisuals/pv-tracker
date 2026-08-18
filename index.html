@@ -909,6 +909,17 @@ textarea{resize:vertical;min-height:76px;}
 <div class="task-form" id="section-late-arrivals">
 <div class="settings-label" id="section-late-arrivals-title" style="color:var(--danger)">Late Arrivals <span class="fla">تأخيرات (بعد 11:10 ص)</span></div>
 <div class="sec-sub" style="margin-bottom:12px">أي حضور بعد 11:10 صباحاً بيتسجل هنا تلقائي — اختار خصم أو سماح لكل حالة</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee <span class="fla">الموظف</span></div>
+<select id="lateArrFilterEmployee" onchange="refreshLateArrivalsOnly()"><option value="">-- All Employees · كل الموظفين --</option></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Month <span class="fla">الشهر</span></div>
+<input type="month" id="lateArrFilterMonth" onchange="refreshLateArrivalsOnly()"/>
+<label class="all-months-toggle"><input type="checkbox" id="lateArrFilterMonthAll" onchange="onAllMonthsToggle('lateArrFilterMonth','lateArrFilterMonthAll'); refreshLateArrivalsOnly();"/><span>All Months · كل الشهور</span></label>
+</div>
+</div>
 <div id="adminLateArrivalsList"><div class="empty-log">No late arrivals this month</div></div>
 </div>
 <div class="task-form">
@@ -2354,6 +2365,8 @@ async function loadAdminData() {
     populateEmployeeSelects();
     populateDailyTasksEmployeeSelect();
     loadDailyTasksBrowser();
+    populateLateArrFilterEmployee();
+    refreshLateArrivalsOnly();
     populateProjectCostSelects();
     onProjCostModeChange();
     onTxTypeChange();
@@ -2383,7 +2396,6 @@ async function reloadMonthDependentAdminData() {
   jobs.push(apiRequest("/api/admin/penalties?month=" + reqMonth, "GET"));
   jobs.push(apiRequest("/api/admin/notices?month=" + reqMonth, "GET"));
   jobs.push(apiRequest("/api/admin/bonuses?month=" + reqMonth, "GET"));
-  jobs.push(apiRequest("/api/admin/late-arrivals?month=" + reqMonth, "GET"));
 
   var results = await Promise.all(jobs);
 
@@ -2395,14 +2407,12 @@ async function reloadMonthDependentAdminData() {
   adminPenaltiesMonth = results[jobKeys.length].penalties || [];
   adminNoticesMonth = results[jobKeys.length + 1].notices || [];
   adminBonusesMonth = results[jobKeys.length + 2].bonuses || [];
-  adminLateArrivalsMonth = results[jobKeys.length + 3].late_arrivals || [];
 
   populateRequestFilter();
   renderRequestsOverview();
   renderAdminPenalties();
   renderAdminNotices();
   renderAdminBonuses();
-  renderAdminLateArrivals();
 }
 
 function requestRowHtml(cfg, r, status) {
@@ -3104,11 +3114,24 @@ async function addPenalty() {
 // ---------------- Late Arrivals (تأخيرات) ----------------
 
 async function refreshLateArrivalsOnly() {
-  var monthInput = document.getElementById("reqFilterMonth");
-  var reqMonth = monthInput ? monthInput.value : "";
-  var res = await apiRequest("/api/admin/late-arrivals?month=" + reqMonth, "GET");
+  var month = getMonthFilterValue("lateArrFilterMonth", "lateArrFilterMonthAll");
+  var empId = document.getElementById("lateArrFilterEmployee") ? document.getElementById("lateArrFilterEmployee").value : "";
+  var qs = "month=" + month + (empId ? ("&employee_id=" + empId) : "");
+  var res = await apiRequest("/api/admin/late-arrivals?" + qs, "GET");
   adminLateArrivalsMonth = res.late_arrivals || [];
   renderAdminLateArrivals();
+}
+
+function populateLateArrFilterEmployee() {
+  var sel = document.getElementById("lateArrFilterEmployee");
+  if (!sel) return;
+  var cur = sel.value;
+  var html = "<option value=''>-- All Employees · كل الموظفين --</option>";
+  for (var i = 0; i < adminEmployees.length; i++) {
+    html += "<option value='" + adminEmployees[i].id + "'>#" + adminEmployees[i].emp_code + " - " + adminEmployees[i].name + "</option>";
+  }
+  sel.innerHTML = html;
+  if (cur) sel.value = cur;
 }
 
 function renderAdminLateArrivals() {
