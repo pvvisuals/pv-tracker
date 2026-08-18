@@ -74,6 +74,15 @@ select option{background:#111;}
   .user-name{font-size:12px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 }
 .tabs{display:flex;background:#000;border-bottom:1px solid var(--border);padding:0 28px;overflow-x:auto;justify-content:center;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.admin-subtabs{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:14px;margin-bottom:22px;border-bottom:1px solid var(--border);}
+.admin-subtabs::-webkit-scrollbar{display:none;}
+.admin-subtab{flex-shrink:0;padding:10px 18px;background:var(--card);border:1px solid var(--border);color:var(--muted2);font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;cursor:pointer;white-space:nowrap;transition:all 0.2s;}
+.admin-subtab .fla{font-family:'Cairo',sans-serif;font-size:11px;letter-spacing:0;opacity:.75;margin-right:6px;}
+.admin-subtab:hover{color:#fff;border-color:var(--muted2);}
+.admin-subtab.active{background:#fff;color:#000;border-color:#fff;}
+.admin-subtab.active .fla{color:#000;}
+.admin-page{display:none;animation:fadeUp 0.3s ease both;}
+.admin-page.active{display:block;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{padding:13px 20px;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-bottom:1px solid transparent;transition:color 0.2s,border-color 0.2s;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--muted);}.tab.active{color:#fff;border-bottom-color:#fff;}
@@ -435,7 +444,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="tab" onclick="switchTab('break')" id="tab-break">BREAK · الاستراحة</div>
 <div class="tab" onclick="switchTab('tasks')" id="tab-tasks">TASKS · المهام</div>
 <div class="tab" onclick="switchTab('requests')" id="tab-requests">REQUESTS · الطلبات</div>
-<div class="tab" onclick="switchTab('admin')" id="tab-admin" style="display:none">ADMIN · الإدارة</div>
+<div class="tab" onclick="switchTab('admin')" id="tab-admin" style="display:none">MANAGEMENT · الإدارة</div>
 <div class="tab" onclick="switchTab('settings')" id="tab-settings">SETTINGS · الإعدادات</div>
 </nav>
 </div>
@@ -719,20 +728,26 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="tab-content" id="content-admin">
 <div class="sec-head">
-<div class="sec-title">ADMIN</div>
-<div class="sec-sub">مراجعة الطلبات وتقارير الموظفين</div>
+<div class="sec-title">MANAGEMENT</div>
+<div class="sec-sub">لوحة الإدارة الكاملة · Full Management Panel</div>
 </div>
-
+<div class="admin-subtabs">
+<div class="admin-subtab" id="subtab-overview" onclick="switchAdminPage('overview')">📊 OVERVIEW <span class="fla">نظرة عامة</span></div>
+<div class="admin-subtab" id="subtab-employees" onclick="switchAdminPage('employees')">👥 EMPLOYEES <span class="fla">الموظفين</span></div>
+<div class="admin-subtab" id="subtab-requests" onclick="switchAdminPage('requests')">📋 REQUESTS &amp; DISCIPLINE <span class="fla">الطلبات والجزاءات</span></div>
+<div class="admin-subtab" id="subtab-clients" onclick="switchAdminPage('clients')">📁 CLIENTS &amp; PROJECTS <span class="fla">العملاء والمشاريع</span></div>
+<div class="admin-subtab" id="subtab-finance" onclick="switchAdminPage('finance')">💰 FINANCE <span class="fla">الحسابات</span></div>
+<div class="admin-subtab" id="subtab-reports" onclick="switchAdminPage('reports')">📈 REPORTS <span class="fla">تقارير</span></div>
+</div>
+<div class="admin-page" id="admin-page-overview">
 <div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header" id="section-emp-status"><span>EMPLOYEE STATUS NOW · حالة الموظفين الآن</span></div>
 <div id="empStatusList"><div class="empty-log">Loading...</div></div>
 </div>
-
 <div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header" id="section-birthdays"><span>BIRTHDAYS · أعياد الميلاد</span></div>
 <div id="adminBirthdaysList"><div class="empty-log">Loading...</div></div>
 </div>
-
 <div class="task-form">
 <div class="settings-label" id="section-daily-tasks">Daily Tasks Browser <span class="fla">مين شغال في إيه</span></div>
 <div class="sec-sub" style="margin-bottom:12px">هنا التصنيف الكامل (Category/Type) ظاهر زي ما دخّلته بالظبط</div>
@@ -750,132 +765,8 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div id="dailyTasksResult"></div>
-
-<div class="settings-label" id="section-requests" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
-<span>REQUESTS · الطلبات</span>
-<button class="btn-end-task" style="margin-top:0" onclick="loadAdminData()">↻ REFRESH · تحديث</button>
 </div>
-
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Employee Filter <span class="fla">فلتر الموظف</span></div>
-<select id="reqFilterEmployee" onchange="onRequestFilterChange()">
-<option value="all">All Employees · كل الموظفين</option>
-</select>
-</div>
-<div class="fg" style="margin:0">
-<div class="fl">Month Filter <span class="fla">فلتر الشهر</span></div>
-<input type="month" id="reqFilterMonth" onchange="reloadMonthDependentAdminData()"/>
-<label class="all-months-toggle"><input type="checkbox" id="reqFilterMonthAll" onchange="onAllMonthsToggle('reqFilterMonth','reqFilterMonthAll'); reloadMonthDependentAdminData();"/><span>All Months · كل الشهور</span></label>
-</div>
-</div>
-
-<div class="info-grid" style="margin:14px 0">
-<div class="info-card">
-<div class="info-card-label">PENDING · معلقة</div>
-<div class="info-card-value" id="countPending" style="color:var(--warn)">0</div>
-</div>
-<div class="info-card">
-<div class="info-card-label">APPROVED · مقبولة</div>
-<div class="info-card-value" id="countApproved" style="color:var(--ok)">0</div>
-</div>
-<div class="info-card">
-<div class="info-card-label">REJECTED · مرفوضة</div>
-<div class="info-card-value" id="countRejected" style="color:var(--danger)">0</div>
-</div>
-</div>
-
-<div class="kind-grid" id="reqTypeGrid"></div>
-
-<div id="reqTypePanel" style="display:none">
-<div class="settings-label" id="reqTypePanelTitle" style="margin-top:22px"></div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header" style="color:var(--warn);border-color:var(--warn)"><span>PENDING · معلقة</span></div>
-<div id="reqPanelPending"></div>
-</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header" style="color:var(--ok);border-color:var(--ok)"><span>APPROVED · مقبولة</span></div>
-<div id="reqPanelApproved"></div>
-</div>
-<div class="log-wrap" style="margin-bottom:18px;">
-<div class="log-header" style="color:var(--danger);border-color:var(--danger)"><span>REJECTED · مرفوضة</span></div>
-<div id="reqPanelRejected"></div>
-</div>
-</div>
-
-<div class="task-form">
-<div class="settings-label" id="section-holidays">إدارة الإجازات الرسمية</div>
-<div class="fg">
-<div class="fl">Filter Month <span class="fla">فلتر الشهر</span></div>
-<input type="month" id="holidayFilterMonth" onchange="refreshHolidaysOnly()"/>
-<label class="all-months-toggle"><input type="checkbox" id="holidayFilterMonthAll" onchange="onAllMonthsToggle('holidayFilterMonth','holidayFilterMonthAll'); refreshHolidaysOnly();"/><span>All Months · كل الشهور</span></label>
-</div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Date <span class="fla">التاريخ</span></div>
-<input type="date" id="holidayDate"/>
-</div>
-<div class="fg" style="margin:0">
-<div class="fl">Label <span class="fla">اسم المناسبة</span></div>
-<input type="text" id="holidayLabel" placeholder="مثال: عيد الفطر"/>
-</div>
-</div>
-<button class="btn-add" onclick="addOfficialHoliday()">+ ADD HOLIDAY · إضافة إجازة</button>
-<div id="adminHolidaysList" style="margin-top:14px"><div class="empty-log">No holidays this month</div></div>
-</div>
-<div class="task-form">
-<div class="settings-label" id="section-projects">Manage Projects <span class="fla">إدارة المشاريع</span></div>
-<div class="sec-sub" style="margin-bottom:16px">الموظف بيشوف بس الكود والاسم والرمز — مش الـ Category ولا الـ Type</div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Project Code</div>
-<input type="text" id="newProjectCode" placeholder="101" inputmode="numeric" list="projectCodesDatalist" autocomplete="off"/>
-<datalist id="projectCodesDatalist"></datalist>
-<div class="fl-hint">أرقام فقط</div>
-</div>
-<div class="fg" style="margin:0">
-<div class="fl">Project Name</div>
-<input type="text" id="newProjectName" placeholder="PV Tracker" list="projectNamesDatalist" autocomplete="off"/>
-<datalist id="projectNamesDatalist"></datalist>
-<div class="fl-hint">هيقترحلك أسامي متسجلة قبل كده</div>
-</div>
-</div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Category</div>
-<select id="newProjectCategory" onchange="updateNewProjectLabelPreview()">
-<option value="COM">COM</option>
-<option value="NON-COM">NON-COM</option>
-</select>
-</div>
-<div class="fg" style="margin:0">
-<div class="fl">Type</div>
-<select id="newProjectType" onchange="toggleSubCodeField(); updateNewProjectLabelPreview();">
-<option value="NEW">NEW</option>
-<option value="SUB">SUB</option>
-</select>
-</div>
-</div>
-<div class="fg" id="subCodeWrap" style="display:none">
-<div class="fl">Sub Code</div>
-<input type="text" id="newProjectSubCode" placeholder="205" autocomplete="off"/>
-<div class="fl-hint">إجباري لو Type = SUB</div>
-</div>
-<div class="fg">
-<div class="fl">Simple Label</div>
-<input type="text" id="newProjectSimpleLabel" value="A" readonly style="opacity:0.75;cursor:not-allowed"/>
-<div class="fl-hint">رمز تلقائي مقفول — بيظهر للموظف بس لو المشروع عنده أكتر من نوع</div>
-</div>
-<div class="toggle-row">
-<label class="toggle-switch">
-<input type="checkbox" id="newProjectOvertime"/>
-<span class="toggle-slider"></span>
-</label>
-<span class="toggle-label">Enable Overtime · تفعيل الأوفرتايم <span class="fla">(هيطلب كود الأمان)</span></span>
-</div>
-<button class="btn-add" onclick="addProject()">+ ADD PROJECT · إضافة مشروع</button>
-<div id="adminProjectsList" style="margin-top:14px"><div class="empty-log">No projects yet</div></div>
-</div>
+<div class="admin-page" id="admin-page-employees">
 <div class="task-form">
 <div class="settings-label" id="section-salary">إعدادات الراتب لكل موظف</div>
 <div class="form-row">
@@ -905,6 +796,140 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <button class="btn-add" onclick="saveSalarySettings()">SAVE / حفظ</button>
+</div>
+<div class="task-form">
+<div class="settings-label" id="section-manage-admins">Manage Admins · إدارة صلاحيات الأدمن</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="roleEmployee" onchange="showRoleStatus()"></select>
+</div>
+</div>
+<div class="fg" style="margin:10px 0">
+<div class="fl">Current Role <span class="fla">الصلاحية الحالية</span></div>
+<div id="roleStatus" style="padding:11px 14px;border:1px solid var(--border);color:var(--text);font-size:16px;">-</div>
+</div>
+<button class="btn-add" onclick="toggleAdminRole()" id="roleToggleBtn">MAKE ADMIN · ترقية لأدمن</button>
+</div>
+<div class="task-form">
+<div class="settings-label" id="section-probation">Probation Status <span class="fla">فترة الاختبار</span></div>
+<div class="sec-sub" style="margin-bottom:12px">تحويل الموظف من تحت الاختبار لأساسي بيفتح له الإجازات — محتاج كود الأمان</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="probationEmployee" onchange="showProbationStatus()"></select>
+</div>
+</div>
+<div class="fg" style="margin:10px 0">
+<div class="fl">Current Status <span class="fla">الحالة الحالية</span></div>
+<div id="probationStatus" style="padding:11px 14px;border:1px solid var(--border);color:var(--text);font-size:16px;">-</div>
+</div>
+<button class="btn-add" onclick="toggleProbationPrompt()" id="probationToggleBtn">MAKE PERMANENT · تثبيت الموظف</button>
+</div>
+<div class="task-form">
+<div class="settings-label" id="section-full-info">Employee Full Info · بيانات الموظف الكاملة</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="infoEmployee" onchange="showEmployeeFullInfo()"></select>
+</div>
+</div>
+<div id="employeeFullInfoDisplay" style="margin-top:14px"></div>
+
+<div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
+<div class="settings-label">Reset Password <span class="fla">إعادة تعيين كلمة المرور</span></div>
+<div class="sec-sub" style="margin-bottom:12px">الباسورد متشفر ومينفعش يتعرض — بس تقدر تحط واحد جديد للموظف</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
+<input type="password" id="resetPwPin" placeholder="****" autocomplete="off"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">New Password <span class="fla">كلمة مرور جديدة</span></div>
+<input type="text" id="resetPwValue" placeholder="اكتب باسورد جديد"/>
+</div>
+</div>
+<button class="btn-add" onclick="resetEmployeePassword()">RESET PASSWORD · إعادة تعيين</button>
+</div>
+
+<div style="margin-top:24px;padding-top:18px;border-top:1px solid #ff4444;">
+<div class="settings-label" style="color:#ff4444">Delete Employee <span class="fla" style="color:#ff4444">حذف الموظف نهائياً</span></div>
+<div class="sec-sub" style="margin-bottom:12px;color:#ff4444">⚠️ هيمسح كل بيانات الموظف نهائياً (حضور، مهام، طلبات، كل حاجة) — إجراء لا رجعة فيه</div>
+<div class="fg" style="margin:0 0 12px">
+<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
+<input type="password" id="deletePin" placeholder="****" autocomplete="off"/>
+</div>
+<button class="btn-add" style="background:#ff4444;border-color:#ff4444;color:#fff" onclick="deleteEmployeeConfirm()">DELETE EMPLOYEE · حذف نهائي</button>
+</div>
+</div>
+</div>
+<div class="admin-page" id="admin-page-requests">
+<div class="settings-label" id="section-requests" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
+<span>REQUESTS · الطلبات</span>
+<button class="btn-end-task" style="margin-top:0" onclick="loadAdminData()">↻ REFRESH · تحديث</button>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee Filter <span class="fla">فلتر الموظف</span></div>
+<select id="reqFilterEmployee" onchange="onRequestFilterChange()">
+<option value="all">All Employees · كل الموظفين</option>
+</select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Month Filter <span class="fla">فلتر الشهر</span></div>
+<input type="month" id="reqFilterMonth" onchange="reloadMonthDependentAdminData()"/>
+<label class="all-months-toggle"><input type="checkbox" id="reqFilterMonthAll" onchange="onAllMonthsToggle('reqFilterMonth','reqFilterMonthAll'); reloadMonthDependentAdminData();"/><span>All Months · كل الشهور</span></label>
+</div>
+</div>
+<div class="info-grid" style="margin:14px 0">
+<div class="info-card">
+<div class="info-card-label">PENDING · معلقة</div>
+<div class="info-card-value" id="countPending" style="color:var(--warn)">0</div>
+</div>
+<div class="info-card">
+<div class="info-card-label">APPROVED · مقبولة</div>
+<div class="info-card-value" id="countApproved" style="color:var(--ok)">0</div>
+</div>
+<div class="info-card">
+<div class="info-card-label">REJECTED · مرفوضة</div>
+<div class="info-card-value" id="countRejected" style="color:var(--danger)">0</div>
+</div>
+</div>
+<div class="kind-grid" id="reqTypeGrid"></div>
+<div id="reqTypePanel" style="display:none">
+<div class="settings-label" id="reqTypePanelTitle" style="margin-top:22px"></div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header" style="color:var(--warn);border-color:var(--warn)"><span>PENDING · معلقة</span></div>
+<div id="reqPanelPending"></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header" style="color:var(--ok);border-color:var(--ok)"><span>APPROVED · مقبولة</span></div>
+<div id="reqPanelApproved"></div>
+</div>
+<div class="log-wrap" style="margin-bottom:18px;">
+<div class="log-header" style="color:var(--danger);border-color:var(--danger)"><span>REJECTED · مرفوضة</span></div>
+<div id="reqPanelRejected"></div>
+</div>
+</div>
+<div class="task-form">
+<div class="settings-label" id="section-holidays">إدارة الإجازات الرسمية</div>
+<div class="fg">
+<div class="fl">Filter Month <span class="fla">فلتر الشهر</span></div>
+<input type="month" id="holidayFilterMonth" onchange="refreshHolidaysOnly()"/>
+<label class="all-months-toggle"><input type="checkbox" id="holidayFilterMonthAll" onchange="onAllMonthsToggle('holidayFilterMonth','holidayFilterMonthAll'); refreshHolidaysOnly();"/><span>All Months · كل الشهور</span></label>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="holidayDate"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Label <span class="fla">اسم المناسبة</span></div>
+<input type="text" id="holidayLabel" placeholder="مثال: عيد الفطر"/>
+</div>
+</div>
+<button class="btn-add" onclick="addOfficialHoliday()">+ ADD HOLIDAY · إضافة إجازة</button>
+<div id="adminHolidaysList" style="margin-top:14px"><div class="empty-log">No holidays this month</div></div>
 </div>
 <div class="task-form" id="section-late-arrivals">
 <div class="settings-label" id="section-late-arrivals-title" style="color:var(--danger)">Late Arrivals <span class="fla">تأخيرات (بعد 11:10 ص)</span></div>
@@ -1000,101 +1025,61 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-add" onclick="addNotice()">+ ADD NOTICE · إضافة لفت نظر</button>
 <div id="adminNoticesList" style="margin-top:14px"><div class="empty-log">No notices this month</div></div>
 </div>
+</div>
+<div class="admin-page" id="admin-page-clients">
 <div class="task-form">
-<div class="settings-label" id="section-manage-admins">Manage Admins · إدارة صلاحيات الأدمن</div>
+<div class="settings-label" id="section-projects">Manage Projects <span class="fla">إدارة المشاريع</span></div>
+<div class="sec-sub" style="margin-bottom:16px">الموظف بيشوف بس الكود والاسم والرمز — مش الـ Category ولا الـ Type</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
-<div class="fl">Employee</div>
-<select id="roleEmployee" onchange="showRoleStatus()"></select>
+<div class="fl">Project Code</div>
+<input type="text" id="newProjectCode" placeholder="101" inputmode="numeric" list="projectCodesDatalist" autocomplete="off"/>
+<datalist id="projectCodesDatalist"></datalist>
+<div class="fl-hint">أرقام فقط</div>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Project Name</div>
+<input type="text" id="newProjectName" placeholder="PV Tracker" list="projectNamesDatalist" autocomplete="off"/>
+<datalist id="projectNamesDatalist"></datalist>
+<div class="fl-hint">هيقترحلك أسامي متسجلة قبل كده</div>
 </div>
 </div>
-<div class="fg" style="margin:10px 0">
-<div class="fl">Current Role <span class="fla">الصلاحية الحالية</span></div>
-<div id="roleStatus" style="padding:11px 14px;border:1px solid var(--border);color:var(--text);font-size:16px;">-</div>
-</div>
-<button class="btn-add" onclick="toggleAdminRole()" id="roleToggleBtn">MAKE ADMIN · ترقية لأدمن</button>
-</div>
-<div class="task-form">
-<div class="settings-label" id="section-probation">Probation Status <span class="fla">فترة الاختبار</span></div>
-<div class="sec-sub" style="margin-bottom:12px">تحويل الموظف من تحت الاختبار لأساسي بيفتح له الإجازات — محتاج كود الأمان</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
-<div class="fl">Employee</div>
-<select id="probationEmployee" onchange="showProbationStatus()"></select>
-</div>
-</div>
-<div class="fg" style="margin:10px 0">
-<div class="fl">Current Status <span class="fla">الحالة الحالية</span></div>
-<div id="probationStatus" style="padding:11px 14px;border:1px solid var(--border);color:var(--text);font-size:16px;">-</div>
-</div>
-<button class="btn-add" onclick="toggleProbationPrompt()" id="probationToggleBtn">MAKE PERMANENT · تثبيت الموظف</button>
-</div>
-<div class="task-form">
-<div class="settings-label" id="section-full-info">Employee Full Info · بيانات الموظف الكاملة</div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Employee</div>
-<select id="infoEmployee" onchange="showEmployeeFullInfo()"></select>
-</div>
-</div>
-<div id="employeeFullInfoDisplay" style="margin-top:14px"></div>
-
-<div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
-<div class="settings-label">Reset Password <span class="fla">إعادة تعيين كلمة المرور</span></div>
-<div class="sec-sub" style="margin-bottom:12px">الباسورد متشفر ومينفعش يتعرض — بس تقدر تحط واحد جديد للموظف</div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
-<input type="password" id="resetPwPin" placeholder="****" autocomplete="off"/>
+<div class="fl">Category</div>
+<select id="newProjectCategory" onchange="updateNewProjectLabelPreview()">
+<option value="COM">COM</option>
+<option value="NON-COM">NON-COM</option>
+</select>
 </div>
 <div class="fg" style="margin:0">
-<div class="fl">New Password <span class="fla">كلمة مرور جديدة</span></div>
-<input type="text" id="resetPwValue" placeholder="اكتب باسورد جديد"/>
+<div class="fl">Type</div>
+<select id="newProjectType" onchange="toggleSubCodeField(); updateNewProjectLabelPreview();">
+<option value="NEW">NEW</option>
+<option value="SUB">SUB</option>
+</select>
 </div>
 </div>
-<button class="btn-add" onclick="resetEmployeePassword()">RESET PASSWORD · إعادة تعيين</button>
+<div class="fg" id="subCodeWrap" style="display:none">
+<div class="fl">Sub Code</div>
+<input type="text" id="newProjectSubCode" placeholder="205" autocomplete="off"/>
+<div class="fl-hint">إجباري لو Type = SUB</div>
 </div>
-
-<div style="margin-top:24px;padding-top:18px;border-top:1px solid #ff4444;">
-<div class="settings-label" style="color:#ff4444">Delete Employee <span class="fla" style="color:#ff4444">حذف الموظف نهائياً</span></div>
-<div class="sec-sub" style="margin-bottom:12px;color:#ff4444">⚠️ هيمسح كل بيانات الموظف نهائياً (حضور، مهام، طلبات، كل حاجة) — إجراء لا رجعة فيه</div>
-<div class="fg" style="margin:0 0 12px">
-<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
-<input type="password" id="deletePin" placeholder="****" autocomplete="off"/>
+<div class="fg">
+<div class="fl">Simple Label</div>
+<input type="text" id="newProjectSimpleLabel" value="A" readonly style="opacity:0.75;cursor:not-allowed"/>
+<div class="fl-hint">رمز تلقائي مقفول — بيظهر للموظف بس لو المشروع عنده أكتر من نوع</div>
 </div>
-<button class="btn-add" style="background:#ff4444;border-color:#ff4444;color:#fff" onclick="deleteEmployeeConfirm()">DELETE EMPLOYEE · حذف نهائي</button>
+<div class="toggle-row">
+<label class="toggle-switch">
+<input type="checkbox" id="newProjectOvertime"/>
+<span class="toggle-slider"></span>
+</label>
+<span class="toggle-label">Enable Overtime · تفعيل الأوفرتايم <span class="fla">(هيطلب كود الأمان)</span></span>
 </div>
+<button class="btn-add" onclick="addProject()">+ ADD PROJECT · إضافة مشروع</button>
+<div id="adminProjectsList" style="margin-top:14px"><div class="empty-log">No projects yet</div></div>
 </div>
-<div class="task-form">
-<div class="settings-label" id="section-report">Employee Monthly Report</div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Employee</div>
-<select id="reportEmployee"></select>
-</div>
-<div class="fg" style="margin:0">
-<div class="fl">Month</div>
-<input type="month" id="reportMonth"/>
-<label class="all-months-toggle"><input type="checkbox" id="reportMonthAll" onchange="onAllMonthsToggle('reportMonth','reportMonthAll')"/><span>All Months · كل الشهور</span></label>
-</div>
-</div>
-<button class="btn-add" onclick="fetchAdminReport()">GET REPORT · عرض التقرير</button>
-</div>
-<div id="adminReportResult"></div>
-<div class="task-form">
-<div class="settings-label" id="section-projects-report">Projects Report <span class="fla">تقرير المشاريع (كل الموظفين)</span></div>
-<div class="sec-sub" style="margin-bottom:12px">إجمالي ساعات كل مشروع، مجمّعة من كل الموظفين اللي اشتغلوا فيه</div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Month</div>
-<input type="month" id="projectsReportMonth"/>
-<label class="all-months-toggle"><input type="checkbox" id="projectsReportMonthAll" onchange="onAllMonthsToggle('projectsReportMonth','projectsReportMonthAll')"/><span>All Months · كل الشهور</span></label>
-</div>
-</div>
-<button class="btn-add" onclick="fetchProjectsReport()">GET PROJECTS REPORT · عرض تقرير المشاريع</button>
-<div id="projectsReportResult"></div>
-</div>
-
 <div class="task-form">
 <div class="settings-label" id="section-project-cost">Project Cost & Profitability <span class="fla">تكلفة المشاريع والربح/الخسارة</span></div>
 <div class="sec-sub" style="margin-bottom:12px">السعر خاص بالأدمن بس ومش بيظهر للموظف خالص</div>
@@ -1196,7 +1181,8 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-add" onclick="fetchProjectCostReport()">GET REPORT · عرض التقرير</button>
 <div id="projectCostReportResult" style="margin-top:14px"></div>
 </div>
-
+</div>
+<div class="admin-page" id="admin-page-finance">
 <div class="task-form">
 <div class="settings-label" id="section-income-expense">Company Income &amp; Expenses <span class="fla">إيرادات ومصروفات الشركة</span></div>
 <div class="form-row">
@@ -1237,7 +1223,6 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div id="profitLossReportResult" style="margin-top:14px"></div>
 </div>
-
 <div class="task-form">
 <div class="settings-label" id="section-petty-cash">Petty Cash · العهدة <span class="fla">(منفصلة تماماً عن حسابات الشركة)</span></div>
 <div class="form-row">
@@ -1272,6 +1257,38 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div id="pettyCashResult" style="margin-top:14px"></div>
+</div>
+</div>
+<div class="admin-page" id="admin-page-reports">
+<div class="task-form">
+<div class="settings-label" id="section-report">Employee Monthly Report</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee</div>
+<select id="reportEmployee"></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Month</div>
+<input type="month" id="reportMonth"/>
+<label class="all-months-toggle"><input type="checkbox" id="reportMonthAll" onchange="onAllMonthsToggle('reportMonth','reportMonthAll')"/><span>All Months · كل الشهور</span></label>
+</div>
+</div>
+<button class="btn-add" onclick="fetchAdminReport()">GET REPORT · عرض التقرير</button>
+</div>
+<div id="adminReportResult"></div>
+<div class="task-form">
+<div class="settings-label" id="section-projects-report">Projects Report <span class="fla">تقرير المشاريع (كل الموظفين)</span></div>
+<div class="sec-sub" style="margin-bottom:12px">إجمالي ساعات كل مشروع، مجمّعة من كل الموظفين اللي اشتغلوا فيه</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Month</div>
+<input type="month" id="projectsReportMonth"/>
+<label class="all-months-toggle"><input type="checkbox" id="projectsReportMonthAll" onchange="onAllMonthsToggle('projectsReportMonth','projectsReportMonthAll')"/><span>All Months · كل الشهور</span></label>
+</div>
+</div>
+<button class="btn-add" onclick="fetchProjectsReport()">GET PROJECTS REPORT · عرض تقرير المشاريع</button>
+<div id="projectsReportResult"></div>
+</div>
 </div>
 </div>
 <div class="tab-content" id="content-settings">
@@ -4130,19 +4147,26 @@ function renderProfitLossReport(res) {
   html += "<div style='font-size:13px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase'>NET PROFIT / LOSS · صافي الربح أو الخسارة</div>";
   html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:36px;margin-top:6px;color:" + profitColor(res.net_profit_loss_egp) + "'>" + (res.net_profit_loss_egp>=0?"+":"") + res.net_profit_loss_egp + " EGP</div>";
   html += "</div>";
-  if (!res.transactions || !res.transactions.length) { html += "<div class='log-wrap'><div class='empty-log'>مفيش عمليات هذا الشهر</div></div>"; el.innerHTML = html; return; }
-  html += "<div class='log-wrap'>";
-  for (var i = 0; i < res.transactions.length; i++) {
-    var tx = res.transactions[i];
+  var txRowHtml = function(tx) {
     var isIncome = tx.type === "income";
     var color = isIncome ? "var(--ok)" : "var(--danger)";
     var projNote = tx.project_code ? (" — " + tx.project_code + " - " + tx.project_name) : "";
-    html += "<div class='log-entry'><div class='log-type' style='color:" + color + "'>" + (isIncome?"+":"-") + tx.amount_egp + " EGP</div>" +
+    return "<div class='log-entry'><div class='log-type' style='color:" + color + "'>" + (isIncome?"+":"-") + tx.amount_egp + " EGP</div>" +
       "<div class='log-time'>" + tx.date + "</div>" +
       "<div class='log-note'>" + (tx.description||"") + projNote + "</div>" +
       "<button class='btn-end-task' onclick=\"deleteCompanyTxPrompt(" + tx.id + ")\">DELETE · حذف</button></div>";
-  }
+  };
+  var incomeRows = (res.transactions || []).filter(function(t) { return t.type === "income"; });
+  var expenseRows = (res.transactions || []).filter(function(t) { return t.type === "expense"; });
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>INCOME · الإيرادات</span></div>";
+  html += incomeRows.length ? incomeRows.map(txRowHtml).join("") : "<div class='empty-log'>مفيش إيرادات هذا الشهر</div>";
   html += "</div>";
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--danger);border-color:var(--danger)'><span>EXPENSES · المصروفات</span></div>";
+  html += expenseRows.length ? expenseRows.map(txRowHtml).join("") : "<div class='empty-log'>مفيش مصروفات هذا الشهر</div>";
+  html += "</div>";
+
   el.innerHTML = html;
 }
 
@@ -4199,18 +4223,25 @@ function renderPettyCash(res) {
   html += "<div style='font-family:\"Bebas Neue\",sans-serif;font-size:36px;margin-top:6px;color:" + (balance>0?"var(--ok)":(balance<0?"var(--danger)":"var(--warn)")) + "'>" + balance + " EGP</div>";
   if (balance < 0) html += "<div class='fl-hint' style='color:var(--danger);margin-top:6px'>الأدمن مستحق " + Math.abs(balance) + " EGP من الشركة (دفع من جيبه)</div>";
   html += "</div>";
-  if (!res.entries || !res.entries.length) { html += "<div class='log-wrap'><div class='empty-log'>مفيش عمليات</div></div>"; el.innerHTML = html; return; }
-  html += "<div class='log-wrap'>";
-  for (var i = 0; i < res.entries.length; i++) {
-    var p = res.entries[i];
+  var rowHtml = function(p) {
     var isFund = p.type === "fund";
     var color = isFund ? "var(--ok)" : "var(--danger)";
-    html += "<div class='log-entry'><div class='log-type' style='color:" + color + "'>" + (isFund?"+":"-") + p.amount_egp + " EGP</div>" +
+    return "<div class='log-entry'><div class='log-type' style='color:" + color + "'>" + (isFund?"+":"-") + p.amount_egp + " EGP</div>" +
       "<div class='log-time'>" + p.date + "</div>" +
       "<div class='log-note'>" + (p.description||"") + "</div>" +
       "<button class='btn-end-task' onclick=\"deletePettyCashPrompt(" + p.id + ")\">DELETE · حذف</button></div>";
-  }
+  };
+  var fundRows = (res.entries || []).filter(function(e) { return e.type === "fund"; });
+  var expenseRows = (res.entries || []).filter(function(e) { return e.type === "expense"; });
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>FUNDS ADDED · إضافات للعهدة</span></div>";
+  html += fundRows.length ? fundRows.map(rowHtml).join("") : "<div class='empty-log'>مفيش إضافات</div>";
   html += "</div>";
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--danger);border-color:var(--danger)'><span>EXPENSES · مصروفات من العهدة</span></div>";
+  html += expenseRows.length ? expenseRows.map(rowHtml).join("") : "<div class='empty-log'>مفيش مصروفات</div>";
+  html += "</div>";
+
   el.innerHTML = html;
 }
 
@@ -4963,6 +4994,7 @@ function switchTab(name) {
   }
   if (name === "admin" && user && user.role === "admin") {
     loadAdminData();
+    switchAdminPage("overview");
   }
 }
 
@@ -4991,7 +5023,28 @@ function getMonthFilterValue(monthInputId, checkboxId) {
   return input.value;
 }
 
+var SECTION_TO_PAGE = {
+  "section-emp-status": "overview", "section-birthdays": "overview", "section-daily-tasks": "overview",
+  "section-salary": "employees", "section-manage-admins": "employees", "section-probation": "employees", "section-full-info": "employees",
+  "section-requests": "requests", "section-holidays": "requests", "section-late-arrivals-title": "requests",
+  "section-penalties": "requests", "section-bonuses": "requests", "section-notices": "requests",
+  "section-projects": "clients", "section-project-cost": "clients",
+  "section-income-expense": "finance", "section-petty-cash": "finance",
+  "section-report": "reports", "section-projects-report": "reports",
+};
+
+function switchAdminPage(name) {
+  document.querySelectorAll(".admin-subtab").forEach(function(t) { t.classList.remove("active"); });
+  document.querySelectorAll(".admin-page").forEach(function(p) { p.classList.remove("active"); });
+  var subtab = document.getElementById("subtab-" + name);
+  var page = document.getElementById("admin-page-" + name);
+  if (subtab) subtab.classList.add("active");
+  if (page) page.classList.add("active");
+}
+
 function jumpTo(id) {
+  var pageName = SECTION_TO_PAGE[id];
+  if (pageName) switchAdminPage(pageName);
   var el = document.getElementById(id);
   if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   var sideNav = document.getElementById("adminSideNav");
