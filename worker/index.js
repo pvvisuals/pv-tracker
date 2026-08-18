@@ -2313,7 +2313,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (targetId === admin.id) return err("منقدرش تمسح حسابك انت نفسك", 400);
     const ownedTables = [
       "sessions", "attendance", "breaks", "tasks", "leave_requests",
-      "financial_requests", "offclock_requests", "permission_requests", "penalties", "bonuses", "notices", "task_segments",
+      "financial_requests", "offclock_requests", "permission_requests", "penalties", "bonuses", "notices", "task_segments", "late_arrivals",
     ];
     for (const t of ownedTables) {
       await db.execute({ sql: `DELETE FROM ${t} WHERE employee_id = ?`, args: [targetId] });
