@@ -74,7 +74,10 @@ select option{background:#111;}
   .user-name{font-size:12px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 }
 .tabs{display:flex;background:#000;border-bottom:1px solid var(--border);padding:0 28px;overflow-x:auto;justify-content:center;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
-.admin-subtabs{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:14px;margin-bottom:22px;border-bottom:1px solid var(--border);}
+.admin-subtabs{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:10px;margin-bottom:22px;border-bottom:1px solid var(--border);scrollbar-color:var(--muted2) transparent;scrollbar-width:thin;}
+.admin-subtabs::-webkit-scrollbar{height:6px;}
+.admin-subtabs::-webkit-scrollbar-thumb{background:var(--muted2);border-radius:3px;}
+@media(max-width:900px){.admin-subtabs{flex-wrap:wrap;overflow-x:visible;}}
 .admin-subtabs::-webkit-scrollbar{display:none;}
 .admin-subtab{flex-shrink:0;padding:10px 18px;background:var(--card);border:1px solid var(--border);color:var(--muted2);font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;cursor:pointer;white-space:nowrap;transition:all 0.2s;}
 .admin-subtab .fla{font-family:'Cairo',sans-serif;font-size:11px;letter-spacing:0;opacity:.75;margin-right:6px;}
@@ -86,7 +89,7 @@ select option{background:#111;}
 .tabs::-webkit-scrollbar{display:none;}
 .tab{padding:13px 20px;font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);cursor:pointer;border-bottom:1px solid transparent;transition:color 0.2s,border-color 0.2s;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--muted);}.tab.active{color:#fff;border-bottom-color:#fff;}
-.tab-content{display:none;padding:32px 28px;max-width:840px;margin:0 auto;width:100%;}
+.tab-content{display:none;padding:32px 40px;max-width:1320px;margin:0 auto;width:100%;}
 @media(max-width:900px){
   .tabs{justify-content:flex-start;padding:0 10px;}
   .tab{padding:12px 12px;font-size:12px;letter-spacing:1px;}
@@ -107,7 +110,7 @@ select option{background:#111;}
 .sec-head{margin-bottom:24px;}
 .sec-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:3px;margin-bottom:2px;}
 .sec-sub{font-family:'Cairo',sans-serif;font-size:15px;color:var(--muted);}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:20px;}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:20px;}
 .kind-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px;}
 .kind-btn{background:var(--card);border:1px solid var(--border);padding:16px;text-align:center;cursor:pointer;transition:all .15s;}
 .kind-btn:hover{border-color:var(--text);}
@@ -179,7 +182,7 @@ select option{background:#111;}
 .btn-out:hover:not(:disabled){border-color:rgba(255,255,255,0.15);color:#ccc;}
 .btn:disabled{opacity:0.2;cursor:not-allowed;}
 .log-wrap{border:1px solid var(--border);box-shadow:0 2px 10px rgba(0,0,0,0.3);}
-.log-header{padding:14px 18px;background:var(--card);border-bottom:1px solid var(--border);font-size:17px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);display:flex;justify-content:space-between;}
+.log-header{padding:16px 20px;background:var(--card);border-bottom:1px solid var(--border);font-size:18px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);display:flex;justify-content:space-between;border-right:4px solid #fff;}
 .log-entry{padding:13px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border2);font-size:17px;transition:background 0.15s;}
 @media(max-width:640px){
   .log-entry{flex-direction:column;align-items:stretch;gap:8px;padding:14px 16px;font-size:15px;}
@@ -232,7 +235,7 @@ textarea{resize:vertical;min-height:76px;}
 .btn-end-task:active{transform:scale(0.96);}
 .btn-end-task:hover{background:#666;border-color:#666;color:#fff;}
 .settings-section{margin-bottom:24px;}
-.settings-label{font-size:17px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);margin-bottom:12px;}
+.settings-label{font-size:19px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);margin-bottom:14px;padding-right:14px;border-right:4px solid #fff;}
 .avatar-upload{text-align:center;margin-bottom:20px;}
 .avatar-big{width:80px;height:80px;background:var(--card);border:1px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:32px;color:var(--muted);margin:0 auto 10px;overflow:hidden;cursor:pointer;}
 .avatar-big img{width:100%;height:100%;object-fit:cover;}
@@ -2187,48 +2190,47 @@ function renderOfficialHolidaysEmployee() {
   el.innerHTML = html;
 }
 
+function renderMyRequestGroup(containerId, requests, rowBuilder) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  if (!requests.length) { el.innerHTML = "<div class='empty-log'>No requests yet</div>"; return; }
+  var groups = { approved: [], rejected: [], pending: [] };
+  for (var i = 0; i < requests.length; i++) {
+    var st = requests[i].status || "pending";
+    if (!groups[st]) groups[st] = [];
+    groups[st].push(requests[i]);
+  }
+  var sections = [
+    { key: "approved", label: "APPROVED · مقبولة", color: "var(--ok)" },
+    { key: "rejected", label: "REJECTED · مرفوضة", color: "var(--danger)" },
+    { key: "pending", label: "PENDING · معلقة", color: "var(--warn)" },
+  ];
+  var html = "";
+  for (var s = 0; s < sections.length; s++) {
+    var sec = sections[s];
+    var items = groups[sec.key] || [];
+    if (!items.length) continue;
+    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:" + sec.color + ";border-color:" + sec.color + "'><span>" + sec.label + "</span></div>";
+    for (var j = 0; j < items.length; j++) html += rowBuilder(items[j]);
+    html += "</div>";
+  }
+  el.innerHTML = html || "<div class='empty-log'>No requests yet</div>";
+}
+
 function renderMyRequests() {
-  var lEl = document.getElementById("myLeaveList");
-  if (!myLeaveReqs.length) { lEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
-  else {
-    var html = "";
-    for (var i = 0; i < myLeaveReqs.length; i++) {
-      var r = myLeaveReqs[i];
-      var dateDisplay = r.end_date && r.end_date !== r.date ? (r.date + " → " + r.end_date) : r.date;
-      html += "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + dateDisplay + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + "</div>";
-    }
-    lEl.innerHTML = html;
-  }
-  var fEl = document.getElementById("myFinList");
-  if (!myFinReqs.length) { fEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
-  else {
-    var html3 = "";
-    for (var k = 0; k < myFinReqs.length; k++) {
-      var f = myFinReqs[k];
-      html3 += "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>" + f.requested_at.slice(0,10) + "</div><div class='log-note'>" + statusBadge(f.status) + "</div>" + reasonNote(f) + "</div>";
-    }
-    fEl.innerHTML = html3;
-  }
-  var oClkEl = document.getElementById("myOffList");
-  if (!myOffReqs.length) { oClkEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
-  else {
-    var html4 = "";
-    for (var m = 0; m < myOffReqs.length; m++) {
-      var of = myOffReqs[m];
-      html4 += "<div class='log-entry'><div class='log-type'>" + of.hours + "h</div><div class='log-time'>" + of.date + "</div><div class='log-note'>" + statusBadge(of.status) + "</div>" + reasonNote(of) + "</div>";
-    }
-    oClkEl.innerHTML = html4;
-  }
-  var pEl = document.getElementById("myPermList");
-  if (!myPermReqs.length) { pEl.innerHTML = "<div class='empty-log'>No requests yet</div>"; }
-  else {
-    var html5 = "";
-    for (var n = 0; n < myPermReqs.length; n++) {
-      var p = myPermReqs[n];
-      html5 += "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>" + p.date + "</div><div class='log-note'>" + statusBadge(p.status) + "</div>" + reasonNote(p) + "</div>";
-    }
-    pEl.innerHTML = html5;
-  }
+  renderMyRequestGroup("myLeaveList", myLeaveReqs, function(r) {
+    var dateDisplay = r.end_date && r.end_date !== r.date ? (r.date + " → " + r.end_date) : r.date;
+    return "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + dateDisplay + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + "</div>";
+  });
+  renderMyRequestGroup("myFinList", myFinReqs, function(f) {
+    return "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>" + f.requested_at.slice(0,10) + "</div><div class='log-note'>" + statusBadge(f.status) + "</div>" + reasonNote(f) + "</div>";
+  });
+  renderMyRequestGroup("myOffList", myOffReqs, function(of) {
+    return "<div class='log-entry'><div class='log-type'>" + of.hours + "h</div><div class='log-time'>" + of.date + "</div><div class='log-note'>" + statusBadge(of.status) + "</div>" + reasonNote(of) + "</div>";
+  });
+  renderMyRequestGroup("myPermList", myPermReqs, function(p) {
+    return "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>" + p.date + "</div><div class='log-note'>" + statusBadge(p.status) + "</div>" + reasonNote(p) + "</div>";
+  });
 }
 
 function onLeaveDurationChange() {
@@ -2912,30 +2914,52 @@ function renderDailyTasks(tasks) {
   var el = document.getElementById("dailyTasksResult");
   if (!el) return;
   if (!tasks.length) { el.innerHTML = "<div class='log-wrap' style='margin-top:14px'><div class='empty-log'>مفيش تاسكات في اليوم ده</div></div>"; return; }
-  var html = "<div class='fl-hint' style='margin:10px 2px'>إجمالي التاسكات: <b style='color:var(--text)'>" + tasks.length + "</b></div>";
-  for (var i = 0; i < tasks.length; i++) {
-    var t = tasks[i];
-    var projCodeName = t.p_code ? (t.p_code + " - " + t.p_name) : "(مشروع محذوف)";
-    var projType = t.p_code ? (t.category + " / " + t.type + (t.sub_code ? " " + t.sub_code : "") + (t.simple_label ? " (" + t.simple_label + ")" : "")) : "";
-    var isCompleted = !!t.end_time;
-    var isPaused = !isCompleted && !!t.paused;
-    var statusLabel = isCompleted ? "COMPLETED · انتهت" : (isPaused ? "PAUSED · متوقفة" : "ACTIVE · شغالة");
-    var statusColor = isCompleted ? "var(--muted)" : (isPaused ? "var(--warn)" : "var(--ok)");
-    html += "<div class='proj-row'>";
-    html += "<div class='proj-row-top'>";
-    html += "<div class='proj-id'>#" + t.emp_code + " " + t.employee_name + "</div>";
-    html += "<div class='proj-badges'><span class='proj-badge' style='color:" + statusColor + ";border-color:" + statusColor + "'>" + statusLabel + "</span><span class='proj-badge'>" + projCodeName + "</span>" + (projType ? "<span class='proj-badge'>" + projType + "</span>" : "") + "</div>";
-    html += "</div>";
-    html += "<div class='fl-hint' style='margin-top:8px'>" + t.name + (t.description ? " — " + t.description : "") + "</div>";
-    html += "<div class='fl-hint' style='color:" + statusColor + ";font-weight:700'>Duration so far: " + formatDuration(totalSoFarSeconds(t)) + "</div>";
-    if (t.segments && t.segments.length) {
-      html += "<div class='task-seg-list' style='margin-top:8px'>" + taskSegmentsTimeline(t) + "</div>";
-    } else {
-      html += "<div class='fl-hint'>Started: " + t.start_time + (t.end_time ? " - Ended: " + t.end_time : " (جارية الآن)") + "</div>";
-    }
-    html += "</div>";
+
+  // Group by employee, keep each employee's own tasks together in
+  // chronological order (start/resume time within the day).
+  var byEmp = {};
+  var empOrder = [];
+  for (var k = 0; k < tasks.length; k++) {
+    var tk = tasks[k];
+    var key = tk.emp_code + "||" + tk.employee_name;
+    if (!byEmp[key]) { byEmp[key] = []; empOrder.push(key); }
+    byEmp[key].push(tk);
   }
-  el.innerHTML = "<div class='log-wrap' style='margin-top:14px;padding:4px 4px'>" + html + "</div>";
+  for (var g = 0; g < empOrder.length; g++) {
+    byEmp[empOrder[g]].sort(function(a, b) { return (a.created_at || "").localeCompare(b.created_at || ""); });
+  }
+
+  var html = "<div class='fl-hint' style='margin:10px 2px;font-size:14px'>إجمالي التاسكات: <b style='color:var(--text)'>" + tasks.length + "</b> — عدد الموظفين: <b style='color:var(--text)'>" + empOrder.length + "</b></div>";
+
+  for (var e = 0; e < empOrder.length; e++) {
+    var empTasks = byEmp[empOrder[e]];
+    html += "<div class='log-wrap' style='margin-top:14px'>";
+    html += "<div class='log-header'><span>#" + empTasks[0].emp_code + " " + empTasks[0].employee_name + "</span><span style='font-size:13px;color:var(--muted)'>" + empTasks.length + " task(s)</span></div>";
+    html += "<div style='padding:4px 4px'>";
+    for (var i = 0; i < empTasks.length; i++) {
+      var t = empTasks[i];
+      var projCodeName = t.p_code ? (t.p_code + " - " + t.p_name) : "(مشروع محذوف)";
+      var projType = t.p_code ? (t.category + " / " + t.type + (t.sub_code ? " " + t.sub_code : "") + (t.simple_label ? " (" + t.simple_label + ")" : "")) : "";
+      var isCompleted = !!t.end_time;
+      var isPaused = !isCompleted && !!t.paused;
+      var statusLabel = isCompleted ? "COMPLETED · انتهت" : (isPaused ? "PAUSED · متوقفة" : "ACTIVE · شغالة");
+      var statusColor = isCompleted ? "var(--muted)" : (isPaused ? "var(--warn)" : "var(--ok)");
+      html += "<div class='proj-row'>";
+      html += "<div class='proj-row-top'>";
+      html += "<div class='proj-badges'><span class='proj-badge' style='color:" + statusColor + ";border-color:" + statusColor + "'>" + statusLabel + "</span><span class='proj-badge'>" + projCodeName + "</span>" + (projType ? "<span class='proj-badge'>" + projType + "</span>" : "") + "</div>";
+      html += "</div>";
+      html += "<div style='margin-top:8px;font-size:16px;color:#fff;font-weight:600'>" + t.name + (t.description ? " <span style='color:var(--muted);font-weight:400'>— " + t.description + "</span>" : "") + "</div>";
+      html += "<div style='margin-top:4px;font-size:14px;color:" + statusColor + ";font-weight:700'>Duration so far: " + formatDuration(totalSoFarSeconds(t)) + "</div>";
+      if (t.segments && t.segments.length) {
+        html += "<div class='task-seg-list' style='margin-top:8px'>" + taskSegmentsTimeline(t) + "</div>";
+      } else {
+        html += "<div class='fl-hint' style='margin-top:6px'>Started: " + t.start_time + (t.end_time ? " - Ended: " + t.end_time : " (جارية الآن)") + "</div>";
+      }
+      html += "</div>";
+    }
+    html += "</div></div>";
+  }
+  el.innerHTML = html;
 }
 
 function renderEmpStatus() {
