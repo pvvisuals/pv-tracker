@@ -170,35 +170,133 @@ function cairoDeadlineDisplay(deadlineAt) {
 // start time is implicit (the deadline itself doesn't move when set later),
 // comparing either the actual completion instant or "now" against the
 // stored deadline.
-function computeDeliveryStatus(task, actualEndMs, nowMs) {
+// Counts qualifying (non-weekend, non-holiday, non-approved-leave) calendar
+// dates strictly AFTER fromDateStr through toDateStr inclusive. Used so the
+// "days remaining/overdue" countdown only counts real working days, the
+// same way leave balances already do.
+function countWorkingDaysStrictlyAfter(fromDateStr, toDateStr, isNonWorkingFn) {
+  if (toDateStr <= fromDateStr) {
+    // counting backwards (overdue direction): dates after toDateStr through fromDateStr
+    let count = 0;
+    let cur = addDaysToDateStr(toDateStr, 1);
+    let guard = 0;
+    while (cur <= fromDateStr && guard < 400) {
+      if (!isNonWorkingFn(cur)) count++;
+      cur = addDaysToDateStr(cur, 1);
+      guard++;
+    }
+    return count;
+  }
+  let count = 0;
+  let cur = addDaysToDateStr(fromDateStr, 1);
+  let guard = 0;
+  while (cur <= toDateStr && guard < 400) {
+    if (!isNonWorkingFn(cur)) count++;
+    cur = addDaysToDateStr(cur, 1);
+    guard++;
+  }
+  return count;
+}
+
+// A "delivery evaluation context" — pre-fetches every official holiday and
+// every employee's approved leave covering the relevant span ONCE, then
+// hands back a fast isNonWorkingDay(employeeId, dateStr) lookup so we never
+// run a query per task.
+async function buildDeliveryContext(db, employeeIds, fromDateStr, toDateStr) {
+  const [holidayRows, leaveRows] = await Promise.all([
+    db.execute({ sql: "SELECT date FROM official_holidays WHERE date BETWEEN ? AND ?", args: [fromDateStr, toDateStr] }),
+    employeeIds.length
+      ? db.execute({
+          sql: `SELECT employee_id, date, end_date FROM leave_requests WHERE status = 'approved'
+                AND COALESCE(end_date, date) >= ? AND date <= ? AND employee_id IN (${employeeIds.map(() => "?").join(",")})`,
+          args: [fromDateStr, toDateStr, ...employeeIds],
+        })
+      : Promise.resolve({ rows: [] }),
+  ]);
+  const holidaySet = new Set(holidayRows.rows.map((r) => r.date));
+  const leaveByEmployee = {}; // employeeId -> Set of dateStr
+  for (const r of leaveRows.rows) {
+    if (!leaveByEmployee[r.employee_id]) leaveByEmployee[r.employee_id] = new Set();
+    const end = r.end_date || r.date;
+    let cur = r.date;
+    let guard = 0;
+    while (cur <= end && guard < 400) {
+      leaveByEmployee[r.employee_id].add(cur);
+      cur = addDaysToDateStr(cur, 1);
+      guard++;
+    }
+  }
+  return function isNonWorkingDay(employeeId, dateStr) {
+    if (isWeekendStr(dateStr)) return true;
+    if (holidaySet.has(dateStr)) return true;
+    if (leaveByEmployee[employeeId] && leaveByEmployee[employeeId].has(dateStr)) return true;
+    return false;
+  };
+}
+
+const DELIVERY_BUFFER_SECONDS = 6 * 3600; // ±6h "counts as on-time" window around the deadline
+
+function computeDeliveryStatus(task, actualEndMs, nowMs, isNonWorkingDay) {
   if (!task.deadline_at) return { status: "no_deadline" };
   const deadlineMs = new Date(task.deadline_at + "Z").getTime();
+  const deadlineDateStr = task.deadline_at.slice(0, 10);
   const isCompleted = !!task.end_time;
+  const deadlineOnNonWorkingDay = isNonWorkingDay(task.employee_id, deadlineDateStr);
+
   if (isCompleted) {
-    if (actualEndMs !== null && actualEndMs <= deadlineMs) {
-      return { status: "on_time", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at) };
-    }
-    const delaySeconds = actualEndMs !== null ? Math.max(0, Math.floor((actualEndMs - deadlineMs) / 1000)) : null;
-    return { status: "late", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at), delay_seconds: delaySeconds };
+    if (actualEndMs === null) return { status: "no_deadline" };
+    const deltaSeconds = Math.floor((actualEndMs - deadlineMs) / 1000); // negative = early
+    let status;
+    if (deltaSeconds < -DELIVERY_BUFFER_SECONDS) status = "on_time";
+    else if (deltaSeconds > DELIVERY_BUFFER_SECONDS) status = "late";
+    else status = "on_time_buffer"; // within the 6h window either side — yellow
+    return {
+      status, deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at),
+      delta_seconds: deltaSeconds, delay_seconds: Math.max(0, deltaSeconds), deadline_on_non_working_day: deadlineOnNonWorkingDay,
+    };
   }
+
+  const todayStr = new Date(nowMs).toISOString().slice(0, 10); // fine at day granularity for this purpose
   if (nowMs <= deadlineMs) {
-    return { status: "in_progress", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at), remaining_seconds: Math.floor((deadlineMs - nowMs) / 1000) };
+    const workingDays = countWorkingDaysStrictlyAfter(todayStr, deadlineDateStr, (d) => isNonWorkingDay(task.employee_id, d));
+    return {
+      status: "in_progress", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at),
+      remaining_seconds: Math.floor((deadlineMs - nowMs) / 1000), remaining_working_days: workingDays, deadline_on_non_working_day: deadlineOnNonWorkingDay,
+    };
   }
-  return { status: "overdue", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at), overdue_seconds: Math.floor((nowMs - deadlineMs) / 1000) };
+  const workingDaysOver = countWorkingDaysStrictlyAfter(todayStr, deadlineDateStr, (d) => isNonWorkingDay(task.employee_id, d));
+  return {
+    status: "overdue", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at),
+    overdue_seconds: Math.floor((nowMs - deadlineMs) / 1000), overdue_working_days: workingDaysOver, deadline_on_non_working_day: deadlineOnNonWorkingDay,
+  };
 }
 
 // Attaches a `delivery` object to every task, using each task's segments
 // (already attached) to find the actual completion instant for finished
-// tasks.
-function attachDeliveryStatus(tasks) {
+// tasks. Now async: it pre-fetches holidays/leave once for the whole batch
+// so the "days remaining" countdown reflects real working days.
+async function attachDeliveryStatus(db, tasks) {
   const nowMs = Date.now();
+  const relevantTasks = tasks.filter((t) => t.deadline_at);
+  if (!relevantTasks.length) return tasks.map((t) => ({ ...t, delivery: { status: "no_deadline" } }));
+
+  const employeeIds = [...new Set(relevantTasks.map((t) => t.employee_id))];
+  let minDate = new Date(nowMs).toISOString().slice(0, 10);
+  let maxDate = minDate;
+  for (const t of relevantTasks) {
+    const dDate = t.deadline_at.slice(0, 10);
+    if (dDate < minDate) minDate = dDate;
+    if (dDate > maxDate) maxDate = dDate;
+  }
+  const isNonWorkingDay = await buildDeliveryContext(db, employeeIds, minDate, maxDate);
+
   return tasks.map((t) => {
     let actualEndMs = null;
     if (t.end_time && t.segments && t.segments.length) {
       const last = t.segments[t.segments.length - 1];
       if (last.ended_at) actualEndMs = new Date(last.ended_at + "Z").getTime();
     }
-    return { ...t, delivery: computeDeliveryStatus(t, actualEndMs, nowMs) };
+    return { ...t, delivery: computeDeliveryStatus(t, actualEndMs, nowMs, isNonWorkingDay) };
   });
 }
 
@@ -339,6 +437,7 @@ export default {
       if (path === "/api/tasks" && method === "POST") return await addTask(db, me, body);
       if (path === "/api/tasks/today" && method === "GET") return await tasksToday(db, me);
       if (path === "/api/tasks/list" && method === "GET") return await tasksByDate(db, me, url.searchParams.get("date") || cairoDateStr());
+      if (path === "/api/tasks/list-by-month" && method === "GET") return await tasksByMonth(db, me, url.searchParams.get("month"));
       if (path === "/api/tasks/active" && method === "GET") return await activeTasks(db, me);
       if (path === "/api/tasks/paused" && method === "GET") return await pausedTasksList(db, me);
       const taskEndMatch = path.match(/^\/api\/tasks\/(\d+)\/end$/);
@@ -719,7 +818,7 @@ async function editTask(db, me, taskId, body, env) {
   args.push(taskId);
   await db.execute({ sql: `UPDATE tasks SET ${fields.join(", ")} WHERE id = ?`, args });
   const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
-  return json({ task: attachDeliveryStatus(await attachSegments(db, updated.rows))[0] });
+  return json({ task: (await attachDeliveryStatus(db, await attachSegments(db, updated.rows)))[0] });
 }
 
 async function pauseTask(db, me, taskId) {
@@ -736,7 +835,7 @@ async function pauseTask(db, me, taskId) {
   }
   await db.execute({ sql: "UPDATE tasks SET paused = 1 WHERE id = ?", args: [taskId] });
   const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
-  return json({ task: attachDeliveryStatus(await attachSegments(db, updated.rows))[0] });
+  return json({ task: (await attachDeliveryStatus(db, await attachSegments(db, updated.rows)))[0] });
 }
 
 // "Long pause" — same effect as a regular pause, plus it automatically
@@ -792,7 +891,7 @@ async function resumeTask(db, me, taskId) {
   });
   await db.execute({ sql: "UPDATE tasks SET paused = 0 WHERE id = ?", args: [taskId] });
   const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
-  return json({ task: attachDeliveryStatus(await attachSegments(db, updated.rows))[0] });
+  return json({ task: (await attachDeliveryStatus(db, await attachSegments(db, updated.rows)))[0] });
 }
 
 async function endTask(db, me, taskId, body) {
@@ -838,7 +937,7 @@ async function tasksToday(db, me) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
     args: [me.id, today],
   });
-  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
+  return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
 }
 
 async function tasksByDate(db, me, dateStr) {
@@ -846,7 +945,17 @@ async function tasksByDate(db, me, dateStr) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
     args: [me.id, dateStr],
   });
-  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
+  return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
+}
+
+async function tasksByMonth(db, me, monthStr) {
+  const isAll = monthStr === "all";
+  let sql = "SELECT * FROM tasks WHERE employee_id = ?";
+  const args = [me.id];
+  if (!isAll) { sql += " AND date LIKE ?"; args.push(monthLikePattern(monthStr)); }
+  sql += " ORDER BY created_at ASC";
+  const res = await db.execute({ sql, args });
+  return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
 }
 
 // Currently-being-worked tasks (not paused, not ended) — shown regardless
@@ -856,7 +965,7 @@ async function activeTasks(db, me) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0 ORDER BY created_at ASC",
     args: [me.id],
   });
-  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
+  return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
 }
 
 // Paused tasks — set aside, not finished, shown regardless of day so the
@@ -866,7 +975,7 @@ async function pausedTasksList(db, me) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 1 ORDER BY created_at ASC",
     args: [me.id],
   });
-  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
+  return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
 }
 
 // Employee-facing project catalog — deduplicated by (code, name); if a group
@@ -1418,10 +1527,11 @@ async function monthlyReport(db, employeeId, monthStr) {
     },
     deliveries: await (async () => {
       const withSegments = await attachSegments(db, deadlineTaskRows.rows);
-      const withStatus = attachDeliveryStatus(withSegments);
-      let onTime = 0, late = 0;
+      const withStatus = await attachDeliveryStatus(db, withSegments);
+      let onTime = 0, onTimeBuffer = 0, late = 0;
       const list = withStatus.map((t) => {
         if (t.delivery.status === "on_time") onTime++;
+        else if (t.delivery.status === "on_time_buffer") onTimeBuffer++;
         else if (t.delivery.status === "late") late++;
         return {
           task_name: t.name, project: t.project, date: t.date,
@@ -1429,7 +1539,7 @@ async function monthlyReport(db, employeeId, monthStr) {
           delay_seconds: t.delivery.delay_seconds || 0,
         };
       });
-      return { total: withStatus.length, on_time: onTime, late, list };
+      return { total: withStatus.length, on_time: onTime, on_time_buffer: onTimeBuffer, late, list };
     })(),
     extras: {
       hourly_rate: +rate.toFixed(2),
@@ -1709,6 +1819,22 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return await adminTasksByMonth(db, url.searchParams.get("employee_id"), url.searchParams.get("month"));
   }
 
+  if (path === "/api/admin/check-deadline-conflict" && method === "GET") {
+    const empId = url.searchParams.get("employee_id");
+    const dateStr = url.searchParams.get("date");
+    if (!empId || !dateStr) return err("employee_id و date مطلوبين");
+    const reasons = [];
+    if (isWeekendStr(dateStr)) reasons.push("اليوم ده إجازة أسبوعية (جمعة/سبت)");
+    const holRes = await db.execute({ sql: "SELECT * FROM official_holidays WHERE date = ?", args: [dateStr] });
+    if (holRes.rows[0]) reasons.push("اليوم ده إجازة رسمية: " + (holRes.rows[0].name || ""));
+    const leaveRes = await db.execute({
+      sql: "SELECT * FROM leave_requests WHERE employee_id = ? AND status = 'approved' AND date <= ? AND COALESCE(end_date, date) >= ?",
+      args: [Number(empId), dateStr, dateStr],
+    });
+    if (leaveRes.rows[0]) reasons.push("الموظف في إجازة معتمدة (" + (leaveRes.rows[0].type === "casual" ? "عارضة" : "اعتيادية") + ") في اليوم ده");
+    return json({ has_conflict: reasons.length > 0, reasons });
+  }
+
   const setDeadlineMatch = path.match(/^\/api\/admin\/tasks\/(\d+)\/deadline$/);
   if (setDeadlineMatch && method === "PATCH") {
     const missing = requireFields(body, ["deadline_date", "deadline_hour"]);
@@ -1721,7 +1847,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     });
     const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
     if (!updated.rows[0]) return err("Task not found", 404);
-    return json({ task: attachDeliveryStatus(await attachSegments(db, updated.rows))[0] });
+    return json({ task: (await attachDeliveryStatus(db, await attachSegments(db, updated.rows)))[0] });
   }
 
   if (path === "/api/admin/deadline-requests" && method === "GET") {
@@ -2592,7 +2718,7 @@ async function adminTasksByDay(db, employeeId, dateStr) {
   if (employeeId && employeeId !== "all") { sql += " AND t.employee_id = ?"; args.push(Number(employeeId)); }
   sql += " ORDER BY e.emp_code ASC, t.created_at ASC";
   const res = await db.execute({ sql, args });
-  return json({ date, tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
+  return json({ date, tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
 }
 
 // For the "Deadlines & Delivery Status" admin section — every task in the
@@ -2610,7 +2736,7 @@ async function adminTasksByMonth(db, employeeId, monthStr) {
   if (employeeId && employeeId !== "all") { sql += " AND t.employee_id = ?"; args.push(Number(employeeId)); }
   sql += " ORDER BY e.emp_code ASC, t.created_at ASC";
   const res = await db.execute({ sql, args });
-  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
+  return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
 }
 
 async function adminBirthdays(db) {
