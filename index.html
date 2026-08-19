@@ -670,7 +670,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="fg">
 <div class="fl">Attachment (optional) <span class="fla">مرفق (اختياري)</span></div>
-<input type="file" id="leaveAttachment" accept="image/*,.pdf,.doc,.docx"/>
+<input type="file" id="leaveAttachment" accept="image/*,.pdf,.doc,.docx" multiple/>
 </div>
 <button class="btn-add" onclick="submitLeaveRequest()">+ REQUEST LEAVE · طلب إجازة</button>
 </div>
@@ -689,7 +689,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="fg">
 <div class="fl">Attachment (optional) <span class="fla">مرفق (اختياري)</span></div>
-<input type="file" id="finAttachment" accept="image/*,.pdf,.doc,.docx"/>
+<input type="file" id="finAttachment" accept="image/*,.pdf,.doc,.docx" multiple/>
 </div>
 <button class="btn-add" onclick="submitFinancialRequest()">+ REQUEST PAYMENT · طلب مستحقات</button>
 </div>
@@ -711,7 +711,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="fg">
 <div class="fl">Attachment (optional) <span class="fla">مرفق (اختياري)</span></div>
-<input type="file" id="offAttachment" accept="image/*,.pdf,.doc,.docx"/>
+<input type="file" id="offAttachment" accept="image/*,.pdf,.doc,.docx" multiple/>
 </div>
 <button class="btn-add" onclick="submitOffclockRequest()">+ REQUEST HOURS · طلب ساعات</button>
 </div>
@@ -738,7 +738,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="fg">
 <div class="fl">Attachment (optional) <span class="fla">مرفق (اختياري)</span></div>
-<input type="file" id="permAttachment" accept="image/*,.pdf,.doc,.docx"/>
+<input type="file" id="permAttachment" accept="image/*,.pdf,.doc,.docx" multiple/>
 </div>
 <button class="btn-add" onclick="submitPermissionRequest()">+ REQUEST PERMISSION · طلب إذن</button>
 </div>
@@ -1600,6 +1600,15 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg">
 <div class="fl">Reason <span class="fla">السبب</span></div>
 <input type="text" id="editReqReason"/>
+</div>
+<div class="fg">
+<div class="fl">Attachments <span class="fla">المرفقات</span></div>
+<div id="editReqAttachmentsList"></div>
+</div>
+<div class="fg">
+<div class="fl">Add More <span class="fla">إضافة مرفقات جديدة</span></div>
+<input type="file" id="editReqNewAttachment" accept="image/*,.pdf,.doc,.docx" multiple/>
+<button class="btn-end-task" style="margin-top:8px" onclick="addEditReqAttachments()">+ ADD · إضافة</button>
 </div>
 <div class="modal-actions">
 <button class="btn-mc" onclick="closeEditRequestModal()">Cancel · إلغاء</button>
@@ -2517,7 +2526,7 @@ function renderMyRequestGroup(containerId, requests, rowBuilder) {
 
 function renderMyRequests() {
   var attBtn = function(r, type) {
-    return r.has_attachment ? "<button class='btn-end-task' onclick=\"openAttachment('" + type + "'," + r.id + ",false)\">👁 OPEN · فتح</button> <button class='btn-end-task' onclick=\"downloadAttachment('" + type + "'," + r.id + ",false)\">⬇ DOWNLOAD · تحميل</button>" : "";
+    return r.has_attachment ? "<button class='btn-end-task' onclick=\"toggleAttachmentsPanel('" + type + "'," + r.id + ",false,this)\">📎 ATTACHMENTS (" + r.has_attachment + ") · مرفقات</button>" : "";
   };
   var editDelBtn = function(r, type) {
     if (r.status !== "pending") return "";
@@ -2558,7 +2567,38 @@ function openEditRequestModal(reqType, reqId) {
   document.getElementById("editReqAmount").value = r.amount_egp || "";
   document.getElementById("editReqHours").value = r.hours || "";
   document.getElementById("editReqReason").value = r.reason || "";
+  document.getElementById("editReqNewAttachment").value = "";
   document.getElementById("editRequestModalOverlay").classList.add("active");
+  loadEditReqAttachments();
+}
+async function loadEditReqAttachments() {
+  var listEl = document.getElementById("editReqAttachmentsList");
+  listEl.innerHTML = "<div class='fl-hint'>بتحمّل...</div>";
+  try {
+    var res = await apiRequest("/api/requests/" + currentEditReqType + "/" + currentEditReqId + "/attachments", "GET");
+    var atts = res.attachments || [];
+    if (!atts.length) { listEl.innerHTML = "<div class='fl-hint'>مفيش مرفقات لسه</div>"; return; }
+    var html = "";
+    for (var i = 0; i < atts.length; i++) {
+      html += "<div class='log-entry' style='padding:8px 4px'><div class='log-note'>📄 " + atts[i].filename + "</div>" +
+        "<button class='btn-end-task' onclick='openAttachment(" + atts[i].id + ")'>OPEN · فتح</button> " +
+        "<button class='btn-end-task' onclick='deleteEditReqAttachment(" + atts[i].id + ")'>DELETE · حذف</button></div>";
+    }
+    listEl.innerHTML = html;
+  } catch(e) { listEl.innerHTML = "<div class='fl-hint'>فشل تحميل المرفقات</div>"; }
+}
+async function deleteEditReqAttachment(attId) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/attachments/" + attId, "DELETE");
+    showToast("v", "تم حذف المرفق");
+    await loadEditReqAttachments();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+async function addEditReqAttachments() {
+  await uploadAttachmentIfAny(currentEditReqType, currentEditReqId, "editReqNewAttachment");
+  await loadEditReqAttachments();
 }
 function closeEditRequestModal() {
   document.getElementById("editRequestModalOverlay").classList.remove("active");
@@ -2640,14 +2680,16 @@ function readFileAsBase64(file) {
 
 async function uploadAttachmentIfAny(reqType, reqId, fileInputId) {
   var input = document.getElementById(fileInputId);
-  if (!input || !input.files || !input.files[0]) return;
-  var file = input.files[0];
-  if (file.size > 3 * 1024 * 1024) { showToast("!", "الملف أكبر من 3 ميجا، اختار ملف أصغر"); return; }
-  try {
-    var b64 = await readFileAsBase64(file);
-    await apiRequest("/api/requests/" + reqType + "/" + reqId + "/attachment", "POST", { filename: file.name, mimetype: file.type || "application/octet-stream", data_base64: b64 });
-    input.value = "";
-  } catch(e) { showToast("!", "فشل رفع المرفق: " + e.message); }
+  if (!input || !input.files || !input.files.length) return;
+  for (var i = 0; i < input.files.length; i++) {
+    var file = input.files[i];
+    if (file.size > 3 * 1024 * 1024) { showToast("!", "الملف \"" + file.name + "\" أكبر من 3 ميجا، اتم تجاهله"); continue; }
+    try {
+      var b64 = await readFileAsBase64(file);
+      await apiRequest("/api/requests/" + reqType + "/" + reqId + "/attachment", "POST", { filename: file.name, mimetype: file.type || "application/octet-stream", data_base64: b64 });
+    } catch(e) { showToast("!", "فشل رفع \"" + file.name + "\": " + e.message); }
+  }
+  input.value = "";
 }
 
 async function submitLeaveRequest() {
@@ -2841,7 +2883,7 @@ function requestRowHtml(cfg, r, status) {
   }
   var actions = "";
   if (r.has_attachment) {
-    actions += "<button class='btn-end-task' onclick=\"openAttachment('" + cfg.kind + "'," + r.id + ",true)\">👁 OPEN · فتح</button> <button class='btn-end-task' onclick=\"downloadAttachment('" + cfg.kind + "'," + r.id + ",true)\">⬇ DOWNLOAD · تحميل</button>";
+    actions += "<button class='btn-end-task' onclick=\"toggleAttachmentsPanel('" + cfg.kind + "'," + r.id + ",true,this)\">📎 ATTACHMENTS (" + r.has_attachment + ") · مرفقات</button>";
   }
   if (status === "pending") {
     actions += "<button class='btn-end-task' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'approve')\">APPROVE · موافقة</button>" +
@@ -2855,9 +2897,8 @@ function requestRowHtml(cfg, r, status) {
     "<div class='log-note'>" + note + "</div>" + actions + "</div>";
 }
 
-async function fetchAttachmentBlob(reqType, reqId, isAdmin) {
-  var url = isAdmin ? "/api/admin/requests/" + reqType + "/" + reqId + "/attachment" : "/api/requests/" + reqType + "/" + reqId + "/attachment";
-  var res = await apiRequest(url, "GET");
+async function fetchAttachmentBlob(attId) {
+  var res = await apiRequest("/api/attachments/" + attId, "GET");
   var att = res.attachment;
   var byteChars = atob(att.data_base64);
   var byteNumbers = new Array(byteChars.length);
@@ -2867,10 +2908,10 @@ async function fetchAttachmentBlob(reqType, reqId, isAdmin) {
   return { blob: blob, filename: att.filename };
 }
 
-async function openAttachment(reqType, reqId, isAdmin) {
+async function openAttachment(attId) {
   showLoading(true);
   try {
-    var result = await fetchAttachmentBlob(reqType, reqId, isAdmin);
+    var result = await fetchAttachmentBlob(attId);
     var blobUrl = URL.createObjectURL(result.blob);
     window.open(blobUrl, "_blank");
     setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 60000);
@@ -2878,10 +2919,10 @@ async function openAttachment(reqType, reqId, isAdmin) {
   showLoading(false);
 }
 
-async function downloadAttachment(reqType, reqId, isAdmin) {
+async function downloadAttachment(attId) {
   showLoading(true);
   try {
-    var result = await fetchAttachmentBlob(reqType, reqId, isAdmin);
+    var result = await fetchAttachmentBlob(attId);
     var blobUrl = URL.createObjectURL(result.blob);
     var a = document.createElement("a");
     a.href = blobUrl;
@@ -2892,6 +2933,29 @@ async function downloadAttachment(reqType, reqId, isAdmin) {
     setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 30000);
   } catch(e) { showToast("!", "فشل تحميل المرفق: " + e.message); }
   showLoading(false);
+}
+
+async function toggleAttachmentsPanel(reqType, reqId, isAdmin, btnEl) {
+  var panelId = "attpanel-" + reqType + "-" + reqId + (isAdmin ? "-a" : "-m");
+  var existing = document.getElementById(panelId);
+  if (existing) { existing.remove(); return; }
+  var panel = document.createElement("div");
+  panel.id = panelId;
+  panel.className = "fl-hint";
+  panel.style.marginTop = "6px";
+  panel.textContent = "بتحمّل...";
+  btnEl.insertAdjacentElement("afterend", panel);
+  try {
+    var url = isAdmin ? "/api/admin/requests/" + reqType + "/" + reqId + "/attachments" : "/api/requests/" + reqType + "/" + reqId + "/attachments";
+    var res = await apiRequest(url, "GET");
+    var atts = res.attachments || [];
+    if (!atts.length) { panel.textContent = "مفيش مرفقات"; return; }
+    var html = "";
+    for (var i = 0; i < atts.length; i++) {
+      html += "<div style='margin-top:4px'>📄 " + atts[i].filename + " — <a style='color:#fff;cursor:pointer;text-decoration:underline' onclick='openAttachment(" + atts[i].id + ")'>فتح</a> · <a style='color:#fff;cursor:pointer;text-decoration:underline' onclick='downloadAttachment(" + atts[i].id + ")'>تحميل</a></div>";
+    }
+    panel.innerHTML = html;
+  } catch(e) { panel.textContent = "فشل تحميل قائمة المرفقات"; }
 }
 
 var KIND_LABELS = {
