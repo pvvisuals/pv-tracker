@@ -105,6 +105,12 @@ function cairoHourMinute(date = new Date()) {
   const get = (t) => Number(parts.find((p) => p.type === t).value);
   return { hour: get("hour"), minute: get("minute") };
 }
+function leaveBalanceField(type) {
+  if (type === "casual") return "casual_balance";
+  if (type === "sick") return "sick_balance";
+  return "annual_balance";
+}
+
 function isWeekendStr(dateStr) {
   // dateStr = YYYY-MM-DD, treat as a Cairo calendar date (noon avoids DST edge issues)
   const d = new Date(dateStr + "T12:00:00Z");
@@ -372,7 +378,7 @@ function publicEmployee(e) {
   return {
     id: e.id, emp_code: e.emp_code, name: e.name, phone: e.phone,
     title: e.title, dept: e.dept, avatar_url: e.avatar_url, role: e.role,
-    casual_balance: e.casual_balance, annual_balance: e.annual_balance,
+    casual_balance: e.casual_balance, annual_balance: e.annual_balance, sick_balance: e.sick_balance,
     birth_date: e.birth_date || null, age: calcAge(e.birth_date),
     is_probation: !!e.is_probation,
     is_birthday_today: isBirthdayToday(e.birth_date),
@@ -451,6 +457,9 @@ export default {
       const taskDeadlineReqMatch = path.match(/^\/api\/tasks\/(\d+)\/request-deadline-change$/);
       if (taskDeadlineReqMatch && method === "POST") return await requestDeadlineChange(db, me, Number(taskDeadlineReqMatch[1]), body, "manual");
       if (path === "/api/deadline-requests/mine" && method === "GET") return await myDeadlineRequests(db, me, url.searchParams.get("month"));
+      const attachUploadMatch = path.match(/^\/api\/requests\/(leave|financial|offclock|permission)\/(\d+)\/attachment$/);
+      if (attachUploadMatch && method === "POST") return await uploadRequestAttachment(db, me, attachUploadMatch[1], Number(attachUploadMatch[2]), body);
+      if (attachUploadMatch && method === "GET") return await getMyRequestAttachment(db, me, attachUploadMatch[1], Number(attachUploadMatch[2]));
       const taskEditMatch = path.match(/^\/api\/tasks\/(\d+)$/);
       if (taskEditMatch && method === "PATCH") return await editTask(db, me, Number(taskEditMatch[1]), body, env);
 
@@ -876,6 +885,42 @@ async function myDeadlineRequests(db, me, monthStr) {
   return json({ requests: res.rows });
 }
 
+const REQUEST_ATTACHMENT_TABLE = { leave: "leave_requests", financial: "financial_requests", offclock: "offclock_requests", permission: "permission_requests" };
+const MAX_ATTACHMENT_BASE64_CHARS = 4 * 1024 * 1024; // ~3MB actual file size
+
+// Employee attaches a file to their OWN request — works uniformly for any
+// request type via the shared request_attachments table, so any future
+// request type gets attachment support for free.
+async function uploadRequestAttachment(db, me, reqType, reqId, body) {
+  const table = REQUEST_ATTACHMENT_TABLE[reqType];
+  const missing = requireFields(body, ["filename", "mimetype", "data_base64"]);
+  if (missing) return err(`Missing field: ${missing}`);
+  if (body.data_base64.length > MAX_ATTACHMENT_BASE64_CHARS) return err("الملف كبير جداً — الحد الأقصى تقريباً 3 ميجا", 413);
+  const own = await db.execute({ sql: `SELECT id FROM ${table} WHERE id = ? AND employee_id = ?`, args: [reqId, me.id] });
+  if (!own.rows[0]) return err("Request not found", 404);
+  await db.execute({ sql: "DELETE FROM request_attachments WHERE request_type = ? AND request_id = ?", args: [reqType, reqId] });
+  const res = await db.execute({
+    sql: `INSERT INTO request_attachments (request_type, request_id, filename, mimetype, data_base64, uploaded_by) VALUES (?,?,?,?,?,?) RETURNING id, filename, mimetype, uploaded_at`,
+    args: [reqType, reqId, body.filename, body.mimetype, body.data_base64, me.id],
+  });
+  return json({ attachment: res.rows[0] }, 201);
+}
+
+async function getMyRequestAttachment(db, me, reqType, reqId) {
+  const table = REQUEST_ATTACHMENT_TABLE[reqType];
+  const own = await db.execute({ sql: `SELECT id FROM ${table} WHERE id = ? AND employee_id = ?`, args: [reqId, me.id] });
+  if (!own.rows[0]) return err("Request not found", 404);
+  const res = await db.execute({ sql: "SELECT * FROM request_attachments WHERE request_type = ? AND request_id = ? ORDER BY id DESC LIMIT 1", args: [reqType, reqId] });
+  if (!res.rows[0]) return err("مفيش مرفق للطلب ده", 404);
+  return json({ attachment: res.rows[0] });
+}
+
+async function getAdminRequestAttachment(db, reqType, reqId) {
+  const res = await db.execute({ sql: "SELECT * FROM request_attachments WHERE request_type = ? AND request_id = ? ORDER BY id DESC LIMIT 1", args: [reqType, reqId] });
+  if (!res.rows[0]) return err("مفيش مرفق للطلب ده", 404);
+  return json({ attachment: res.rows[0] });
+}
+
 async function resumeTask(db, me, taskId) {
   const rows = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ? AND employee_id = ?", args: [taskId, me.id] });
   const task = rows.rows[0];
@@ -999,7 +1044,7 @@ async function requestLeave(db, me, body) {
   if (me.is_probation) return err("لسه في فترة الاختبار — الإجازات مش متاحة حالياً", 403);
   const missing = requireFields(body, ["date", "type"]);
   if (missing) return err(`Missing field: ${missing}`);
-  if (!["casual", "annual"].includes(body.type)) return err("type must be casual or annual");
+  if (!["casual", "annual", "sick"].includes(body.type)) return err("type must be casual, annual, or sick");
 
   const endDate = body.end_date || body.date;
   if (endDate < body.date) return err("تاريخ النهاية لازم يكون بعد أو يساوي تاريخ البداية");
@@ -1025,12 +1070,12 @@ async function requestLeave(db, me, body) {
 async function myLeaveRequests(db, me, monthStr) {
   const month = monthLikePattern(monthStr);
   const res = await db.execute({
-    sql: "SELECT * FROM leave_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
+    sql: "SELECT *, (SELECT COUNT(*) FROM request_attachments ra WHERE ra.request_type='leave' AND ra.request_id=leave_requests.id) as has_attachment FROM leave_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
     args: [me.id, month],
   });
   return json({
     requests: res.rows,
-    balance: { casual: me.casual_balance, annual: me.annual_balance },
+    balance: { casual: me.casual_balance, annual: me.annual_balance, sick: me.sick_balance },
   });
 }
 
@@ -1054,7 +1099,7 @@ async function requestFinancial(db, me, body) {
 async function myFinancialRequests(db, me, monthStr) {
   const month = monthLikePattern(monthStr);
   const res = await db.execute({
-    sql: "SELECT * FROM financial_requests WHERE employee_id = ? AND requested_at LIKE ? ORDER BY requested_at DESC",
+    sql: "SELECT *, (SELECT COUNT(*) FROM request_attachments ra WHERE ra.request_type='financial' AND ra.request_id=financial_requests.id) as has_attachment FROM financial_requests WHERE employee_id = ? AND requested_at LIKE ? ORDER BY requested_at DESC",
     args: [me.id, month],
   });
   return json({ requests: res.rows });
@@ -1078,7 +1123,7 @@ async function requestOffclock(db, me, body) {
 async function myOffclockRequests(db, me, monthStr) {
   const month = monthLikePattern(monthStr);
   const res = await db.execute({
-    sql: "SELECT * FROM offclock_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
+    sql: "SELECT *, (SELECT COUNT(*) FROM request_attachments ra WHERE ra.request_type='offclock' AND ra.request_id=offclock_requests.id) as has_attachment FROM offclock_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
     args: [me.id, month],
   });
   return json({ requests: res.rows });
@@ -1116,7 +1161,7 @@ async function requestPermission(db, me, body) {
 async function myPermissionRequests(db, me, monthStr) {
   const month = monthLikePattern(monthStr);
   const res = await db.execute({
-    sql: "SELECT * FROM permission_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
+    sql: "SELECT *, (SELECT COUNT(*) FROM request_attachments ra WHERE ra.request_type='permission' AND ra.request_id=permission_requests.id) as has_attachment FROM permission_requests WHERE employee_id = ? AND date LIKE ? ORDER BY date DESC",
     args: [me.id, month],
   });
   return json({ requests: res.rows });
@@ -1317,6 +1362,7 @@ async function monthlyReport(db, employeeId, monthStr) {
   let absentDays = 0;
   let leaveDaysCasual = 0;
   let leaveDaysAnnual = 0;
+  let leaveDaysSick = 0;
 
   // Pair sign_in/sign_out chronologically across the WHOLE fetched range (not
   // grouped by calendar date) so a shift that crosses midnight still counts
@@ -1409,7 +1455,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       // on the counted side, so the net effect for this day is zero.
       totalCountedSeconds += daySeconds;
       totalLeaveCreditSeconds += daySeconds;
-      if (leave.type === "casual") leaveDaysCasual++; else leaveDaysAnnual++;
+      if (leave.type === "casual") leaveDaysCasual++; else if (leave.type === "sick") leaveDaysSick++; else leaveDaysAnnual++;
       days.push({ date: dateStr, status: "leave", leave_type: leave.type, counted_seconds: daySeconds, break_seconds: breakSecs });
       continue;
     }
@@ -1512,6 +1558,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       absent_hours_deducted: +(absentDays * dayHours).toFixed(2),
       leave_days_casual: leaveDaysCasual,
       leave_days_annual: leaveDaysAnnual,
+      leave_days_sick: leaveDaysSick,
       holiday_bonus_hours: +(totalHolidayBonusSeconds / 3600).toFixed(2),
       holiday_actual_hours: +(totalHolidayBonusSeconds / 3600).toFixed(2),
       holiday_counted_hours: +((totalHolidayBonusSeconds * 2) / 3600).toFixed(2),
@@ -1566,7 +1613,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       bonuses_total_egp: +bonusesTotalEGP.toFixed(2),
       final_salary: finalSalary,
     },
-    leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance },
+    leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance, sick: emp.sick_balance },
     project_hours: buildProjectHoursByType(projectRows.rows),
   });
 }
@@ -1850,6 +1897,9 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ task: (await attachDeliveryStatus(db, await attachSegments(db, updated.rows)))[0] });
   }
 
+  const adminAttachMatch = path.match(/^\/api\/admin\/requests\/(leave|financial|offclock|permission)\/(\d+)\/attachment$/);
+  if (adminAttachMatch && method === "GET") return await getAdminRequestAttachment(db, adminAttachMatch[1], Number(adminAttachMatch[2]));
+
   if (path === "/api/admin/deadline-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
     const month = url.searchParams.get("month");
@@ -1900,7 +1950,9 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const month = monthLikePattern(url.searchParams.get("month"));
     const orderBy = status === "pending" ? "lr.requested_at ASC" : "lr.decided_at DESC";
     const res = await db.execute({
-      sql: `SELECT lr.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM leave_requests lr
+      sql: `SELECT lr.*, e.name as employee_name, e.emp_code, a.name as decided_by_name,
+                   (SELECT COUNT(*) FROM request_attachments ra WHERE ra.request_type='leave' AND ra.request_id=lr.id) as has_attachment
+            FROM leave_requests lr
             JOIN employees e ON e.id = lr.employee_id
             LEFT JOIN employees a ON a.id = lr.decided_by
             WHERE lr.status = ? AND lr.date LIKE ? ORDER BY ${orderBy}`,
@@ -2619,6 +2671,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     for (const t of ownedTables) {
       await db.execute({ sql: `DELETE FROM ${t} WHERE employee_id = ?`, args: [targetId] });
     }
+    await db.execute({ sql: "DELETE FROM request_attachments WHERE uploaded_by = ?", args: [targetId] });
     await db.execute({ sql: "DELETE FROM employees WHERE id = ?", args: [targetId] });
     return json({ ok: true });
   }
@@ -2644,7 +2697,7 @@ async function decideLeave(db, admin, requestId, body) {
   if (body.action === "approve") {
     const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [request.employee_id] });
     const emp = empRes.rows[0];
-    const field = request.type === "casual" ? "casual_balance" : "annual_balance";
+    const field = leaveBalanceField(request.type);
     const days = workingDaysInRange(request.date, request.end_date || request.date).length;
     if (Number(emp[field]) < days) return err(`رصيد الإجازة مش كفاية (متاح ${emp[field]}، مطلوب ${days})`, 409);
     await db.execute({ sql: `UPDATE employees SET ${field} = ${field} - ? WHERE id = ?`, args: [days, request.employee_id] });
@@ -2679,7 +2732,7 @@ async function redecideRequest(db, admin, kind, requestId, action) {
   if (request.status === newStatus) return json({ ok: true, unchanged: true });
 
   if (kind === "leave") {
-    const field = request.type === "casual" ? "casual_balance" : "annual_balance";
+    const field = leaveBalanceField(request.type);
     const days = workingDaysInRange(request.date, request.end_date || request.date).length;
     if (request.status === "approved" && newStatus === "rejected") {
       // was approved (days already deducted) → now reversed to rejected: give the days back
@@ -2812,17 +2865,22 @@ async function adminEmployeesStatus(db) {
   return json({ statuses });
 }
 
+const REQUEST_TABLE_TO_TYPE = { financial_requests: "financial", offclock_requests: "offclock", permission_requests: "permission", leave_requests: "leave" };
+
 async function adminListRequests(db, table, status, monthStr) {
   if (!REQUEST_TABLES.has(table)) return err("invalid table", 400);
   const month = monthLikePattern(monthStr);
   const dateCol = table === "financial_requests" ? "r.requested_at" : "r.date";
   const orderBy = status === "pending" ? "r.requested_at ASC" : "r.decided_at DESC";
+  const reqType = REQUEST_TABLE_TO_TYPE[table];
   const res = await db.execute({
-    sql: `SELECT r.*, e.name as employee_name, e.emp_code, a.name as decided_by_name FROM ${table} r
+    sql: `SELECT r.*, e.name as employee_name, e.emp_code, a.name as decided_by_name,
+                 (SELECT COUNT(*) FROM request_attachments ra WHERE ra.request_type = ? AND ra.request_id = r.id) as has_attachment
+          FROM ${table} r
           JOIN employees e ON e.id = r.employee_id
           LEFT JOIN employees a ON a.id = r.decided_by
           WHERE r.status = ? AND ${dateCol} LIKE ? ORDER BY ${orderBy}`,
-    args: [status, month],
+    args: [reqType, status, month],
   });
   return json({ requests: res.rows });
 }
