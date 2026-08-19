@@ -649,6 +649,7 @@ textarea{resize:vertical;min-height:76px;}
 <select id="leaveType">
 <option value="casual">عارضة (Casual)</option>
 <option value="annual">اعتيادية (Annual)</option>
+<option value="sick">مرضي (Sick)</option>
 </select>
 </div>
 </div>
@@ -667,6 +668,10 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="leaveReason" placeholder="اكتب السبب..."/>
 </div>
+<div class="fg">
+<div class="fl">Attachment (optional) <span class="fla">مرفق (اختياري)</span></div>
+<input type="file" id="leaveAttachment" accept="image/*,.pdf,.doc,.docx"/>
+</div>
 <button class="btn-add" onclick="submitLeaveRequest()">+ REQUEST LEAVE · طلب إجازة</button>
 </div>
 </div>
@@ -681,6 +686,10 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg" style="margin:10px 0 0">
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="finReason" placeholder="اكتب السبب..."/>
+</div>
+<div class="fg">
+<div class="fl">Attachment (optional) <span class="fla">مرفق (اختياري)</span></div>
+<input type="file" id="finAttachment" accept="image/*,.pdf,.doc,.docx"/>
 </div>
 <button class="btn-add" onclick="submitFinancialRequest()">+ REQUEST PAYMENT · طلب مستحقات</button>
 </div>
@@ -699,6 +708,10 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg" style="margin:10px 0 0">
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="offReason" placeholder="اكتب السبب..."/>
+</div>
+<div class="fg">
+<div class="fl">Attachment (optional) <span class="fla">مرفق (اختياري)</span></div>
+<input type="file" id="offAttachment" accept="image/*,.pdf,.doc,.docx"/>
 </div>
 <button class="btn-add" onclick="submitOffclockRequest()">+ REQUEST HOURS · طلب ساعات</button>
 </div>
@@ -722,6 +735,10 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fg" style="margin:10px 0 0">
 <div class="fl">Reason <span class="fla">سبب الطلب</span></div>
 <input type="text" id="permReason" placeholder="اكتب السبب..."/>
+</div>
+<div class="fg">
+<div class="fl">Attachment (optional) <span class="fla">مرفق (اختياري)</span></div>
+<input type="file" id="permAttachment" accept="image/*,.pdf,.doc,.docx"/>
 </div>
 <button class="btn-add" onclick="submitPermissionRequest()">+ REQUEST PERMISSION · طلب إذن</button>
 </div>
@@ -835,8 +852,8 @@ textarea{resize:vertical;min-height:76px;}
 <input type="date" id="dailyTasksDate" onchange="loadDailyTasksBrowser()"/>
 </div>
 </div>
-</div>
 <div id="dailyTasksResult"></div>
+</div>
 
 <div class="task-form">
 <div class="settings-label" id="section-delivery-status" style="color:var(--ok)">Deadlines &amp; Delivery Status <span class="fla">مواعيد وحالات التسليم</span></div>
@@ -1365,7 +1382,7 @@ textarea{resize:vertical;min-height:76px;}
 <button class="btn-add" onclick="fetchAdminReport()">GET REPORT · عرض التقرير</button>
 <div id="adminReportResult"></div>
 </div>
-<div class="task-form">
+<div class="task-form allow-nested-accordion">
 <div class="settings-label" id="section-projects-report">Projects Report <span class="fla">تقرير المشاريع (كل الموظفين)</span></div>
 <div class="sec-sub" style="margin-bottom:12px">إجمالي ساعات كل مشروع، مجمّعة من كل الموظفين اللي اشتغلوا فيه</div>
 <div class="form-row">
@@ -2412,6 +2429,7 @@ async function refreshMyProbationStatus() {
     user.is_probation = fresh.is_probation;
     user.casual_balance = fresh.casual_balance;
     user.annual_balance = fresh.annual_balance;
+    user.sick_balance = fresh.sick_balance;
     applyProbationUI();
   } catch(e) { /* non-fatal */ }
 }
@@ -2461,18 +2479,22 @@ function renderMyRequestGroup(containerId, requests, rowBuilder) {
 }
 
 function renderMyRequests() {
+  var attBtn = function(r, type) {
+    return r.has_attachment ? "<button class='btn-end-task' onclick=\"viewAttachment('" + type + "'," + r.id + ",false)\">📎 ATTACHMENT · مرفق</button>" : "";
+  };
   renderMyRequestGroup("myLeaveList", myLeaveReqs, function(r) {
     var dateDisplay = r.end_date && r.end_date !== r.date ? (r.date + " → " + r.end_date) : r.date;
-    return "<div class='log-entry'><div class='log-type'>" + (r.type === "casual" ? "CASUAL" : "ANNUAL") + "</div><div class='log-time'>" + dateDisplay + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + "</div>";
+    var typeLabel = r.type === "casual" ? "CASUAL" : (r.type === "sick" ? "SICK" : "ANNUAL");
+    return "<div class='log-entry'><div class='log-type'>" + typeLabel + "</div><div class='log-time'>" + dateDisplay + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + attBtn(r, "leave") + "</div>";
   });
   renderMyRequestGroup("myFinList", myFinReqs, function(f) {
-    return "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>" + f.requested_at.slice(0,10) + "</div><div class='log-note'>" + statusBadge(f.status) + "</div>" + reasonNote(f) + "</div>";
+    return "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>" + f.requested_at.slice(0,10) + "</div><div class='log-note'>" + statusBadge(f.status) + "</div>" + reasonNote(f) + attBtn(f, "financial") + "</div>";
   });
   renderMyRequestGroup("myOffList", myOffReqs, function(of) {
-    return "<div class='log-entry'><div class='log-type'>" + of.hours + "h</div><div class='log-time'>" + of.date + "</div><div class='log-note'>" + statusBadge(of.status) + "</div>" + reasonNote(of) + "</div>";
+    return "<div class='log-entry'><div class='log-type'>" + of.hours + "h</div><div class='log-time'>" + of.date + "</div><div class='log-note'>" + statusBadge(of.status) + "</div>" + reasonNote(of) + attBtn(of, "offclock") + "</div>";
   });
   renderMyRequestGroup("myPermList", myPermReqs, function(p) {
-    return "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>" + p.date + "</div><div class='log-note'>" + statusBadge(p.status) + "</div>" + reasonNote(p) + "</div>";
+    return "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>" + p.date + "</div><div class='log-note'>" + statusBadge(p.status) + "</div>" + reasonNote(p) + attBtn(p, "permission") + "</div>";
   });
 }
 
@@ -2504,6 +2526,27 @@ function updateLeaveDaysPreview() {
   previewEl.textContent = "هيتخصم " + count + " يوم عمل من الرصيد (الجمعة/السبت مستثناة تلقائياً)";
 }
 
+function readFileAsBase64(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function() { resolve(reader.result.split(",")[1]); };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadAttachmentIfAny(reqType, reqId, fileInputId) {
+  var input = document.getElementById(fileInputId);
+  if (!input || !input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 3 * 1024 * 1024) { showToast("!", "الملف أكبر من 3 ميجا، اختار ملف أصغر"); return; }
+  try {
+    var b64 = await readFileAsBase64(file);
+    await apiRequest("/api/requests/" + reqType + "/" + reqId + "/attachment", "POST", { filename: file.name, mimetype: file.type || "application/octet-stream", data_base64: b64 });
+    input.value = "";
+  } catch(e) { showToast("!", "فشل رفع المرفق: " + e.message); }
+}
+
 async function submitLeaveRequest() {
   var isLong = document.getElementById("leaveDuration").value === "long";
   var date = document.getElementById("leaveDate").value;
@@ -2517,7 +2560,8 @@ async function submitLeaveRequest() {
   try {
     var body = { date: date, type: type, reason: reason };
     if (endDate) body.end_date = endDate;
-    await apiRequest("/api/leave-requests", "POST", body);
+    var res = await apiRequest("/api/leave-requests", "POST", body);
+    await uploadAttachmentIfAny("leave", res.request.id, "leaveAttachment");
     showToast("v", "تم ارسال طلب الاجازة");
     document.getElementById("leaveReason").value = "";
     document.getElementById("leaveEndDate").value = "";
@@ -2534,7 +2578,8 @@ async function submitFinancialRequest() {
   if (!amount || Number(amount) <= 0) { showToast("!", "ادخل مبلغ صحيح"); return; }
   showLoading(true);
   try {
-    await apiRequest("/api/financial-requests", "POST", { amount_egp: Number(amount), reason: reason });
+    var res = await apiRequest("/api/financial-requests", "POST", { amount_egp: Number(amount), reason: reason });
+    await uploadAttachmentIfAny("financial", res.request.id, "finAttachment");
     showToast("v", "تم ارسال طلب المستحقات");
     document.getElementById("finAmount").value = "";
     document.getElementById("finReason").value = "";
@@ -2550,7 +2595,8 @@ async function submitOffclockRequest() {
   if (!date || !hours || Number(hours) <= 0) { showToast("!", "ادخل التاريخ وعدد الساعات"); return; }
   showLoading(true);
   try {
-    await apiRequest("/api/offclock-requests", "POST", { date: date, hours: Number(hours), reason: reason });
+    var res = await apiRequest("/api/offclock-requests", "POST", { date: date, hours: Number(hours), reason: reason });
+    await uploadAttachmentIfAny("offclock", res.request.id, "offAttachment");
     showToast("v", "تم ارسال طلب الساعات");
     document.getElementById("offHours").value = "";
     document.getElementById("offReason").value = "";
@@ -2566,7 +2612,8 @@ async function submitPermissionRequest() {
   if (!date) { showToast("!", "اختار التاريخ"); return; }
   showLoading(true);
   try {
-    await apiRequest("/api/permission-requests", "POST", { date: date, hours: Number(hours), reason: reason });
+    var res = await apiRequest("/api/permission-requests", "POST", { date: date, hours: Number(hours), reason: reason });
+    await uploadAttachmentIfAny("permission", res.request.id, "permAttachment");
     showToast("v", "تم ارسال طلب الإذن");
     document.getElementById("permReason").value = "";
     await loadLeaveOvertimeData();
@@ -2690,16 +2737,43 @@ function requestRowHtml(cfg, r, status) {
     note += (note ? "<br/>" : "") + "<span style='opacity:.6'>Decided " + (r.decided_at ? r.decided_at.slice(0,16) : "-") + (r.decided_by_name ? " by " + r.decided_by_name : "") + "</span>";
   }
   var actions = "";
+  if (r.has_attachment) {
+    actions += "<button class='btn-end-task' onclick=\"viewAttachment('" + cfg.kind + "'," + r.id + ",true)\">📎 ATTACHMENT · مرفق</button>";
+  }
   if (status === "pending") {
-    actions = "<button class='btn-end-task' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'approve')\">APPROVE · موافقة</button>" +
+    actions += "<button class='btn-end-task' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'approve')\">APPROVE · موافقة</button>" +
       "<button class='btn-end-task' style='margin-right:6px' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'reject')\">REJECT · رفض</button>";
   } else {
     var empNameSafe = (r.employee_name || "").replace(/'/g, "");
-    actions = "<button class='btn-end-task' onclick=\"reverseDecisionPrompt('" + cfg.kind + "'," + r.id + ",'" + status + "','" + empNameSafe + "')\">↺ CHANGE DECISION · تغيير القرار</button>";
+    actions += "<button class='btn-end-task' onclick=\"reverseDecisionPrompt('" + cfg.kind + "'," + r.id + ",'" + status + "','" + empNameSafe + "')\">↺ CHANGE DECISION · تغيير القرار</button>";
   }
   return "<div class='log-entry'><div class='log-type'>" + cfg.label(r) + "</div>" +
     "<div class='log-time'>#" + r.emp_code + " " + r.employee_name + " — " + (cfg.date(r) || "") + "</div>" +
     "<div class='log-note'>" + note + "</div>" + actions + "</div>";
+}
+
+async function viewAttachment(reqType, reqId, isAdmin) {
+  showLoading(true);
+  try {
+    var url = isAdmin ? "/api/admin/requests/" + reqType + "/" + reqId + "/attachment" : "/api/requests/" + reqType + "/" + reqId + "/attachment";
+    var res = await apiRequest(url, "GET");
+    var att = res.attachment;
+    var byteChars = atob(att.data_base64);
+    var byteNumbers = new Array(byteChars.length);
+    for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+    var byteArray = new Uint8Array(byteNumbers);
+    var blob = new Blob([byteArray], { type: att.mimetype });
+    var blobUrl = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = att.filename;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 30000);
+  } catch(e) { showToast("!", "فشل تحميل المرفق: " + e.message); }
+  showLoading(false);
 }
 
 var KIND_LABELS = {
@@ -4254,6 +4328,7 @@ async function showEmployeeFullInfo() {
       "<div class='profile-row'><span class='profile-key'>Hourly Rate</span><span class='profile-val'>" + e.hourly_rate + " EGP</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Casual Balance</span><span class='profile-val'>" + e.casual_balance + " / 6</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Annual Balance</span><span class='profile-val'>" + e.annual_balance + " / 15</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Sick Balance</span><span class='profile-val'>" + e.sick_balance + " / 15</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Penalties</span><span class='profile-val' style='color:var(--danger)'>" + res.penalties_active_count + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Bonuses</span><span class='profile-val' style='color:var(--ok)'>" + res.bonuses_active_count + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Notices</span><span class='profile-val' style='color:var(--warn)'>" + res.notices_active_count + "</span></div>" +
@@ -5082,6 +5157,7 @@ function renderAdminReport(res) {
   html += logRow("Absent Days <span class='fla'>أيام غياب بدون إجازة</span>", "<span style='color:" + (t.absent_days>0?"var(--danger)":"var(--text)") + "'>" + t.absent_days + " يوم</span>");
   html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " (رصيد متبقي / left: " + res.leave_balance.casual + "/6)");
   html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " (رصيد متبقي / left: " + res.leave_balance.annual + "/15)");
+  html += logRow("Sick Leave Taken <span class='fla'>مرضي مستخدمة</span>", (t.leave_days_sick||0) + " (رصيد متبقي / left: " + res.leave_balance.sick + "/15)");
   if (res.late_arrivals) {
     var laNote = "<span style='color:" + (res.late_arrivals.count>0?"var(--danger)":"var(--text)") + "'>" + res.late_arrivals.count + "</span>";
     if (res.late_arrivals.count > 0) {
