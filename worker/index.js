@@ -1853,6 +1853,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/deadline-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
     const month = url.searchParams.get("month");
+    const employeeId = url.searchParams.get("employee_id");
     let sql = `SELECT tdr.*, e.name as employee_name, e.emp_code, t.name as task_name, t.project as project_display, t.date as task_date,
                       a.name as decided_by_name
                FROM task_deadline_requests tdr
@@ -1862,6 +1863,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
                WHERE tdr.status = ?`;
     const args = [status];
     if (month) { sql += " AND tdr.requested_at LIKE ?"; args.push(monthLikePattern(month)); }
+    if (employeeId && employeeId !== "all") { sql += " AND tdr.employee_id = ?"; args.push(Number(employeeId)); }
     sql += " ORDER BY tdr.requested_at DESC";
     const res = await db.execute({ sql, args });
     return json({ requests: res.rows });
