@@ -222,6 +222,11 @@ textarea{resize:vertical;min-height:76px;}
 .btn-add:hover{opacity:0.85;}
 .tasks-list{display:flex;flex-direction:column;gap:1px;background:var(--border);border:1px solid var(--border);}
 .task-card{background:var(--card);padding:17px 18px;display:flex;align-items:flex-start;gap:14px;transition:transform 0.15s,box-shadow 0.15s;}
+.task-deadline-box{flex-shrink:0;min-width:150px;text-align:center;padding:12px 14px;border:1px solid var(--border);align-self:stretch;display:flex;flex-direction:column;justify-content:center;gap:6px;}
+.task-deadline-status{font-size:11px;letter-spacing:1px;text-transform:uppercase;font-weight:700;}
+.task-deadline-countdown{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;}
+.task-deadline-date{font-size:11px;color:var(--muted2);}
+.task-deadline-empty{flex-shrink:0;min-width:150px;text-align:center;padding:12px 10px;border:1px dashed var(--border);color:var(--muted2);font-size:12px;align-self:stretch;display:flex;align-items:center;justify-content:center;}
 .task-card:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,0.4);}
 .task-card.active-task{border-left:2px solid #fff;}
 .task-num{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--muted2);min-width:26px;line-height:1.3;}
@@ -561,6 +566,8 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 
+<div id="myDeadlineReqList"></div>
+
 <div class="task-form">
 <div class="settings-label">Browse Day <span class="fla">تصفّح أيام الشهر</span></div>
 <div class="form-row">
@@ -751,6 +758,29 @@ textarea{resize:vertical;min-height:76px;}
 <div class="log-header" id="section-birthdays"><span>BIRTHDAYS · أعياد الميلاد</span></div>
 <div id="adminBirthdaysList"><div class="empty-log">Loading...</div></div>
 </div>
+
+<div class="task-form">
+<div class="settings-label" id="section-set-deadlines" style="color:var(--warn)">Set Task Deadlines <span class="fla">وضع المواعيد</span></div>
+<div class="sec-sub" style="margin-bottom:12px">حدد ميعاد تسليم لأي تاسك، أو عدّل ميعاد موجود بالفعل</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee <span class="fla">الموظف</span></div>
+<select id="setDeadlineEmployee" onchange="loadTasksForDeadlineSetting()"></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Month <span class="fla">الشهر</span></div>
+<input type="month" id="setDeadlineMonth" onchange="loadTasksForDeadlineSetting()"/>
+<label class="all-months-toggle"><input type="checkbox" id="setDeadlineMonthAll" onchange="onAllMonthsToggle('setDeadlineMonth','setDeadlineMonthAll'); loadTasksForDeadlineSetting();"/><span>All Months · كل الشهور</span></label>
+</div>
+</div>
+<div id="setDeadlineTasksList" style="margin-top:12px"></div>
+</div>
+
+<div class="task-form">
+<div class="settings-label" id="section-deadline-requests" style="color:var(--warn)">Deadline Change Requests <span class="fla">طلبات تأجيل الميعاد</span></div>
+<div id="deadlineRequestsOverview"></div>
+</div>
+
 <div class="task-form">
 <div class="settings-label" id="section-daily-tasks">Daily Tasks Browser <span class="fla">مين شغال في إيه</span></div>
 <div class="sec-sub" style="margin-bottom:12px">هنا التصنيف الكامل (Category/Type) ظاهر زي ما دخّلته بالظبط</div>
@@ -768,6 +798,23 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div id="dailyTasksResult"></div>
+
+<div class="task-form">
+<div class="settings-label" id="section-delivery-status" style="color:var(--ok)">Deadlines &amp; Delivery Status <span class="fla">مواعيد وحالات التسليم</span></div>
+<div class="sec-sub" style="margin-bottom:12px">أخضر = في الميعاد، أحمر = متأخر أو مسلمش لسه بعد فوات الميعاد، أصفر = لسه شغال والميعاد ماجاش</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee <span class="fla">الموظف</span></div>
+<select id="deliveryStatusEmployee" onchange="fetchDeliveryStatusReport()"><option value="all">All Employees · كل الموظفين</option></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Month <span class="fla">الشهر</span></div>
+<input type="month" id="deliveryStatusMonth" onchange="fetchDeliveryStatusReport()"/>
+<label class="all-months-toggle"><input type="checkbox" id="deliveryStatusMonthAll" onchange="onAllMonthsToggle('deliveryStatusMonth','deliveryStatusMonthAll'); fetchDeliveryStatusReport();"/><span>All Months · كل الشهور</span></label>
+</div>
+</div>
+<div id="deliveryStatusResult" style="margin-top:12px"></div>
+</div>
 </div>
 <div class="admin-page" id="admin-page-employees">
 <div class="task-form">
@@ -1431,6 +1478,54 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="setDeadlineModalOverlay">
+<div class="modal">
+<h3>SET DEADLINE · تحديد ميعاد التسليم</h3>
+<div class="fg">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="setDeadlineDateInput"/>
+</div>
+<div class="fg">
+<div class="fl">Hour <span class="fla">الساعة</span></div>
+<select id="setDeadlineHourInput"></select>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeSetDeadlineModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitSetDeadline()">Save · حفظ</button>
+</div>
+</div>
+</div>
+<div class="modal-overlay" id="approveDeadlineReqModalOverlay">
+<div class="modal">
+<h3>APPROVE &amp; SET NEW DEADLINE · موافقة وتحديد ميعاد جديد</h3>
+<div class="fg">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="approveDeadlineDateInput"/>
+</div>
+<div class="fg">
+<div class="fl">Hour <span class="fla">الساعة</span></div>
+<select id="approveDeadlineHourInput"></select>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeApproveDeadlineReqModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitApproveDeadlineReq()">Confirm · تأكيد</button>
+</div>
+</div>
+</div>
+<div class="modal-overlay" id="deadlineReqModalOverlay">
+<div class="modal">
+<h3>REQUEST DEADLINE CHANGE · طلب تأجيل الميعاد</h3>
+<div class="fl-hint" style="margin-bottom:14px">هيتبعت طلب للأدمن، وهيفضل معلق لحد ما يحدد ميعاد جديد</div>
+<div class="fg">
+<div class="fl">Reason (optional) <span class="fla">السبب</span></div>
+<input type="text" id="deadlineReqReason" placeholder="اكتب السبب..."/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeDeadlineReqModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitDeadlineChangeRequest()">Send · إرسال</button>
+</div>
+</div>
+</div>
 <div class="modal-overlay" id="markPaidModalOverlay">
 <div class="modal">
 <h3>MARK AS PAID · تسجيل الدفع</h3>
@@ -1488,7 +1583,10 @@ textarea{resize:vertical;min-height:76px;}
 <div class="nav-title">Quick Jump · تنقل سريع</div>
 <a onclick="jumpTo('section-emp-status')">حالة الموظفين</a>
 <a onclick="jumpTo('section-birthdays')">أعياد الميلاد</a>
+<a onclick="jumpTo('section-set-deadlines')">وضع المواعيد</a>
+<a onclick="jumpTo('section-deadline-requests')">طلبات تأجيل الميعاد</a>
 <a onclick="jumpTo('section-daily-tasks')">مين شغال في إيه</a>
+<a onclick="jumpTo('section-delivery-status')">مواعيد وحالات التسليم</a>
 <a onclick="jumpTo('section-requests')">الطلبات</a>
 <a onclick="jumpTo('section-holidays')">الإجازات الرسمية</a>
 <a onclick="jumpTo('section-projects')">المشاريع</a>
@@ -1845,6 +1943,25 @@ function startTaskTimer() {
       var st = taskStartTimes[tid];
       if (st) els[i].textContent = formatDuration(Math.floor((Date.now() - st) / 1000));
     }
+    var dels = document.querySelectorAll(".task-deadline-countdown-live");
+    for (var j = 0; j < dels.length; j++) {
+      var deadlineAt = dels[j].getAttribute("data-deadline");
+      if (!deadlineAt) continue;
+      var deadlineMs = parseUTC(deadlineAt);
+      var remaining = Math.floor((deadlineMs - Date.now()) / 1000);
+      if (remaining < 0) {
+        var box = dels[j].closest(".task-deadline-box");
+        dels[j].textContent = "+" + formatCountdown(-remaining);
+        if (box) {
+          box.style.borderColor = "var(--danger)";
+          var statusEl = box.querySelector(".task-deadline-status");
+          if (statusEl) { statusEl.style.color = "var(--danger)"; statusEl.textContent = "OVERDUE · متأخر"; }
+          dels[j].style.color = "var(--danger)";
+        }
+      } else {
+        dels[j].textContent = formatCountdown(remaining);
+      }
+    }
   }, 1000);
 }
 
@@ -2012,6 +2129,22 @@ async function refreshTasksOnly() {
   await loadPausedTasks();
   setupTaskBrowseMonthBounds();
   await loadTasksForBrowsedDate();
+  await loadMyDeadlineRequests();
+}
+
+async function loadMyDeadlineRequests() {
+  try {
+    var res = await apiRequest("/api/deadline-requests/mine", "GET");
+    var el = document.getElementById("myDeadlineReqList");
+    var reqs = res.requests || [];
+    if (!reqs.length) { el.innerHTML = ""; return; }
+    var wrapHtml = "<div class='settings-label' style='margin-top:6px'>My Deadline Requests <span class='fla'>طلبات تأجيل الميعاد</span></div><div id='myDeadlineReqInner'></div>";
+    el.innerHTML = wrapHtml;
+    renderMyRequestGroup("myDeadlineReqInner", reqs, function(r) {
+      var srcLabel = r.source === "long_pause" ? "وقوف طويل" : "طلب يدوي";
+      return "<div class='log-entry'><div class='log-type'>" + srcLabel + "</div><div class='log-time'>" + r.requested_at.slice(0,16) + "</div><div class='log-note'>" + (r.task_name||"") + (r.reason ? " — " + r.reason : "") + (r.new_deadline_at ? "<br/>الميعاد الجديد: " + r.new_deadline_at : "") + "</div></div>";
+    });
+  } catch(e) { /* non-fatal */ }
 }
 
 async function loadTodayData() {
@@ -2393,6 +2526,10 @@ async function loadAdminData() {
     fetchProfitLossReport();
     fetchPettyCash();
     loadClients();
+    populateSetDeadlineEmployeeSelect();
+    loadTasksForDeadlineSetting();
+    populateDeliveryStatusEmployeeSelect();
+    fetchDeliveryStatusReport();
 
     await reloadMonthDependentAdminData();
   } catch(e) { /* non-fatal */ }
@@ -2432,6 +2569,7 @@ async function reloadMonthDependentAdminData() {
   renderAdminPenalties();
   renderAdminNotices();
   renderAdminBonuses();
+  fetchDeadlineRequestsOverview();
 }
 
 function requestRowHtml(cfg, r, status) {
@@ -2885,6 +3023,254 @@ function populateDailyTasksEmployeeSelect() {
     sel.appendChild(opt);
   }
   sel.value = current;
+}
+
+// ================= Set Task Deadlines =================
+
+function populateSetDeadlineEmployeeSelect() {
+  var sel = document.getElementById("setDeadlineEmployee");
+  if (!sel) return;
+  var cur = sel.value;
+  var html = "";
+  for (var i = 0; i < adminEmployees.length; i++) {
+    html += "<option value='" + adminEmployees[i].id + "'>#" + adminEmployees[i].emp_code + " - " + adminEmployees[i].name + "</option>";
+  }
+  sel.innerHTML = html;
+  if (cur) sel.value = cur;
+}
+
+async function loadTasksForDeadlineSetting() {
+  var empSel = document.getElementById("setDeadlineEmployee");
+  if (!empSel || !empSel.value) { document.getElementById("setDeadlineTasksList").innerHTML = ""; return; }
+  var month = getMonthFilterValue("setDeadlineMonth", "setDeadlineMonthAll");
+  try {
+    var res = await apiRequest("/api/admin/tasks-by-month?employee_id=" + empSel.value + "&month=" + month, "GET");
+    renderSetDeadlineTasksList(res.tasks || []);
+  } catch(e) { showToast("!", e.message); }
+}
+
+function renderSetDeadlineTasksList(tasks) {
+  var el = document.getElementById("setDeadlineTasksList");
+  if (!tasks.length) { el.innerHTML = "<div class='empty-log'>مفيش تاسكات في الفترة دي</div>"; return; }
+  var html = "<div class='log-wrap'>";
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
+    var hasDeadline = t.deadline_at;
+    var statusColor = hasDeadline ? (t.delivery && t.delivery.status === "on_time" ? "var(--ok)" : (t.delivery && (t.delivery.status === "late" || t.delivery.status === "overdue") ? "var(--danger)" : "var(--warn)")) : "var(--muted)";
+    html += "<div class='proj-row'>";
+    html += "<div class='proj-row-top'>";
+    html += "<div class='proj-id'>" + t.project + "</div>";
+    html += "<div class='proj-badges'><span class='proj-badge' style='color:" + statusColor + ";border-color:" + statusColor + "'>" + (hasDeadline ? (t.delivery.deadline_display || "") : "مفيش ميعاد") + "</span></div>";
+    html += "</div>";
+    html += "<div class='fl-hint' style='margin-top:6px'>" + t.name + (t.description ? " — " + t.description : "") + " — بدأ: " + t.start_time + " (" + t.date + ")</div>";
+    html += "<button class='btn-end-task' style='margin-top:8px' onclick='openSetDeadlineModal(" + t.id + ", " + JSON.stringify(t.deadline_at || null) + ")'>" + (hasDeadline ? "EDIT DEADLINE · تعديل الميعاد" : "SET DEADLINE · تحديد ميعاد") + "</button>";
+    html += "</div>";
+  }
+  html += "</div>";
+  el.innerHTML = html;
+}
+
+var currentSetDeadlineTaskId = null;
+function populateHourSelect(id) {
+  var sel = document.getElementById(id);
+  if (!sel || sel.options.length) return;
+  var html = "";
+  for (var h = 0; h < 24; h++) {
+    var label = h === 0 ? "12 AM" : (h < 12 ? h + " AM" : (h === 12 ? "12 PM" : (h-12) + " PM"));
+    html += "<option value='" + h + "'>" + String(h).padStart(2,"0") + ":00 (" + label + ")</option>";
+  }
+  sel.innerHTML = html;
+}
+
+function openSetDeadlineModal(taskId, currentDeadlineAt) {
+  currentSetDeadlineTaskId = taskId;
+  populateHourSelect("setDeadlineHourInput");
+  document.getElementById("setDeadlineDateInput").value = currentDeadlineAt ? currentDeadlineAt.slice(0,10) : "";
+  document.getElementById("setDeadlineHourInput").value = currentDeadlineAt ? String(parseInt(currentDeadlineAt.slice(11,13),10)) : "";
+  document.getElementById("setDeadlineModalOverlay").classList.add("active");
+}
+function closeSetDeadlineModal() {
+  document.getElementById("setDeadlineModalOverlay").classList.remove("active");
+  currentSetDeadlineTaskId = null;
+}
+async function submitSetDeadline() {
+  var date = document.getElementById("setDeadlineDateInput").value;
+  var hour = document.getElementById("setDeadlineHourInput").value;
+  if (!date || hour === "") { showToast("!", "اختار التاريخ والساعة"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/tasks/" + currentSetDeadlineTaskId + "/deadline", "PATCH", { deadline_date: date, deadline_hour: Number(hour) });
+    showToast("v", "تم تحديد الميعاد");
+    closeSetDeadlineModal();
+    await loadTasksForDeadlineSetting();
+    await fetchDeliveryStatusReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+// ================= Deadline Change Requests =================
+
+async function fetchDeadlineRequestsOverview() {
+  var month = document.getElementById("reqFilterMonth") ? document.getElementById("reqFilterMonth").value : "";
+  try {
+    var results = await Promise.all([
+      apiRequest("/api/admin/deadline-requests?status=pending" + (month?"&month="+month:""), "GET"),
+      apiRequest("/api/admin/deadline-requests?status=approved" + (month?"&month="+month:""), "GET"),
+      apiRequest("/api/admin/deadline-requests?status=rejected" + (month?"&month="+month:""), "GET"),
+    ]);
+    renderDeadlineRequestsOverview(results[0].requests||[], results[1].requests||[], results[2].requests||[]);
+  } catch(e) { /* non-fatal */ }
+}
+
+function renderDeadlineRequestsOverview(pending, approved, rejected) {
+  var el = document.getElementById("deadlineRequestsOverview");
+  var html = "<div class='info-grid'>";
+  html += infoCard("Pending <span class='fla'>معلقة</span>", "<span style='color:var(--warn)'>" + pending.length + "</span>");
+  html += infoCard("Approved <span class='fla'>مقبولة</span>", "<span style='color:var(--ok)'>" + approved.length + "</span>");
+  html += infoCard("Rejected <span class='fla'>مرفوضة</span>", "<span style='color:var(--danger)'>" + rejected.length + "</span>");
+  html += "</div>";
+
+  var rowHtml = function(r, showActions) {
+    var srcLabel = r.source === "long_pause" ? "وقوف طويل" : "طلب يدوي";
+    var decidedNote = r.decided_by_name ? ("<br/><span style='opacity:.7'>قرره " + r.decided_by_name + " في " + (r.decided_at||"").slice(0,16) + "</span>") : "";
+    var newDeadlineNote = r.new_deadline_at ? ("<br/>الميعاد الجديد: " + r.new_deadline_at) : "";
+    var body = "#" + r.emp_code + " " + r.employee_name + " — " + (r.task_name||"") + " (" + srcLabel + ")" + (r.reason ? " — " + r.reason : "") + newDeadlineNote + decidedNote;
+    var actions = showActions
+      ? "<button class='btn-end-task' onclick='openApproveDeadlineReqModal(" + r.id + ")'>APPROVE · موافقة</button> <button class='btn-end-task' onclick='rejectDeadlineReqPrompt(" + r.id + ")'>REJECT · رفض</button>"
+      : "";
+    return "<div class='log-entry'><div class='log-type'>" + r.requested_at.slice(0,16) + "</div><div class='log-note'>" + body + "</div>" + actions + "</div>";
+  };
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>PENDING · معلقة</span></div>";
+  html += pending.length ? pending.map(function(r){return rowHtml(r,true);}).join("") : "<div class='empty-log'>مفيش طلبات معلقة</div>";
+  html += "</div>";
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>APPROVED · مقبولة</span></div>";
+  html += approved.length ? approved.map(function(r){return rowHtml(r,false);}).join("") : "<div class='empty-log'>مفيش طلبات مقبولة</div>";
+  html += "</div>";
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--danger);border-color:var(--danger)'><span>REJECTED · مرفوضة</span></div>";
+  html += rejected.length ? rejected.map(function(r){return rowHtml(r,false);}).join("") : "<div class='empty-log'>مفيش طلبات مرفوضة</div>";
+  html += "</div>";
+
+  el.innerHTML = html;
+}
+
+var currentApproveDeadlineReqId = null;
+function openApproveDeadlineReqModal(reqId) {
+  currentApproveDeadlineReqId = reqId;
+  populateHourSelect("approveDeadlineHourInput");
+  document.getElementById("approveDeadlineDateInput").value = "";
+  document.getElementById("approveDeadlineHourInput").value = "";
+  document.getElementById("approveDeadlineReqModalOverlay").classList.add("active");
+}
+function closeApproveDeadlineReqModal() {
+  document.getElementById("approveDeadlineReqModalOverlay").classList.remove("active");
+  currentApproveDeadlineReqId = null;
+}
+async function submitApproveDeadlineReq() {
+  var date = document.getElementById("approveDeadlineDateInput").value;
+  var hour = document.getElementById("approveDeadlineHourInput").value;
+  if (!date || hour === "") { showToast("!", "اختار التاريخ والساعة للميعاد الجديد"); return; }
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/deadline-requests/" + currentApproveDeadlineReqId + "/decide", "POST", { action: "approve", deadline_date: date, deadline_hour: Number(hour) });
+    showToast("v", "تم قبول الطلب وتحديد الميعاد الجديد");
+    closeApproveDeadlineReqModal();
+    await fetchDeadlineRequestsOverview();
+    await fetchDeliveryStatusReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function rejectDeadlineReqPrompt(reqId) {
+  openModal("REJECT REQUEST · رفض الطلب", "متأكد عايز ترفض طلب تأجيل الميعاد ده؟", function() {
+    executeRejectDeadlineReq(reqId);
+  });
+}
+async function executeRejectDeadlineReq(reqId) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/deadline-requests/" + reqId + "/decide", "POST", { action: "reject" });
+    showToast("v", "تم رفض الطلب");
+    await fetchDeadlineRequestsOverview();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+// ================= Deadlines & Delivery Status Report =================
+
+function populateDeliveryStatusEmployeeSelect() {
+  var sel = document.getElementById("deliveryStatusEmployee");
+  if (!sel) return;
+  var cur = sel.value;
+  var html = "<option value='all'>All Employees · كل الموظفين</option>";
+  for (var i = 0; i < adminEmployees.length; i++) {
+    html += "<option value='" + adminEmployees[i].id + "'>#" + adminEmployees[i].emp_code + " - " + adminEmployees[i].name + "</option>";
+  }
+  sel.innerHTML = html;
+  if (cur) sel.value = cur;
+}
+
+async function fetchDeliveryStatusReport() {
+  var empId = document.getElementById("deliveryStatusEmployee").value;
+  var month = getMonthFilterValue("deliveryStatusMonth", "deliveryStatusMonthAll");
+  try {
+    var res = await apiRequest("/api/admin/tasks-by-month?employee_id=" + empId + "&month=" + month, "GET");
+    renderDeliveryStatusReport(res.tasks || []);
+  } catch(e) { showToast("!", e.message); }
+}
+
+function deliveryStatusMeta(d) {
+  if (!d || d.status === "no_deadline") return { label: "NO DEADLINE · مفيش ميعاد", color: "var(--muted)" };
+  if (d.status === "on_time") return { label: "ON TIME · في الميعاد", color: "var(--ok)" };
+  if (d.status === "late") return { label: "LATE · متأخر", color: "var(--danger)" };
+  if (d.status === "in_progress") return { label: "IN PROGRESS · شغال، الميعاد لسه", color: "var(--warn)" };
+  return { label: "OVERDUE · فات الميعاد", color: "var(--danger)" };
+}
+
+function renderDeliveryStatusReport(tasks) {
+  var el = document.getElementById("deliveryStatusResult");
+  if (!tasks.length) { el.innerHTML = "<div class='empty-log'>مفيش تاسكات في الفترة دي</div>"; return; }
+
+  var onTime = 0, late = 0, inProgress = 0, overdue = 0, noDeadline = 0;
+  var byEmp = {}, empOrder = [];
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
+    var st = (t.delivery && t.delivery.status) || "no_deadline";
+    if (st === "on_time") onTime++; else if (st === "late") late++; else if (st === "in_progress") inProgress++;
+    else if (st === "overdue") overdue++; else noDeadline++;
+    var key = t.emp_code + "||" + t.employee_name;
+    if (!byEmp[key]) { byEmp[key] = []; empOrder.push(key); }
+    byEmp[key].push(t);
+  }
+
+  var html = "<div class='info-grid'>";
+  html += infoCard("On Time <span class='fla'>في الميعاد</span>", "<span style='color:var(--ok)'>" + onTime + "</span>");
+  html += infoCard("Late / Overdue <span class='fla'>متأخر</span>", "<span style='color:var(--danger)'>" + (late+overdue) + "</span>");
+  html += infoCard("In Progress <span class='fla'>شغال</span>", "<span style='color:var(--warn)'>" + inProgress + "</span>");
+  html += infoCard("No Deadline <span class='fla'>مفيش ميعاد</span>", "<span style='color:var(--muted)'>" + noDeadline + "</span>");
+  html += "</div>";
+
+  for (var e = 0; e < empOrder.length; e++) {
+    var empTasks = byEmp[empOrder[e]];
+    html += "<div class='log-wrap' style='margin-top:14px'>";
+    html += "<div class='log-header'><span>#" + empTasks[0].emp_code + " " + empTasks[0].employee_name + "</span><span style='font-size:13px;color:var(--muted)'>" + empTasks.length + " task(s)</span></div>";
+    for (var j = 0; j < empTasks.length; j++) {
+      var tk = empTasks[j];
+      var meta = deliveryStatusMeta(tk.delivery);
+      html += "<div class='proj-row'>";
+      html += "<div class='proj-row-top'>";
+      html += "<div class='proj-id'>" + tk.project + "</div>";
+      html += "<div class='proj-badges'><span class='proj-badge' style='color:" + meta.color + ";border-color:" + meta.color + "'>" + meta.label + "</span></div>";
+      html += "</div>";
+      html += "<div class='fl-hint' style='margin-top:6px'>" + tk.name + (tk.description ? " — " + tk.description : "") + "</div>";
+      html += "<div class='fl-hint'>بدأ: " + tk.start_time + " (" + tk.date + ")" + (tk.delivery && tk.delivery.deadline_display ? " — الميعاد: " + tk.delivery.deadline_display : "") + "</div>";
+      html += "</div>";
+    }
+    html += "</div>";
+  }
+  el.innerHTML = html;
 }
 
 async function loadDailyTasksBrowser() {
@@ -4435,6 +4821,26 @@ function renderAdminReport(res) {
   }
   html += "</div>";
 
+  // ---- Task deliveries (deadline performance) ----
+  if (res.deliveries) {
+    var dv = res.deliveries;
+    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>TASK DELIVERIES · تسليم التاسكات</span></div>";
+    html += "<div class='info-grid'>";
+    html += infoCard("Total Tasks (with deadline) <span class='fla'>إجمالي التاسكات بميعاد</span>", dv.total);
+    html += infoCard("On Time <span class='fla'>في الميعاد أو قبله</span>", "<span style='color:var(--ok)'>" + dv.on_time + "</span>");
+    html += infoCard("Late <span class='fla'>اتأخر فيها</span>", "<span style='color:var(--danger)'>" + dv.late + "</span>");
+    html += "</div>";
+    if (dv.list && dv.list.length) {
+      for (var dI = 0; dI < dv.list.length; dI++) {
+        var dItem = dv.list[dI];
+        var dColor = dItem.status === "on_time" ? "var(--ok)" : "var(--danger)";
+        var dLabel = dItem.status === "on_time" ? "ON TIME · في الميعاد" : ("LATE · متأخر " + formatCountdown(dItem.delay_seconds || 0));
+        html += "<div class='log-entry'><div class='log-type' style='color:" + dColor + "'>" + dItem.date + "</div><div class='log-note'>" + dItem.project + " — " + dItem.task_name + "<br/><span style='color:" + dColor + "'>" + dLabel + "</span> — الميعاد: " + (dItem.deadline_display||"") + "</div></div>";
+      }
+    }
+    html += "</div>";
+  }
+
   // ---- Actual hours worked, expandable ----
   var actualDaysList = res.days.filter(function(d){ return d.actual_seconds > 0; });
   var actualDetailHtml = actualDaysList.length
@@ -4659,6 +5065,7 @@ async function addTask() {
       renderBrowsedTasks();
     }
     showToast("v","Task started!");
+    openModal("TASK STARTED · بدأت المهمة", "هيتم تحديد معاد تسليم لهذه المهمة من جانب الإدارة، والوقت بدأ يحسب من دلوقتي.", function() {});
   } catch(e) { showToast("!","Error: " + e.message); }
   showLoading(false);
 }
@@ -4881,6 +5288,39 @@ function taskSegmentsTimeline(task) {
   return html;
 }
 
+function formatCountdown(seconds) {
+  if (seconds < 0) seconds = 0;
+  var days = Math.floor(seconds / 86400);
+  if (days >= 1) return days + (days === 1 ? " يوم" : " أيام");
+  var hours = Math.floor(seconds / 3600);
+  var mins = Math.floor((seconds % 3600) / 60);
+  return String(hours).padStart(2,"0") + "h " + String(mins).padStart(2,"0") + "m";
+}
+
+function taskDeadlineBoxHtml(t) {
+  var d = t.delivery;
+  if (!d || d.status === "no_deadline") {
+    return "<div class='task-deadline-empty'>مفيش ميعاد تسليم لسه</div>";
+  }
+  var color, statusLabel, countdownText;
+  if (d.status === "on_time") {
+    color = "var(--ok)"; statusLabel = "DELIVERED ON TIME · في الميعاد"; countdownText = "✓";
+  } else if (d.status === "late") {
+    color = "var(--danger)"; statusLabel = "DELIVERED LATE · تسليم متأخر"; countdownText = "+" + formatCountdown(d.delay_seconds || 0);
+  } else if (d.status === "in_progress") {
+    color = "var(--warn)"; statusLabel = "TIME LEFT · متبقي";
+    countdownText = "<span class='task-deadline-countdown-live' data-deadline='" + d.deadline_at + "'>" + formatCountdown(d.remaining_seconds || 0) + "</span>";
+  } else { // overdue
+    color = "var(--danger)"; statusLabel = "OVERDUE · متأخر"; countdownText = "+" + formatCountdown(d.overdue_seconds || 0);
+  }
+  var html = "<div class='task-deadline-box' style='border-color:" + color + "'>";
+  html += "<div class='task-deadline-status' style='color:" + color + "'>" + statusLabel + "</div>";
+  html += "<div class='task-deadline-countdown' style='color:" + color + "'>" + countdownText + "</div>";
+  html += "<div class='task-deadline-date'>" + (d.deadline_display || "") + "</div>";
+  html += "</div>";
+  return html;
+}
+
 function taskCardHtml(t, index) {
   var isCompleted = !!t.end_time;
   var isPaused = !isCompleted && !!t.paused;
@@ -4897,16 +5337,21 @@ function taskCardHtml(t, index) {
   if (isActive) {
     html += "<div class='task-dur task-live-timer' data-tid='" + t.id + "'>00:00:00</div>";
     html += "<button class='btn-end-task' data-tid='" + t.id + "' onclick='endTask(this.dataset.tid)'>END TASK · إنهاء المهمة</button>";
-    html += "<button class='btn-end-task' style='margin-top:6px' onclick='pauseTaskAction(" + t.id + ")'>PAUSE · إيقاف مؤقت</button>";
+    html += "<button class='btn-end-task' style='margin-top:6px' onclick='pauseTaskAction(" + t.id + ")'>TEMP PAUSE · وقوف مؤقت</button>";
+    html += "<button class='btn-end-task' style='margin-top:6px' onclick='longPauseTaskAction(" + t.id + ")'>LONG PAUSE · وقوف طويل</button>";
+    html += "<button class='btn-end-task' style='margin-top:6px' onclick='requestDeadlineChangeAction(" + t.id + ")'>REQUEST DEADLINE · طلب تأجيل</button>";
   } else if (isPaused) {
     html += "<div class='task-dur' style='color:#ffd54a'>Paused so far: " + formatDuration(pausedAccumulatedSeconds(t)) + "</div>";
     html += "<button class='btn-end-task' onclick='resumeTaskAction(" + t.id + ")'>RESUME · استكمال</button>";
     html += "<button class='btn-end-task' style='margin-top:6px' onclick='endTask(" + t.id + ")'>END TASK · إنهاء المهمة</button>";
+    html += "<button class='btn-end-task' style='margin-top:6px' onclick='requestDeadlineChangeAction(" + t.id + ")'>REQUEST DEADLINE · طلب تأجيل</button>";
   } else {
     html += "<div class='task-dur' style='color:var(--muted)'>Completed</div>";
   }
   html += "<button class='btn-end-task' style='margin-top:6px' onclick='openEditTaskModal(" + t.id + ")'>EDIT · تعديل</button>";
-  html += "</div></div>";
+  html += "</div>";
+  html += taskDeadlineBoxHtml(t);
+  html += "</div>";
   return html;
 }
 
@@ -4941,6 +5386,50 @@ async function pauseTaskAction(taskId) {
     renderPausedTasks();
     renderBrowsedTasks();
     showToast("v", "تم إيقاف المهمة مؤقتاً");
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function longPauseTaskAction(taskId) {
+  openModal("LONG PAUSE · وقوف طويل", "التاسك هيتوقف، وهيتفتح طلب تأجيل ميعاد تسليم تلقائي للأدمن. متأكد؟", function() {
+    executeLongPause(taskId);
+  });
+}
+async function executeLongPause(taskId) {
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/tasks/" + taskId + "/long-pause", "PATCH", {});
+    activeTasksArr = activeTasksArr.filter(function(t) { return String(t.id) !== String(taskId); });
+    delete taskStartTimes[taskId];
+    pausedTasksArr.push(res.task);
+    updateBrowsedTaskInPlace(res.task);
+    renderActiveTasks();
+    renderPausedTasks();
+    renderBrowsedTasks();
+    showToast("v", "تم الإيقاف الطويل، وتم إرسال طلب تأجيل الميعاد للأدمن");
+    await loadMyDeadlineRequests();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+var currentDeadlineReqTaskId = null;
+function requestDeadlineChangeAction(taskId) {
+  currentDeadlineReqTaskId = taskId;
+  document.getElementById("deadlineReqReason").value = "";
+  document.getElementById("deadlineReqModalOverlay").classList.add("active");
+}
+function closeDeadlineReqModal() {
+  document.getElementById("deadlineReqModalOverlay").classList.remove("active");
+  currentDeadlineReqTaskId = null;
+}
+async function submitDeadlineChangeRequest() {
+  var reason = document.getElementById("deadlineReqReason").value.trim();
+  showLoading(true);
+  try {
+    await apiRequest("/api/tasks/" + currentDeadlineReqTaskId + "/request-deadline-change", "POST", { reason: reason });
+    showToast("v", "تم إرسال طلب تأجيل الميعاد للأدمن");
+    closeDeadlineReqModal();
+    await loadMyDeadlineRequests();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -5049,6 +5538,7 @@ function getMonthFilterValue(monthInputId, checkboxId) {
 
 var SECTION_TO_PAGE = {
   "section-emp-status": "overview", "section-birthdays": "overview", "section-daily-tasks": "overview",
+  "section-set-deadlines": "overview", "section-deadline-requests": "overview", "section-delivery-status": "overview",
   "section-salary": "employees", "section-manage-admins": "employees", "section-probation": "employees", "section-full-info": "employees",
   "section-requests": "requests", "section-holidays": "requests", "section-late-arrivals-title": "requests",
   "section-penalties": "requests", "section-bonuses": "requests", "section-notices": "requests",
