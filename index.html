@@ -193,7 +193,7 @@ select option{background:#111;}
 .collapsible{border:1px solid var(--border2);margin-bottom:14px;}
 .collapsible > *:not(.log-header):not(.settings-label){transition:max-height 0.4s cubic-bezier(.4,0,.2,1),opacity 0.3s ease,padding 0.4s cubic-bezier(.4,0,.2,1),margin 0.4s cubic-bezier(.4,0,.2,1);}
 .collapsible:not(.expanded) > *:not(.log-header):not(.settings-label){max-height:0;opacity:0;overflow:hidden;margin-top:0 !important;margin-bottom:0 !important;padding-top:0 !important;padding-bottom:0 !important;border-top-width:0 !important;border-bottom-width:0 !important;}
-.collapsible.expanded > *:not(.log-header):not(.settings-label){max-height:4000px;opacity:1;}
+.collapsible.expanded > *:not(.log-header):not(.settings-label){max-height:100000px;opacity:1;}
 .collapsible.expanded > .log-header .acc-chevron,.collapsible.expanded > .settings-label .acc-chevron{transform:rotate(180deg);}
 .collapsible > .settings-label{margin-bottom:0 !important;padding-bottom:14px;}
 .collapsible.expanded > .settings-label{margin-bottom:14px !important;}
@@ -745,6 +745,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="log-header" style="color:var(--warn);border-color:var(--warn)"><span>NOTICES · لفت النظر <span class="fla">(للاطلاع فقط)</span></span></div>
 <div id="myNoticesList"><div class="empty-log">No notices</div></div>
 </div>
+<div id="myRequestStatusGroups">
 <div class="log-wrap" style="margin-bottom:18px;">
 <div class="log-header"><span>MY LEAVE REQUESTS · طلبات الإجازة</span></div>
 <div id="myLeaveList"><div class="empty-log">No requests yet</div></div>
@@ -760,6 +761,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="log-wrap">
 <div class="log-header"><span>MY PERMISSION REQUESTS · طلبات إذن الانصراف</span></div>
 <div id="myPermList"><div class="empty-log">No requests yet</div></div>
+</div>
 </div>
 </div>
 <div class="tab-content" id="content-admin">
@@ -818,7 +820,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="deadlineRequestsOverview"></div>
 </div>
 
-<div class="task-form no-accordion">
+<div class="task-form allow-nested-accordion">
 <div class="settings-label" id="section-daily-tasks">Daily Tasks Browser <span class="fla">مين شغال في إيه</span></div>
 <div class="sec-sub" style="margin-bottom:12px">هنا التصنيف الكامل (Category/Type) ظاهر زي ما دخّلته بالظبط</div>
 <div class="form-row">
@@ -834,7 +836,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
-<div id="dailyTasksResult" class="no-accordion"></div>
+<div id="dailyTasksResult"></div>
 
 <div class="task-form">
 <div class="settings-label" id="section-delivery-status" style="color:var(--ok)">Deadlines &amp; Delivery Status <span class="fla">مواعيد وحالات التسليم</span></div>
@@ -855,7 +857,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="admin-page" id="admin-page-employees">
 <div class="task-form">
-<div class="settings-label" id="section-salary">إعدادات الراتب لكل موظف</div>
+<div class="settings-label" id="section-salary">Salary Settings <span class="fla">إعدادات الراتب لكل موظف</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -999,7 +1001,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="task-form">
-<div class="settings-label" id="section-holidays">إدارة الإجازات الرسمية</div>
+<div class="settings-label" id="section-holidays">Official Holidays <span class="fla">إدارة الإجازات الرسمية</span></div>
 <div class="fg">
 <div class="fl">Filter Month <span class="fla">فلتر الشهر</span></div>
 <input type="month" id="holidayFilterMonth" onchange="refreshHolidaysOnly()"/>
@@ -1035,7 +1037,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="adminLateArrivalsList"><div class="empty-log">No late arrivals this month</div></div>
 </div>
 <div class="task-form">
-<div class="settings-label" id="section-penalties">جزاءات (خصم من المرتب)</div>
+<div class="settings-label" id="section-penalties">Penalties <span class="fla">جزاءات (خصم من المرتب)</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -1270,7 +1272,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="admin-page" id="admin-page-finance">
-<div class="task-form">
+<div class="task-form allow-nested-accordion">
 <div class="settings-label" id="section-income-expense">Company Income &amp; Expenses <span class="fla">إيرادات ومصروفات الشركة</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -1310,7 +1312,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div id="profitLossReportResult" style="margin-top:14px"></div>
 </div>
-<div class="task-form">
+<div class="task-form allow-nested-accordion">
 <div class="settings-label" id="section-petty-cash">Petty Cash · العهدة <span class="fla">(منفصلة تماماً عن حسابات الشركة)</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
@@ -1348,7 +1350,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="admin-page" id="admin-page-reports">
 <div class="task-form">
-<div class="settings-label" id="section-report">Employee Monthly Report</div>
+<div class="settings-label" id="section-report">Employee Monthly Report <span class="fla">تقرير الموظف الشهري</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Employee</div>
@@ -1948,8 +1950,9 @@ function processCollapsibles(containerId) {
   try {
     var freshSections = root.querySelectorAll(".log-wrap:not(.collapsible), .task-form:not(.collapsible)");
     freshSections.forEach(function(s) {
-      if (s.closest(".collapsible")) return; // already part of an outer function's group — keep it together, don't make it its own accordion
-      if (s.closest(".no-accordion")) return; // explicitly excluded section (e.g. admin's Daily Tasks Browser)
+      var blockingAncestor = s.closest(".collapsible");
+      if (blockingAncestor && !blockingAncestor.classList.contains("allow-nested-accordion")) return; // already part of an outer function's group — keep it together, don't make it its own accordion
+      if (s.closest(".no-accordion")) return; // explicitly excluded section
       s.classList.add("collapsible");
     });
 
@@ -2245,7 +2248,7 @@ async function loadMyDeadlineRequests() {
     var el = document.getElementById("myDeadlineReqList");
     var reqs = res.requests || [];
     if (!reqs.length) { el.innerHTML = ""; return; }
-    var wrapHtml = "<div class='settings-label' style='margin-top:6px'>My Deadline Requests <span class='fla'>طلبات تأجيل الميعاد</span></div><div id='myDeadlineReqInner'></div>";
+    var wrapHtml = "<div class='log-wrap'><div class='log-header'><span>MY DEADLINE REQUESTS · طلبات تأجيل الميعاد</span></div><div id='myDeadlineReqInner'></div></div>";
     el.innerHTML = wrapHtml;
     renderMyRequestGroup("myDeadlineReqInner", reqs, function(r) {
       var srcLabel = r.source === "long_pause" ? "وقوف طويل" : "طلب يدوي";
@@ -3510,13 +3513,16 @@ function renderDeliveryStatusReport(tasks) {
     for (var j = 0; j < empTasks.length; j++) {
       var tk = empTasks[j];
       var meta = deliveryStatusMeta(tk.delivery);
-      html += "<div class='proj-row'>";
-      html += "<div class='proj-row-top'>";
+      html += "<div class='proj-row' style='display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap'>";
+      html += "<div style='flex:1;min-width:200px'>";
       html += "<div class='proj-id'>" + tk.project + "</div>";
-      html += "<div class='proj-badges'><span class='proj-badge' style='color:" + meta.color + ";border-color:" + meta.color + "'>" + meta.label + "</span></div>";
-      html += "</div>";
       html += "<div class='fl-hint' style='margin-top:6px'>" + tk.name + (tk.description ? " — " + tk.description : "") + "</div>";
-      html += "<div class='fl-hint'>بدأ: " + tk.start_time + " (" + tk.date + ")" + (tk.delivery && tk.delivery.deadline_display ? " — الميعاد: " + tk.delivery.deadline_display : "") + "</div>";
+      html += "</div>";
+      html += "<div style='text-align:left;flex-shrink:0'>";
+      html += "<span class='proj-badge' style='color:" + meta.color + ";border-color:" + meta.color + "'>" + meta.label + "</span>";
+      html += "<div style='margin-top:6px;font-size:15px;color:#fff'>بدأ: " + tk.start_time + " (" + tk.date + ")</div>";
+      if (tk.delivery && tk.delivery.deadline_display) html += "<div style='margin-top:2px;font-size:15px;color:#fff'>الميعاد: " + tk.delivery.deadline_display + "</div>";
+      html += "</div>";
       html += "</div>";
     }
     html += "</div>";
@@ -5804,10 +5810,7 @@ function switchTab(name) {
     loadLeaveOvertimeData();
   }
   if (name === "requests") {
-    ensureCollapsibleObserver("myLeaveList");
-    ensureCollapsibleObserver("myFinList");
-    ensureCollapsibleObserver("myOffList");
-    ensureCollapsibleObserver("myPermList");
+    ensureCollapsibleObserver("myRequestStatusGroups");
   }
   if (name === "tasks") {
     ensureCollapsibleObserver("myDeadlineReqList");
