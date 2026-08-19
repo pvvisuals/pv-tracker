@@ -183,10 +183,11 @@ select option{background:#111;}
 .btn:disabled{opacity:0.2;cursor:not-allowed;}
 .log-wrap{border:1px solid var(--border);box-shadow:0 2px 10px rgba(0,0,0,0.3);}
 .log-header{padding:16px 20px;background:var(--card);border-bottom:1px solid var(--border);font-size:18px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);display:flex;justify-content:space-between;border-right:4px solid #fff;}
-.acc-chevron{display:inline-block;transition:transform 0.25s ease;margin-left:10px;font-size:14px;color:var(--muted2);}
+.acc-chevron{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;transition:transform 0.3s cubic-bezier(.4,0,.2,1),background 0.2s;margin-right:auto;margin-left:8px;font-size:18px;line-height:1;color:var(--muted2);flex-shrink:0;}
+.collapsible > .log-header:hover .acc-chevron,.collapsible > .settings-label:hover .acc-chevron{background:rgba(255,255,255,0.08);color:#fff;}
 .collapsible > .log-header,.collapsible > .settings-label{cursor:pointer;user-select:none;}
 .collapsible > .log-header:hover,.collapsible > .settings-label:hover{background:rgba(255,255,255,0.03);}
-.collapsible > *:not(.log-header):not(.settings-label){max-height:0;opacity:0;overflow:hidden;transition:max-height 0.35s ease,opacity 0.25s ease,margin 0.35s ease;margin-top:0 !important;margin-bottom:0 !important;}
+.collapsible > *:not(.log-header):not(.settings-label){max-height:0;opacity:0;overflow:hidden;transition:max-height 0.4s cubic-bezier(.4,0,.2,1),opacity 0.3s ease,padding 0.4s cubic-bezier(.4,0,.2,1),margin 0.4s cubic-bezier(.4,0,.2,1);margin-top:0 !important;margin-bottom:0 !important;padding-top:0 !important;padding-bottom:0 !important;border-top-width:0 !important;border-bottom-width:0 !important;}
 .collapsible.expanded > *:not(.log-header):not(.settings-label){max-height:4000px;opacity:1;}
 .collapsible.expanded > .log-header .acc-chevron,.collapsible.expanded > .settings-label .acc-chevron{transform:rotate(180deg);}
 .collapsible > .settings-label{margin-bottom:0 !important;padding-bottom:14px;}
@@ -1923,16 +1924,16 @@ function accordionKeyFor(wrap) {
   return text || null;
 }
 
-function processAdminCollapsibles() {
+function processCollapsibles(containerId) {
   if (accordionProcessing) return;
-  var admin = document.getElementById("content-admin");
-  if (!admin) return;
+  var root = document.getElementById(containerId);
+  if (!root) return;
   accordionProcessing = true;
   try {
-    var freshSections = admin.querySelectorAll(".log-wrap:not(.collapsible), .task-form:not(.collapsible)");
+    var freshSections = root.querySelectorAll(".log-wrap:not(.collapsible), .task-form:not(.collapsible)");
     freshSections.forEach(function(s) { s.classList.add("collapsible"); });
 
-    var wraps = admin.querySelectorAll(".collapsible");
+    var wraps = root.querySelectorAll(".collapsible");
     wraps.forEach(function(wrap) {
       var header = wrap.querySelector(":scope > .log-header, :scope > .settings-label");
       if (header && !header.querySelector(".acc-chevron")) {
@@ -1942,22 +1943,14 @@ function processAdminCollapsibles() {
         header.appendChild(chev);
       }
       var key = accordionKeyFor(wrap);
-      if (key && accordionState[key]) wrap.classList.add("expanded");
+      // Default OPEN the first time a section is ever seen; only stays
+      // collapsed once the user has explicitly closed it (remembered by key).
+      var shouldBeExpanded = !key || accordionState[key] !== false;
+      wrap.classList.toggle("expanded", shouldBeExpanded);
     });
   } finally {
     accordionProcessing = false;
   }
-}
-
-function expandCollapsibleChildren(containerId) {
-  var container = document.getElementById(containerId);
-  if (!container) return;
-  var wraps = container.querySelectorAll(".log-wrap, .task-form");
-  wraps.forEach(function(w) {
-    w.classList.add("collapsible", "expanded");
-    var key = accordionKeyFor(w);
-    if (key) accordionState[key] = true;
-  });
 }
 
 document.addEventListener("click", function(e) {
@@ -1970,7 +1963,16 @@ document.addEventListener("click", function(e) {
   if (key) accordionState[key] = willExpand;
 });
 
-var accordionObserver = new MutationObserver(function() { processAdminCollapsibles(); });
+var collapsibleObservers = {};
+function ensureCollapsibleObserver(containerId) {
+  var root = document.getElementById(containerId);
+  if (!root || root.dataset.accObserved) return;
+  root.dataset.accObserved = "1";
+  var obs = new MutationObserver(function() { processCollapsibles(containerId); });
+  obs.observe(root, { childList: true, subtree: true });
+  collapsibleObservers[containerId] = obs;
+  processCollapsibles(containerId);
+}
 
 async function initApp() {
   var fn = user.name.split(" ")[0];
@@ -3352,7 +3354,6 @@ async function fetchDeliveryStatusReport() {
   try {
     var res = await apiRequest("/api/admin/tasks-by-month?employee_id=" + empId + "&month=" + month, "GET");
     renderDeliveryStatusReport(res.tasks || []);
-    expandCollapsibleChildren("deliveryStatusResult");
   } catch(e) { showToast("!", e.message); }
 }
 
@@ -4214,7 +4215,6 @@ async function fetchAdminReport() {
   try {
     var res = await apiRequest("/api/admin/report?employee_id=" + empId + "&month=" + month, "GET");
     renderAdminReport(res);
-    expandCollapsibleChildren("adminReportResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -4574,7 +4574,6 @@ async function fetchProjectCostReport() {
       res.projects = res.projects.filter(function(p) { return p.project_code === parts[0] && p.project_name === parts[1]; });
     }
     renderProjectCostReport(res);
-    expandCollapsibleChildren("projectCostReportResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -4697,7 +4696,6 @@ async function fetchProfitLossReport() {
   try {
     var res = await apiRequest("/api/admin/profit-loss-report?month=" + month, "GET");
     renderProfitLossReport(res);
-    expandCollapsibleChildren("profitLossReportResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -4776,7 +4774,6 @@ async function fetchPettyCash() {
   try {
     var res = await apiRequest("/api/admin/petty-cash?month=" + month, "GET");
     renderPettyCash(res);
-    expandCollapsibleChildren("pettyCashResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -4817,7 +4814,6 @@ async function fetchProjectsReport() {
   try {
     var res = await apiRequest("/api/admin/projects-report?month=" + month, "GET");
     renderProjectsReport(res);
-    expandCollapsibleChildren("projectsReportResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -5689,15 +5685,19 @@ function switchTab(name) {
     refreshMyProbationStatus();
     loadLeaveOvertimeData();
   }
+  if (name === "requests") {
+    ensureCollapsibleObserver("myLeaveList");
+    ensureCollapsibleObserver("myFinList");
+    ensureCollapsibleObserver("myOffList");
+    ensureCollapsibleObserver("myPermList");
+  }
+  if (name === "tasks") {
+    ensureCollapsibleObserver("myDeadlineReqList");
+  }
   if (name === "admin" && user && user.role === "admin") {
     loadAdminData();
     switchAdminPage("overview");
-    var adminEl = document.getElementById("content-admin");
-    if (adminEl && !adminEl.dataset.accObserved) {
-      adminEl.dataset.accObserved = "1";
-      accordionObserver.observe(adminEl, { childList: true, subtree: true });
-    }
-    processAdminCollapsibles();
+    ensureCollapsibleObserver("content-admin");
   }
 }
 
