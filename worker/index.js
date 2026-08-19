@@ -153,6 +153,55 @@ const VARIANT_LABEL_MAP = {
 function autoSimpleLabel(category, type) {
   return VARIANT_LABEL_MAP[category + "_" + type] || "?";
 }
+// Egypt has used a fixed UTC+2 offset (no daylight saving) since 2014, so a
+// simple fixed-offset conversion is reliable for deadline scheduling.
+function cairoLocalToUtcString(dateStr, hour) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const utcMs = Date.UTC(y, m - 1, d, Number(hour), 0, 0) - 2 * 3600 * 1000;
+  return new Date(utcMs).toISOString().slice(0, 19).replace("T", " ");
+}
+function cairoDeadlineDisplay(deadlineAt) {
+  if (!deadlineAt) return null;
+  const d = new Date(deadlineAt + "Z");
+  return d.toLocaleString("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+// Delivery status for a single task: measured against the task's ORIGINAL
+// start time is implicit (the deadline itself doesn't move when set later),
+// comparing either the actual completion instant or "now" against the
+// stored deadline.
+function computeDeliveryStatus(task, actualEndMs, nowMs) {
+  if (!task.deadline_at) return { status: "no_deadline" };
+  const deadlineMs = new Date(task.deadline_at + "Z").getTime();
+  const isCompleted = !!task.end_time;
+  if (isCompleted) {
+    if (actualEndMs !== null && actualEndMs <= deadlineMs) {
+      return { status: "on_time", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at) };
+    }
+    const delaySeconds = actualEndMs !== null ? Math.max(0, Math.floor((actualEndMs - deadlineMs) / 1000)) : null;
+    return { status: "late", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at), delay_seconds: delaySeconds };
+  }
+  if (nowMs <= deadlineMs) {
+    return { status: "in_progress", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at), remaining_seconds: Math.floor((deadlineMs - nowMs) / 1000) };
+  }
+  return { status: "overdue", deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at), overdue_seconds: Math.floor((nowMs - deadlineMs) / 1000) };
+}
+
+// Attaches a `delivery` object to every task, using each task's segments
+// (already attached) to find the actual completion instant for finished
+// tasks.
+function attachDeliveryStatus(tasks) {
+  const nowMs = Date.now();
+  return tasks.map((t) => {
+    let actualEndMs = null;
+    if (t.end_time && t.segments && t.segments.length) {
+      const last = t.segments[t.segments.length - 1];
+      if (last.ended_at) actualEndMs = new Date(last.ended_at + "Z").getTime();
+    }
+    return { ...t, delivery: computeDeliveryStatus(t, actualEndMs, nowMs) };
+  });
+}
+
 function taskProjectDisplay(proj) {
   return proj.code + " - " + proj.name + (proj.simple_label ? " (" + proj.simple_label + ")" : "");
 }
@@ -298,6 +347,11 @@ export default {
       if (taskPauseMatch && method === "PATCH") return await pauseTask(db, me, Number(taskPauseMatch[1]));
       const taskResumeMatch = path.match(/^\/api\/tasks\/(\d+)\/resume$/);
       if (taskResumeMatch && method === "PATCH") return await resumeTask(db, me, Number(taskResumeMatch[1]));
+      const taskLongPauseMatch = path.match(/^\/api\/tasks\/(\d+)\/long-pause$/);
+      if (taskLongPauseMatch && method === "PATCH") return await longPauseTask(db, me, Number(taskLongPauseMatch[1]), body);
+      const taskDeadlineReqMatch = path.match(/^\/api\/tasks\/(\d+)\/request-deadline-change$/);
+      if (taskDeadlineReqMatch && method === "POST") return await requestDeadlineChange(db, me, Number(taskDeadlineReqMatch[1]), body, "manual");
+      if (path === "/api/deadline-requests/mine" && method === "GET") return await myDeadlineRequests(db, me, url.searchParams.get("month"));
       const taskEditMatch = path.match(/^\/api\/tasks\/(\d+)$/);
       if (taskEditMatch && method === "PATCH") return await editTask(db, me, Number(taskEditMatch[1]), body, env);
 
@@ -665,7 +719,7 @@ async function editTask(db, me, taskId, body, env) {
   args.push(taskId);
   await db.execute({ sql: `UPDATE tasks SET ${fields.join(", ")} WHERE id = ?`, args });
   const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
-  return json({ task: (await attachSegments(db, updated.rows))[0] });
+  return json({ task: attachDeliveryStatus(await attachSegments(db, updated.rows))[0] });
 }
 
 async function pauseTask(db, me, taskId) {
@@ -682,7 +736,45 @@ async function pauseTask(db, me, taskId) {
   }
   await db.execute({ sql: "UPDATE tasks SET paused = 1 WHERE id = ?", args: [taskId] });
   const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
-  return json({ task: (await attachSegments(db, updated.rows))[0] });
+  return json({ task: attachDeliveryStatus(await attachSegments(db, updated.rows))[0] });
+}
+
+// "Long pause" — same effect as a regular pause, plus it automatically
+// files a deadline-change request (since a long pause usually means the
+// current deadline won't be met and needs the admin's attention).
+async function longPauseTask(db, me, taskId, body) {
+  const pauseResult = await pauseTask(db, me, taskId);
+  if (pauseResult.status && pauseResult.status !== 200 && pauseResult.status !== 201) return pauseResult;
+  await requestDeadlineChange(db, me, taskId, body, "long_pause");
+  return pauseResult;
+}
+
+// Files (or re-files) a deadline-change request for a task — stays pending
+// until the admin sets a new deadline (approve) or declines it.
+async function requestDeadlineChange(db, me, taskId, body, source) {
+  const rows = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ? AND employee_id = ?", args: [taskId, me.id] });
+  const task = rows.rows[0];
+  if (!task) return err("Task not found", 404);
+  const existing = await db.execute({
+    sql: "SELECT * FROM task_deadline_requests WHERE task_id = ? AND status = 'pending'",
+    args: [taskId],
+  });
+  if (existing.rows.length) return err("فيه طلب تغيير معاد لسه معلق للتاسك ده بالفعل", 409);
+  const res = await db.execute({
+    sql: `INSERT INTO task_deadline_requests (task_id, employee_id, reason, source) VALUES (?,?,?,?) RETURNING *`,
+    args: [taskId, me.id, (body && body.reason) || (source === "long_pause" ? "وقوف طويل — محتاج تأجيل المعاد" : null), source],
+  });
+  return json({ request: res.rows[0] }, 201);
+}
+
+async function myDeadlineRequests(db, me, monthStr) {
+  const res = await db.execute({
+    sql: `SELECT tdr.*, t.name as task_name, t.project as project_display FROM task_deadline_requests tdr
+          JOIN tasks t ON t.id = tdr.task_id
+          WHERE tdr.employee_id = ? AND tdr.requested_at LIKE ? ORDER BY tdr.requested_at DESC`,
+    args: [me.id, monthLikePattern(monthStr)],
+  });
+  return json({ requests: res.rows });
 }
 
 async function resumeTask(db, me, taskId) {
@@ -700,7 +792,7 @@ async function resumeTask(db, me, taskId) {
   });
   await db.execute({ sql: "UPDATE tasks SET paused = 0 WHERE id = ?", args: [taskId] });
   const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
-  return json({ task: (await attachSegments(db, updated.rows))[0] });
+  return json({ task: attachDeliveryStatus(await attachSegments(db, updated.rows))[0] });
 }
 
 async function endTask(db, me, taskId, body) {
@@ -746,7 +838,7 @@ async function tasksToday(db, me) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
     args: [me.id, today],
   });
-  return json({ tasks: await attachSegments(db, res.rows) });
+  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
 }
 
 async function tasksByDate(db, me, dateStr) {
@@ -754,7 +846,7 @@ async function tasksByDate(db, me, dateStr) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
     args: [me.id, dateStr],
   });
-  return json({ tasks: await attachSegments(db, res.rows) });
+  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
 }
 
 // Currently-being-worked tasks (not paused, not ended) — shown regardless
@@ -764,7 +856,7 @@ async function activeTasks(db, me) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0 ORDER BY created_at ASC",
     args: [me.id],
   });
-  return json({ tasks: await attachSegments(db, res.rows) });
+  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
 }
 
 // Paused tasks — set aside, not finished, shown regardless of day so the
@@ -774,7 +866,7 @@ async function pausedTasksList(db, me) {
     sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 1 ORDER BY created_at ASC",
     args: [me.id],
   });
-  return json({ tasks: await attachSegments(db, res.rows) });
+  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
 }
 
 // Employee-facing project catalog — deduplicated by (code, name); if a group
@@ -1019,7 +1111,7 @@ async function monthlyReport(db, employeeId, monthStr) {
     monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
   }
 
-  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows, bonusRows, lateRows] = await Promise.all([
+  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows, bonusRows, lateRows, deadlineTaskRows] = await Promise.all([
     db.execute({
       sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC",
       args: [employeeId, firstDay, addDaysToDateStr(lastDay, 1)],
@@ -1073,6 +1165,10 @@ async function monthlyReport(db, employeeId, monthStr) {
     }),
     db.execute({
       sql: "SELECT * FROM late_arrivals WHERE employee_id = ? AND date BETWEEN ? AND ?",
+      args: [employeeId, firstDay, lastDay],
+    }),
+    db.execute({
+      sql: "SELECT * FROM tasks WHERE employee_id = ? AND date BETWEEN ? AND ? AND deadline_at IS NOT NULL AND end_time IS NOT NULL",
       args: [employeeId, firstDay, lastDay],
     }),
   ]);
@@ -1320,6 +1416,21 @@ async function monthlyReport(db, employeeId, monthStr) {
       count: lateRows.rows.length,
       list: lateRows.rows.map((l) => ({ date: l.date, arrival_time: l.arrival_time, status: l.status })),
     },
+    deliveries: await (async () => {
+      const withSegments = await attachSegments(db, deadlineTaskRows.rows);
+      const withStatus = attachDeliveryStatus(withSegments);
+      let onTime = 0, late = 0;
+      const list = withStatus.map((t) => {
+        if (t.delivery.status === "on_time") onTime++;
+        else if (t.delivery.status === "late") late++;
+        return {
+          task_name: t.name, project: t.project, date: t.date,
+          status: t.delivery.status, deadline_display: t.delivery.deadline_display,
+          delay_seconds: t.delivery.delay_seconds || 0,
+        };
+      });
+      return { total: withStatus.length, on_time: onTime, late, list };
+    })(),
     extras: {
       hourly_rate: +rate.toFixed(2),
       financial_total_egp: +financialTotalEGP.toFixed(2),
@@ -1592,6 +1703,68 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   if (path === "/api/admin/tasks-by-day" && method === "GET") {
     return await adminTasksByDay(db, url.searchParams.get("employee_id"), url.searchParams.get("date"));
+  }
+
+  if (path === "/api/admin/tasks-by-month" && method === "GET") {
+    return await adminTasksByMonth(db, url.searchParams.get("employee_id"), url.searchParams.get("month"));
+  }
+
+  const setDeadlineMatch = path.match(/^\/api\/admin\/tasks\/(\d+)\/deadline$/);
+  if (setDeadlineMatch && method === "PATCH") {
+    const missing = requireFields(body, ["deadline_date", "deadline_hour"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    const taskId = Number(setDeadlineMatch[1]);
+    const deadlineAt = cairoLocalToUtcString(body.deadline_date, body.deadline_hour);
+    await db.execute({
+      sql: "UPDATE tasks SET deadline_at = ?, deadline_set_by = ?, deadline_set_at = datetime('now') WHERE id = ?",
+      args: [deadlineAt, admin.id, taskId],
+    });
+    const updated = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ?", args: [taskId] });
+    if (!updated.rows[0]) return err("Task not found", 404);
+    return json({ task: attachDeliveryStatus(await attachSegments(db, updated.rows))[0] });
+  }
+
+  if (path === "/api/admin/deadline-requests" && method === "GET") {
+    const status = url.searchParams.get("status") || "pending";
+    const month = url.searchParams.get("month");
+    let sql = `SELECT tdr.*, e.name as employee_name, e.emp_code, t.name as task_name, t.project as project_display, t.date as task_date,
+                      a.name as decided_by_name
+               FROM task_deadline_requests tdr
+               JOIN employees e ON e.id = tdr.employee_id
+               JOIN tasks t ON t.id = tdr.task_id
+               LEFT JOIN employees a ON a.id = tdr.decided_by
+               WHERE tdr.status = ?`;
+    const args = [status];
+    if (month) { sql += " AND tdr.requested_at LIKE ?"; args.push(monthLikePattern(month)); }
+    sql += " ORDER BY tdr.requested_at DESC";
+    const res = await db.execute({ sql, args });
+    return json({ requests: res.rows });
+  }
+
+  const decideDeadlineMatch = path.match(/^\/api\/admin\/deadline-requests\/(\d+)\/decide$/);
+  if (decideDeadlineMatch && method === "POST") {
+    if (!["approve", "reject"].includes(body.action)) return err("action must be approve or reject");
+    const reqId = Number(decideDeadlineMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM task_deadline_requests WHERE id = ?", args: [reqId] });
+    const request = cur.rows[0];
+    if (!request) return err("Request not found", 404);
+    if (request.status !== "pending") return err("Request already decided", 409);
+
+    let newDeadlineAt = null;
+    if (body.action === "approve") {
+      const missing = requireFields(body, ["deadline_date", "deadline_hour"]);
+      if (missing) return err(`Missing field: ${missing}`);
+      newDeadlineAt = cairoLocalToUtcString(body.deadline_date, body.deadline_hour);
+      await db.execute({
+        sql: "UPDATE tasks SET deadline_at = ?, deadline_set_by = ?, deadline_set_at = datetime('now') WHERE id = ?",
+        args: [newDeadlineAt, admin.id, request.task_id],
+      });
+    }
+    await db.execute({
+      sql: "UPDATE task_deadline_requests SET status = ?, new_deadline_at = ?, decided_by = ?, decided_at = datetime('now') WHERE id = ?",
+      args: [body.action === "approve" ? "approved" : "rejected", newDeadlineAt, admin.id, reqId],
+    });
+    return json({ ok: true });
   }
 
   if (path === "/api/admin/leave-requests" && method === "GET") {
@@ -2313,7 +2486,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (targetId === admin.id) return err("منقدرش تمسح حسابك انت نفسك", 400);
     const ownedTables = [
       "sessions", "attendance", "breaks", "tasks", "leave_requests",
-      "financial_requests", "offclock_requests", "permission_requests", "penalties", "bonuses", "notices", "task_segments", "late_arrivals",
+      "financial_requests", "offclock_requests", "permission_requests", "penalties", "bonuses", "notices", "task_segments", "late_arrivals", "task_deadline_requests",
     ];
     for (const t of ownedTables) {
       await db.execute({ sql: `DELETE FROM ${t} WHERE employee_id = ?`, args: [targetId] });
@@ -2419,7 +2592,25 @@ async function adminTasksByDay(db, employeeId, dateStr) {
   if (employeeId && employeeId !== "all") { sql += " AND t.employee_id = ?"; args.push(Number(employeeId)); }
   sql += " ORDER BY e.emp_code ASC, t.created_at ASC";
   const res = await db.execute({ sql, args });
-  return json({ date, tasks: await attachSegments(db, res.rows) });
+  return json({ date, tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
+}
+
+// For the "Deadlines & Delivery Status" admin section — every task in the
+// given month (or all-time), full project detail, per-task delivery status.
+async function adminTasksByMonth(db, employeeId, monthStr) {
+  const isAll = monthStr === "all";
+  let sql = `SELECT t.*, e.name as employee_name, e.emp_code,
+                    p.code as p_code, p.name as p_name, p.category, p.type, p.sub_code, p.simple_label
+             FROM tasks t
+             JOIN employees e ON e.id = t.employee_id
+             LEFT JOIN projects p ON p.id = t.project_id
+             WHERE 1=1`;
+  const args = [];
+  if (!isAll) { sql += " AND t.date LIKE ?"; args.push(monthLikePattern(monthStr)); }
+  if (employeeId && employeeId !== "all") { sql += " AND t.employee_id = ?"; args.push(Number(employeeId)); }
+  sql += " ORDER BY e.emp_code ASC, t.created_at ASC";
+  const res = await db.execute({ sql, args });
+  return json({ tasks: attachDeliveryStatus(await attachSegments(db, res.rows)) });
 }
 
 async function adminBirthdays(db) {
