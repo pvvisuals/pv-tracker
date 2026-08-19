@@ -460,6 +460,9 @@ export default {
       const attachUploadMatch = path.match(/^\/api\/requests\/(leave|financial|offclock|permission)\/(\d+)\/attachment$/);
       if (attachUploadMatch && method === "POST") return await uploadRequestAttachment(db, me, attachUploadMatch[1], Number(attachUploadMatch[2]), body);
       if (attachUploadMatch && method === "GET") return await getMyRequestAttachment(db, me, attachUploadMatch[1], Number(attachUploadMatch[2]));
+      const ownReqMatch = path.match(/^\/api\/requests\/(leave|financial|offclock|permission)\/(\d+)$/);
+      if (ownReqMatch && method === "PATCH") return await editOwnPendingRequest(db, me, ownReqMatch[1], Number(ownReqMatch[2]), body);
+      if (ownReqMatch && method === "DELETE") return await deleteOwnPendingRequest(db, me, ownReqMatch[1], Number(ownReqMatch[2]));
       const taskEditMatch = path.match(/^\/api\/tasks\/(\d+)$/);
       if (taskEditMatch && method === "PATCH") return await editTask(db, me, Number(taskEditMatch[1]), body, env);
 
@@ -886,6 +889,66 @@ async function myDeadlineRequests(db, me, monthStr) {
 }
 
 const REQUEST_ATTACHMENT_TABLE = { leave: "leave_requests", financial: "financial_requests", offclock: "offclock_requests", permission: "permission_requests" };
+
+// Employee can edit or delete their OWN request — but only while it's still
+// 'pending' (untouched by admin). Works uniformly for any request type, so
+// a future request type gets this for free by adding one line to the map.
+async function deleteOwnPendingRequest(db, me, reqType, reqId) {
+  const table = REQUEST_ATTACHMENT_TABLE[reqType];
+  if (!table) return err("Invalid request type", 400);
+  const cur = await db.execute({ sql: `SELECT * FROM ${table} WHERE id = ? AND employee_id = ?`, args: [reqId, me.id] });
+  if (!cur.rows[0]) return err("Request not found", 404);
+  if (cur.rows[0].status !== "pending") return err("الطلب ده اتقرر فيه بالفعل، مينفعش تحذفه", 409);
+  await db.execute({ sql: "DELETE FROM request_attachments WHERE request_type = ? AND request_id = ?", args: [reqType, reqId] });
+  await db.execute({ sql: `DELETE FROM ${table} WHERE id = ?`, args: [reqId] });
+  return json({ ok: true });
+}
+
+async function editOwnPendingRequest(db, me, reqType, reqId, body) {
+  const table = REQUEST_ATTACHMENT_TABLE[reqType];
+  if (!table) return err("Invalid request type", 400);
+  const cur = await db.execute({ sql: `SELECT * FROM ${table} WHERE id = ? AND employee_id = ?`, args: [reqId, me.id] });
+  const existing = cur.rows[0];
+  if (!existing) return err("Request not found", 404);
+  if (existing.status !== "pending") return err("الطلب ده اتقرر فيه بالفعل، مينفعش تعدله", 409);
+
+  if (reqType === "leave") {
+    const type = body.type || existing.type;
+    if (!["casual", "annual", "sick"].includes(type)) return err("type must be casual, annual, or sick");
+    const date = body.date || existing.date;
+    const endDate = body.end_date || (body.date ? date : existing.end_date) || date;
+    if (endDate < date) return err("تاريخ النهاية لازم يكون بعد أو يساوي تاريخ البداية");
+    const workingDays = workingDaysInRange(date, endDate);
+    if (!workingDays.length) return err("الفترة دي كلها جمعة/سبت — مفيش يوم عمل فعلي فيها");
+    const overlap = await db.execute({
+      sql: `SELECT * FROM leave_requests WHERE employee_id = ? AND id != ? AND status != 'rejected'
+            AND date <= ? AND COALESCE(end_date, date) >= ?`,
+      args: [me.id, reqId, endDate, date],
+    });
+    if (overlap.rows.length) return err("فيه طلب إجازة بيتداخل مع الفترة دي بالفعل", 409);
+    await db.execute({
+      sql: "UPDATE leave_requests SET date = ?, end_date = ?, type = ?, reason = ? WHERE id = ?",
+      args: [date, endDate === date ? null : endDate, type, body.reason !== undefined ? body.reason : existing.reason, reqId],
+    });
+  } else if (reqType === "financial") {
+    const amount = body.amount_egp !== undefined ? Number(body.amount_egp) : Number(existing.amount_egp);
+    if (!(amount > 0)) return err("المبلغ لازم يكون رقم موجب");
+    await db.execute({
+      sql: "UPDATE financial_requests SET amount_egp = ?, reason = ? WHERE id = ?",
+      args: [amount, body.reason !== undefined ? body.reason : existing.reason, reqId],
+    });
+  } else if (reqType === "offclock" || reqType === "permission") {
+    const date = body.date || existing.date;
+    const hours = body.hours !== undefined ? Number(body.hours) : Number(existing.hours);
+    if (!(hours > 0)) return err("عدد الساعات لازم يكون رقم موجب");
+    await db.execute({
+      sql: `UPDATE ${table} SET date = ?, hours = ?, reason = ? WHERE id = ?`,
+      args: [date, hours, body.reason !== undefined ? body.reason : existing.reason, reqId],
+    });
+  }
+  const updated = await db.execute({ sql: `SELECT * FROM ${table} WHERE id = ?`, args: [reqId] });
+  return json({ request: updated.rows[0] });
+}
 const MAX_ATTACHMENT_BASE64_CHARS = 4 * 1024 * 1024; // ~3MB actual file size
 
 // Employee attaches a file to their OWN request — works uniformly for any
