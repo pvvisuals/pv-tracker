@@ -1570,6 +1570,43 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="editRequestModalOverlay">
+<div class="modal">
+<h3>EDIT REQUEST · تعديل الطلب</h3>
+<div class="fg" id="editReqDateWrap">
+<div class="fl">Date <span class="fla">التاريخ</span></div>
+<input type="date" id="editReqDate"/>
+</div>
+<div class="fg" id="editReqEndDateWrap" style="display:none">
+<div class="fl">End Date <span class="fla">تاريخ النهاية</span></div>
+<input type="date" id="editReqEndDate"/>
+</div>
+<div class="fg" id="editReqTypeWrap" style="display:none">
+<div class="fl">Type <span class="fla">النوع</span></div>
+<select id="editReqType">
+<option value="casual">عارضة (Casual)</option>
+<option value="annual">اعتيادية (Annual)</option>
+<option value="sick">مرضي (Sick)</option>
+</select>
+</div>
+<div class="fg" id="editReqAmountWrap" style="display:none">
+<div class="fl">Amount (EGP) <span class="fla">المبلغ</span></div>
+<input type="number" id="editReqAmount" min="1"/>
+</div>
+<div class="fg" id="editReqHoursWrap" style="display:none">
+<div class="fl">Hours <span class="fla">عدد الساعات</span></div>
+<input type="number" id="editReqHours" step="0.5" min="0.5"/>
+</div>
+<div class="fg">
+<div class="fl">Reason <span class="fla">السبب</span></div>
+<input type="text" id="editReqReason"/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeEditRequestModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitEditRequest()">Save · حفظ</button>
+</div>
+</div>
+</div>
 <div class="modal-overlay" id="deadlineReqModalOverlay">
 <div class="modal">
 <h3>REQUEST DEADLINE CHANGE · طلب تأجيل الميعاد</h3>
@@ -2480,22 +2517,88 @@ function renderMyRequestGroup(containerId, requests, rowBuilder) {
 
 function renderMyRequests() {
   var attBtn = function(r, type) {
-    return r.has_attachment ? "<button class='btn-end-task' onclick=\"viewAttachment('" + type + "'," + r.id + ",false)\">📎 ATTACHMENT · مرفق</button>" : "";
+    return r.has_attachment ? "<button class='btn-end-task' onclick=\"openAttachment('" + type + "'," + r.id + ",false)\">👁 OPEN · فتح</button> <button class='btn-end-task' onclick=\"downloadAttachment('" + type + "'," + r.id + ",false)\">⬇ DOWNLOAD · تحميل</button>" : "";
+  };
+  var editDelBtn = function(r, type) {
+    if (r.status !== "pending") return "";
+    return "<button class='btn-end-task' onclick=\"openEditRequestModal('" + type + "'," + r.id + ")\">✎ EDIT · تعديل</button> <button class='btn-end-task' onclick=\"deleteOwnRequestPrompt('" + type + "'," + r.id + ")\">🗑 DELETE · حذف</button>";
   };
   renderMyRequestGroup("myLeaveList", myLeaveReqs, function(r) {
     var dateDisplay = r.end_date && r.end_date !== r.date ? (r.date + " → " + r.end_date) : r.date;
     var typeLabel = r.type === "casual" ? "CASUAL" : (r.type === "sick" ? "SICK" : "ANNUAL");
-    return "<div class='log-entry'><div class='log-type'>" + typeLabel + "</div><div class='log-time'>" + dateDisplay + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + attBtn(r, "leave") + "</div>";
+    return "<div class='log-entry'><div class='log-type'>" + typeLabel + "</div><div class='log-time'>" + dateDisplay + "</div><div class='log-note'>" + statusBadge(r.status) + "</div>" + reasonNote(r) + attBtn(r, "leave") + editDelBtn(r, "leave") + "</div>";
   });
   renderMyRequestGroup("myFinList", myFinReqs, function(f) {
-    return "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>" + f.requested_at.slice(0,10) + "</div><div class='log-note'>" + statusBadge(f.status) + "</div>" + reasonNote(f) + attBtn(f, "financial") + "</div>";
+    return "<div class='log-entry'><div class='log-type'>EGP " + f.amount_egp + "</div><div class='log-time'>" + f.requested_at.slice(0,10) + "</div><div class='log-note'>" + statusBadge(f.status) + "</div>" + reasonNote(f) + attBtn(f, "financial") + editDelBtn(f, "financial") + "</div>";
   });
   renderMyRequestGroup("myOffList", myOffReqs, function(of) {
-    return "<div class='log-entry'><div class='log-type'>" + of.hours + "h</div><div class='log-time'>" + of.date + "</div><div class='log-note'>" + statusBadge(of.status) + "</div>" + reasonNote(of) + attBtn(of, "offclock") + "</div>";
+    return "<div class='log-entry'><div class='log-type'>" + of.hours + "h</div><div class='log-time'>" + of.date + "</div><div class='log-note'>" + statusBadge(of.status) + "</div>" + reasonNote(of) + attBtn(of, "offclock") + editDelBtn(of, "offclock") + "</div>";
   });
   renderMyRequestGroup("myPermList", myPermReqs, function(p) {
-    return "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>" + p.date + "</div><div class='log-note'>" + statusBadge(p.status) + "</div>" + reasonNote(p) + attBtn(p, "permission") + "</div>";
+    return "<div class='log-entry'><div class='log-type'>" + p.hours + "h</div><div class='log-time'>" + p.date + "</div><div class='log-note'>" + statusBadge(p.status) + "</div>" + reasonNote(p) + attBtn(p, "permission") + editDelBtn(p, "permission") + "</div>";
   });
+}
+
+var currentEditReqType = null;
+var currentEditReqId = null;
+function openEditRequestModal(reqType, reqId) {
+  var arr = reqType === "leave" ? myLeaveReqs : (reqType === "financial" ? myFinReqs : (reqType === "offclock" ? myOffReqs : myPermReqs));
+  var r = arr.find(function(x) { return String(x.id) === String(reqId); });
+  if (!r) return;
+  currentEditReqType = reqType;
+  currentEditReqId = reqId;
+  document.getElementById("editReqDateWrap").style.display = reqType === "financial" ? "none" : "block";
+  document.getElementById("editReqEndDateWrap").style.display = reqType === "leave" ? "block" : "none";
+  document.getElementById("editReqTypeWrap").style.display = reqType === "leave" ? "block" : "none";
+  document.getElementById("editReqAmountWrap").style.display = reqType === "financial" ? "block" : "none";
+  document.getElementById("editReqHoursWrap").style.display = (reqType === "offclock" || reqType === "permission") ? "block" : "none";
+  document.getElementById("editReqDate").value = r.date || "";
+  document.getElementById("editReqEndDate").value = r.end_date || r.date || "";
+  document.getElementById("editReqType").value = r.type || "casual";
+  document.getElementById("editReqAmount").value = r.amount_egp || "";
+  document.getElementById("editReqHours").value = r.hours || "";
+  document.getElementById("editReqReason").value = r.reason || "";
+  document.getElementById("editRequestModalOverlay").classList.add("active");
+}
+function closeEditRequestModal() {
+  document.getElementById("editRequestModalOverlay").classList.remove("active");
+  currentEditReqType = null; currentEditReqId = null;
+}
+async function submitEditRequest() {
+  var body = { reason: document.getElementById("editReqReason").value.trim() };
+  if (currentEditReqType === "leave") {
+    body.date = document.getElementById("editReqDate").value;
+    body.end_date = document.getElementById("editReqEndDate").value;
+    body.type = document.getElementById("editReqType").value;
+  } else if (currentEditReqType === "financial") {
+    body.amount_egp = Number(document.getElementById("editReqAmount").value);
+  } else {
+    body.date = document.getElementById("editReqDate").value;
+    body.hours = Number(document.getElementById("editReqHours").value);
+  }
+  showLoading(true);
+  try {
+    await apiRequest("/api/requests/" + currentEditReqType + "/" + currentEditReqId, "PATCH", body);
+    showToast("v", "تم تعديل الطلب");
+    closeEditRequestModal();
+    await loadLeaveOvertimeData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function deleteOwnRequestPrompt(reqType, reqId) {
+  openModal("DELETE REQUEST · حذف الطلب", "متأكد عايز تحذف الطلب ده؟ الإجراء ده لا رجعة فيه.", function() {
+    executeDeleteOwnRequest(reqType, reqId);
+  });
+}
+async function executeDeleteOwnRequest(reqType, reqId) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/requests/" + reqType + "/" + reqId, "DELETE");
+    showToast("v", "تم حذف الطلب");
+    await loadLeaveOvertimeData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
 }
 
 function onLeaveDurationChange() {
@@ -2634,7 +2737,7 @@ async function saveMyBirthDate() {
 
 var REQUEST_KINDS = [
   { kind: "leave", listPath: "/api/admin/leave-requests", pendingEl: "adminLeaveList", approvedEl: "adminLeaveApprovedList", rejectedEl: "adminLeaveRejectedList",
-    label: function(r) { return r.type === "casual" ? "CASUAL" : "ANNUAL"; }, date: function(r) { return (r.end_date && r.end_date !== r.date) ? (r.date + " → " + r.end_date) : r.date; } },
+    label: function(r) { return r.type === "casual" ? "CASUAL · عارضة" : (r.type === "sick" ? "SICK · مرضي" : "ANNUAL · اعتيادية"); }, date: function(r) { return (r.end_date && r.end_date !== r.date) ? (r.date + " → " + r.end_date) : r.date; } },
   { kind: "financial", listPath: "/api/admin/financial-requests", pendingEl: "adminFinList", approvedEl: "adminFinApprovedList", rejectedEl: "adminFinRejectedList",
     label: function(r) { return "EGP " + r.amount_egp; }, date: function(r) { return r.requested_at ? r.requested_at.slice(0,10) : ""; } },
   { kind: "offclock", listPath: "/api/admin/offclock-requests", pendingEl: "adminOffList", approvedEl: "adminOffApprovedList", rejectedEl: "adminOffRejectedList",
@@ -2738,7 +2841,7 @@ function requestRowHtml(cfg, r, status) {
   }
   var actions = "";
   if (r.has_attachment) {
-    actions += "<button class='btn-end-task' onclick=\"viewAttachment('" + cfg.kind + "'," + r.id + ",true)\">📎 ATTACHMENT · مرفق</button>";
+    actions += "<button class='btn-end-task' onclick=\"openAttachment('" + cfg.kind + "'," + r.id + ",true)\">👁 OPEN · فتح</button> <button class='btn-end-task' onclick=\"downloadAttachment('" + cfg.kind + "'," + r.id + ",true)\">⬇ DOWNLOAD · تحميل</button>";
   }
   if (status === "pending") {
     actions += "<button class='btn-end-task' onclick=\"decideRequest('" + cfg.kind + "'," + r.id + ",'approve')\">APPROVE · موافقة</button>" +
@@ -2752,22 +2855,37 @@ function requestRowHtml(cfg, r, status) {
     "<div class='log-note'>" + note + "</div>" + actions + "</div>";
 }
 
-async function viewAttachment(reqType, reqId, isAdmin) {
+async function fetchAttachmentBlob(reqType, reqId, isAdmin) {
+  var url = isAdmin ? "/api/admin/requests/" + reqType + "/" + reqId + "/attachment" : "/api/requests/" + reqType + "/" + reqId + "/attachment";
+  var res = await apiRequest(url, "GET");
+  var att = res.attachment;
+  var byteChars = atob(att.data_base64);
+  var byteNumbers = new Array(byteChars.length);
+  for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+  var byteArray = new Uint8Array(byteNumbers);
+  var blob = new Blob([byteArray], { type: att.mimetype });
+  return { blob: blob, filename: att.filename };
+}
+
+async function openAttachment(reqType, reqId, isAdmin) {
   showLoading(true);
   try {
-    var url = isAdmin ? "/api/admin/requests/" + reqType + "/" + reqId + "/attachment" : "/api/requests/" + reqType + "/" + reqId + "/attachment";
-    var res = await apiRequest(url, "GET");
-    var att = res.attachment;
-    var byteChars = atob(att.data_base64);
-    var byteNumbers = new Array(byteChars.length);
-    for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-    var byteArray = new Uint8Array(byteNumbers);
-    var blob = new Blob([byteArray], { type: att.mimetype });
-    var blobUrl = URL.createObjectURL(blob);
+    var result = await fetchAttachmentBlob(reqType, reqId, isAdmin);
+    var blobUrl = URL.createObjectURL(result.blob);
+    window.open(blobUrl, "_blank");
+    setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 60000);
+  } catch(e) { showToast("!", "فشل فتح المرفق: " + e.message); }
+  showLoading(false);
+}
+
+async function downloadAttachment(reqType, reqId, isAdmin) {
+  showLoading(true);
+  try {
+    var result = await fetchAttachmentBlob(reqType, reqId, isAdmin);
+    var blobUrl = URL.createObjectURL(result.blob);
     var a = document.createElement("a");
     a.href = blobUrl;
-    a.download = att.filename;
-    a.target = "_blank";
+    a.download = result.filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
