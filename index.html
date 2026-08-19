@@ -183,6 +183,14 @@ select option{background:#111;}
 .btn:disabled{opacity:0.2;cursor:not-allowed;}
 .log-wrap{border:1px solid var(--border);box-shadow:0 2px 10px rgba(0,0,0,0.3);}
 .log-header{padding:16px 20px;background:var(--card);border-bottom:1px solid var(--border);font-size:18px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text);display:flex;justify-content:space-between;border-right:4px solid #fff;}
+.acc-chevron{display:inline-block;transition:transform 0.25s ease;margin-left:10px;font-size:14px;color:var(--muted2);}
+.collapsible > .log-header,.collapsible > .settings-label{cursor:pointer;user-select:none;}
+.collapsible > .log-header:hover,.collapsible > .settings-label:hover{background:rgba(255,255,255,0.03);}
+.collapsible > *:not(.log-header):not(.settings-label){max-height:0;opacity:0;overflow:hidden;transition:max-height 0.35s ease,opacity 0.25s ease,margin 0.35s ease;margin-top:0 !important;margin-bottom:0 !important;}
+.collapsible.expanded > *:not(.log-header):not(.settings-label){max-height:4000px;opacity:1;}
+.collapsible.expanded > .log-header .acc-chevron,.collapsible.expanded > .settings-label .acc-chevron{transform:rotate(180deg);}
+.collapsible > .settings-label{margin-bottom:0 !important;padding-bottom:14px;}
+.collapsible.expanded > .settings-label{margin-bottom:14px !important;}
 .log-entry{padding:13px 18px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border2);font-size:17px;transition:background 0.15s;}
 @media(max-width:640px){
   .log-entry{flex-direction:column;align-items:stretch;gap:8px;padding:14px 16px;font-size:15px;}
@@ -569,11 +577,23 @@ textarea{resize:vertical;min-height:76px;}
 <div id="myDeadlineReqList"></div>
 
 <div class="task-form">
-<div class="settings-label">Browse Day <span class="fla">تصفّح أيام الشهر</span></div>
+<div class="settings-label">Browse Tasks <span class="fla">تصفّح التاسكات</span></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
+<div class="fl">Mode <span class="fla">النوع</span></div>
+<select id="taskBrowseMode" onchange="onTaskBrowseModeChange()">
+<option value="day">Day · يوم</option>
+<option value="month">Month · شهر</option>
+</select>
+</div>
+<div class="fg" style="margin:0" id="taskBrowseDayWrap">
 <div class="fl">Date <span class="fla">التاريخ</span></div>
 <input type="date" id="taskBrowseDate" onchange="loadTasksForBrowsedDate()"/>
+</div>
+<div class="fg" style="margin:0;display:none" id="taskBrowseMonthWrap">
+<div class="fl">Month <span class="fla">الشهر</span></div>
+<input type="month" id="taskBrowseMonthInput" onchange="loadTasksForBrowsedMonth()"/>
+<label class="all-months-toggle"><input type="checkbox" id="taskBrowseMonthAllCb" onchange="onAllMonthsToggle('taskBrowseMonthInput','taskBrowseMonthAllCb'); loadTasksForBrowsedMonth();"/><span>All Months · كل الشهور</span></label>
 </div>
 </div>
 </div>
@@ -1483,12 +1503,13 @@ textarea{resize:vertical;min-height:76px;}
 <h3>SET DEADLINE · تحديد ميعاد التسليم</h3>
 <div class="fg">
 <div class="fl">Date <span class="fla">التاريخ</span></div>
-<input type="date" id="setDeadlineDateInput"/>
+<input type="date" id="setDeadlineDateInput" onchange="checkSetDeadlineConflict()"/>
 </div>
 <div class="fg">
 <div class="fl">Hour <span class="fla">الساعة</span></div>
 <select id="setDeadlineHourInput"></select>
 </div>
+<div id="setDeadlineWarning"></div>
 <div class="modal-actions">
 <button class="btn-mc" onclick="closeSetDeadlineModal()">Cancel · إلغاء</button>
 <button class="btn-mo" onclick="submitSetDeadline()">Save · حفظ</button>
@@ -1500,12 +1521,13 @@ textarea{resize:vertical;min-height:76px;}
 <h3>APPROVE &amp; SET NEW DEADLINE · موافقة وتحديد ميعاد جديد</h3>
 <div class="fg">
 <div class="fl">Date <span class="fla">التاريخ</span></div>
-<input type="date" id="approveDeadlineDateInput"/>
+<input type="date" id="approveDeadlineDateInput" onchange="checkApproveDeadlineConflict()"/>
 </div>
 <div class="fg">
 <div class="fl">Hour <span class="fla">الساعة</span></div>
 <select id="approveDeadlineHourInput"></select>
 </div>
+<div id="approveDeadlineWarning"></div>
 <div class="modal-actions">
 <button class="btn-mc" onclick="closeApproveDeadlineReqModal()">Cancel · إلغاء</button>
 <button class="btn-mo" onclick="submitApproveDeadlineReq()">Confirm · تأكيد</button>
@@ -1886,6 +1908,69 @@ function showApp() {
   document.getElementById("app").classList.add("active");
   initApp();
 }
+
+// ================= Collapsible accordion sections (Management panel) =================
+var accordionState = {};
+var accordionProcessing = false;
+
+function accordionKeyFor(wrap) {
+  if (wrap.id) return wrap.id;
+  var header = wrap.querySelector(":scope > .log-header, :scope > .settings-label");
+  if (header && header.id) return header.id;
+  var innerIdEl = wrap.querySelector("[id]");
+  if (innerIdEl) return innerIdEl.id;
+  var text = (header ? header.textContent : "").replace(/[0-9]/g, "").trim().slice(0, 40);
+  return text || null;
+}
+
+function processAdminCollapsibles() {
+  if (accordionProcessing) return;
+  var admin = document.getElementById("content-admin");
+  if (!admin) return;
+  accordionProcessing = true;
+  try {
+    var freshSections = admin.querySelectorAll(".log-wrap:not(.collapsible), .task-form:not(.collapsible)");
+    freshSections.forEach(function(s) { s.classList.add("collapsible"); });
+
+    var wraps = admin.querySelectorAll(".collapsible");
+    wraps.forEach(function(wrap) {
+      var header = wrap.querySelector(":scope > .log-header, :scope > .settings-label");
+      if (header && !header.querySelector(".acc-chevron")) {
+        var chev = document.createElement("span");
+        chev.className = "acc-chevron";
+        chev.textContent = "▾";
+        header.appendChild(chev);
+      }
+      var key = accordionKeyFor(wrap);
+      if (key && accordionState[key]) wrap.classList.add("expanded");
+    });
+  } finally {
+    accordionProcessing = false;
+  }
+}
+
+function expandCollapsibleChildren(containerId) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  var wraps = container.querySelectorAll(".log-wrap, .task-form");
+  wraps.forEach(function(w) {
+    w.classList.add("collapsible", "expanded");
+    var key = accordionKeyFor(w);
+    if (key) accordionState[key] = true;
+  });
+}
+
+document.addEventListener("click", function(e) {
+  var header = e.target.closest(".collapsible > .log-header, .collapsible > .settings-label");
+  if (!header) return;
+  var wrap = header.parentElement;
+  var key = accordionKeyFor(wrap);
+  var willExpand = !wrap.classList.contains("expanded");
+  wrap.classList.toggle("expanded", willExpand);
+  if (key) accordionState[key] = willExpand;
+});
+
+var accordionObserver = new MutationObserver(function() { processAdminCollapsibles(); });
 
 async function initApp() {
   var fn = user.name.split(" ")[0];
@@ -3031,7 +3116,7 @@ function populateSetDeadlineEmployeeSelect() {
   var sel = document.getElementById("setDeadlineEmployee");
   if (!sel) return;
   var cur = sel.value;
-  var html = "";
+  var html = "<option value='all'>All Employees · كل الموظفين</option>";
   for (var i = 0; i < adminEmployees.length; i++) {
     html += "<option value='" + adminEmployees[i].id + "'>#" + adminEmployees[i].emp_code + " - " + adminEmployees[i].name + "</option>";
   }
@@ -3051,7 +3136,15 @@ async function loadTasksForDeadlineSetting() {
 
 function renderSetDeadlineTasksList(tasks) {
   var el = document.getElementById("setDeadlineTasksList");
-  if (!tasks.length) { el.innerHTML = "<div class='empty-log'>مفيش تاسكات في الفترة دي</div>"; return; }
+  var withDeadline = tasks.filter(function(t){ return !!t.deadline_at; }).length;
+  var withoutDeadline = tasks.length - withDeadline;
+  var counterHtml = "<div class='info-grid' style='margin-bottom:14px'>";
+  counterHtml += infoCard("Total Tasks <span class='fla'>الإجمالي</span>", tasks.length);
+  counterHtml += infoCard("Deadline Set <span class='fla'>اتحدد ليها ميعاد</span>", "<span style='color:var(--ok)'>" + withDeadline + "</span>");
+  counterHtml += infoCard("No Deadline Yet <span class='fla'>لسه من غير ميعاد</span>", "<span style='color:var(--warn)'>" + withoutDeadline + "</span>");
+  counterHtml += "</div>";
+
+  if (!tasks.length) { el.innerHTML = counterHtml + "<div class='empty-log'>مفيش تاسكات في الفترة دي</div>"; return; }
   var html = "<div class='log-wrap'>";
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
@@ -3059,15 +3152,15 @@ function renderSetDeadlineTasksList(tasks) {
     var statusColor = hasDeadline ? (t.delivery && t.delivery.status === "on_time" ? "var(--ok)" : (t.delivery && (t.delivery.status === "late" || t.delivery.status === "overdue") ? "var(--danger)" : "var(--warn)")) : "var(--muted)";
     html += "<div class='proj-row'>";
     html += "<div class='proj-row-top'>";
-    html += "<div class='proj-id'>" + t.project + "</div>";
+    html += "<div class='proj-id'>#" + t.emp_code + " " + t.employee_name + " — " + t.project + "</div>";
     html += "<div class='proj-badges'><span class='proj-badge' style='color:" + statusColor + ";border-color:" + statusColor + "'>" + (hasDeadline ? (t.delivery.deadline_display || "") : "مفيش ميعاد") + "</span></div>";
     html += "</div>";
     html += "<div class='fl-hint' style='margin-top:6px'>" + t.name + (t.description ? " — " + t.description : "") + " — بدأ: " + t.start_time + " (" + t.date + ")</div>";
-    html += "<button class='btn-end-task' style='margin-top:8px' onclick='openSetDeadlineModal(" + t.id + ", " + JSON.stringify(t.deadline_at || null) + ")'>" + (hasDeadline ? "EDIT DEADLINE · تعديل الميعاد" : "SET DEADLINE · تحديد ميعاد") + "</button>";
+    html += "<button class='btn-end-task' style='margin-top:8px' onclick='openSetDeadlineModal(" + t.id + ", " + JSON.stringify(t.deadline_at || null) + ", " + t.employee_id + ")'>" + (hasDeadline ? "EDIT DEADLINE · تعديل الميعاد" : "SET DEADLINE · تحديد ميعاد") + "</button>";
     html += "</div>";
   }
   html += "</div>";
-  el.innerHTML = html;
+  el.innerHTML = counterHtml + html;
 }
 
 var currentSetDeadlineTaskId = null;
@@ -3082,17 +3175,46 @@ function populateHourSelect(id) {
   sel.innerHTML = html;
 }
 
-function openSetDeadlineModal(taskId, currentDeadlineAt) {
+var currentSetDeadlineEmployeeId = null;
+function openSetDeadlineModal(taskId, currentDeadlineAt, employeeId) {
   currentSetDeadlineTaskId = taskId;
+  currentSetDeadlineEmployeeId = employeeId;
   populateHourSelect("setDeadlineHourInput");
   document.getElementById("setDeadlineDateInput").value = currentDeadlineAt ? currentDeadlineAt.slice(0,10) : "";
   document.getElementById("setDeadlineHourInput").value = currentDeadlineAt ? String(parseInt(currentDeadlineAt.slice(11,13),10)) : "";
+  document.getElementById("setDeadlineWarning").innerHTML = "";
   document.getElementById("setDeadlineModalOverlay").classList.add("active");
 }
 function closeSetDeadlineModal() {
   document.getElementById("setDeadlineModalOverlay").classList.remove("active");
   currentSetDeadlineTaskId = null;
 }
+// Called after ANY deadline mutation (set/edit/approve/reject) so every
+// admin view showing deadline info updates instantly, with no manual
+// refresh needed.
+async function refreshAllDeadlineViews() {
+  await Promise.all([
+    loadTasksForDeadlineSetting(),
+    fetchDeliveryStatusReport(),
+    fetchDeadlineRequestsOverview(),
+    loadDailyTasksBrowser(),
+  ]);
+}
+
+async function checkSetDeadlineConflict() {
+  var date = document.getElementById("setDeadlineDateInput").value;
+  var warnEl = document.getElementById("setDeadlineWarning");
+  if (!date || !currentSetDeadlineEmployeeId) { warnEl.innerHTML = ""; return; }
+  try {
+    var res = await apiRequest("/api/admin/check-deadline-conflict?employee_id=" + currentSetDeadlineEmployeeId + "&date=" + date, "GET");
+    if (res.has_conflict) {
+      warnEl.innerHTML = "<div class='fl-hint' style='color:var(--warn);border:1px solid var(--warn);padding:10px;margin-top:10px'>⚠️ " + res.reasons.join(" — ") + "<br/>تقدر تكمل تحديد الميعاد ده أو تغيّر التاريخ.</div>";
+    } else {
+      warnEl.innerHTML = "";
+    }
+  } catch(e) { /* non-fatal */ }
+}
+
 async function submitSetDeadline() {
   var date = document.getElementById("setDeadlineDateInput").value;
   var hour = document.getElementById("setDeadlineHourInput").value;
@@ -3102,8 +3224,7 @@ async function submitSetDeadline() {
     await apiRequest("/api/admin/tasks/" + currentSetDeadlineTaskId + "/deadline", "PATCH", { deadline_date: date, deadline_hour: Number(hour) });
     showToast("v", "تم تحديد الميعاد");
     closeSetDeadlineModal();
-    await loadTasksForDeadlineSetting();
-    await fetchDeliveryStatusReport();
+    await refreshAllDeadlineViews();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -3136,7 +3257,7 @@ function renderDeadlineRequestsOverview(pending, approved, rejected) {
     var newDeadlineNote = r.new_deadline_at ? ("<br/>الميعاد الجديد: " + r.new_deadline_at) : "";
     var body = "#" + r.emp_code + " " + r.employee_name + " — " + (r.task_name||"") + " (" + srcLabel + ")" + (r.reason ? " — " + r.reason : "") + newDeadlineNote + decidedNote;
     var actions = showActions
-      ? "<button class='btn-end-task' onclick='openApproveDeadlineReqModal(" + r.id + ")'>APPROVE · موافقة</button> <button class='btn-end-task' onclick='rejectDeadlineReqPrompt(" + r.id + ")'>REJECT · رفض</button>"
+      ? "<button class='btn-end-task' onclick='openApproveDeadlineReqModal(" + r.id + ", " + r.employee_id + ")'>APPROVE · موافقة</button> <button class='btn-end-task' onclick='rejectDeadlineReqPrompt(" + r.id + ")'>REJECT · رفض</button>"
       : "";
     return "<div class='log-entry'><div class='log-type'>" + r.requested_at.slice(0,16) + "</div><div class='log-note'>" + body + "</div>" + actions + "</div>";
   };
@@ -3157,12 +3278,26 @@ function renderDeadlineRequestsOverview(pending, approved, rejected) {
 }
 
 var currentApproveDeadlineReqId = null;
-function openApproveDeadlineReqModal(reqId) {
+var currentApproveDeadlineEmployeeId = null;
+function openApproveDeadlineReqModal(reqId, employeeId) {
   currentApproveDeadlineReqId = reqId;
+  currentApproveDeadlineEmployeeId = employeeId;
   populateHourSelect("approveDeadlineHourInput");
   document.getElementById("approveDeadlineDateInput").value = "";
   document.getElementById("approveDeadlineHourInput").value = "";
+  document.getElementById("approveDeadlineWarning").innerHTML = "";
   document.getElementById("approveDeadlineReqModalOverlay").classList.add("active");
+}
+async function checkApproveDeadlineConflict() {
+  var date = document.getElementById("approveDeadlineDateInput").value;
+  var warnEl = document.getElementById("approveDeadlineWarning");
+  if (!date || !currentApproveDeadlineEmployeeId) { warnEl.innerHTML = ""; return; }
+  try {
+    var res = await apiRequest("/api/admin/check-deadline-conflict?employee_id=" + currentApproveDeadlineEmployeeId + "&date=" + date, "GET");
+    warnEl.innerHTML = res.has_conflict
+      ? "<div class='fl-hint' style='color:var(--warn);border:1px solid var(--warn);padding:10px;margin-top:10px'>⚠️ " + res.reasons.join(" — ") + "<br/>تقدر تكمل تحديد الميعاد ده أو تغيّر التاريخ.</div>"
+      : "";
+  } catch(e) { /* non-fatal */ }
 }
 function closeApproveDeadlineReqModal() {
   document.getElementById("approveDeadlineReqModalOverlay").classList.remove("active");
@@ -3177,8 +3312,7 @@ async function submitApproveDeadlineReq() {
     await apiRequest("/api/admin/deadline-requests/" + currentApproveDeadlineReqId + "/decide", "POST", { action: "approve", deadline_date: date, deadline_hour: Number(hour) });
     showToast("v", "تم قبول الطلب وتحديد الميعاد الجديد");
     closeApproveDeadlineReqModal();
-    await fetchDeadlineRequestsOverview();
-    await fetchDeliveryStatusReport();
+    await refreshAllDeadlineViews();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -3218,6 +3352,7 @@ async function fetchDeliveryStatusReport() {
   try {
     var res = await apiRequest("/api/admin/tasks-by-month?employee_id=" + empId + "&month=" + month, "GET");
     renderDeliveryStatusReport(res.tasks || []);
+    expandCollapsibleChildren("deliveryStatusResult");
   } catch(e) { showToast("!", e.message); }
 }
 
@@ -3296,6 +3431,22 @@ function totalSoFarSeconds(task) {
   return total;
 }
 
+function dailyTaskDeadlineLine(t) {
+  var d = t.delivery;
+  var startedNote = "بدأ: " + t.start_time;
+  if (!d || d.status === "no_deadline") {
+    return "<div class='fl-hint' style='margin-top:6px'>" + startedNote + " — مفيش ميعاد تسليم محدد</div>";
+  }
+  var deadlineNote = "الميعاد: " + (d.deadline_display || "");
+  var color, deliveredNote = "";
+  if (d.status === "on_time") { color = "var(--ok)"; deliveredNote = " — سلّم: في الميعاد"; }
+  else if (d.status === "on_time_buffer") { color = "var(--warn)"; deliveredNote = " — سلّم: حوالين الميعاد (±6h)"; }
+  else if (d.status === "late") { color = "var(--danger)"; deliveredNote = " — سلّم متأخر بـ" + formatCountdown(d.delay_seconds || 0); }
+  else if (d.status === "in_progress") { color = "var(--warn)"; }
+  else { color = "var(--danger)"; }
+  return "<div class='fl-hint' style='margin-top:6px;color:" + color + "'>" + startedNote + " — " + deadlineNote + deliveredNote + "</div>";
+}
+
 function renderDailyTasks(tasks) {
   var el = document.getElementById("dailyTasksResult");
   if (!el) return;
@@ -3334,6 +3485,7 @@ function renderDailyTasks(tasks) {
       html += "<div class='proj-row-top'>";
       html += "<div class='proj-badges'><span class='proj-badge' style='color:" + statusColor + ";border-color:" + statusColor + "'>" + statusLabel + "</span><span class='proj-badge'>" + projCodeName + "</span>" + (projType ? "<span class='proj-badge'>" + projType + "</span>" : "") + "</div>";
       html += "</div>";
+      html += dailyTaskDeadlineLine(t);
       html += "<div style='margin-top:8px;font-size:16px;color:#fff;font-weight:600'>" + t.name + (t.description ? " <span style='color:var(--muted);font-weight:400'>— " + t.description + "</span>" : "") + "</div>";
       html += "<div style='margin-top:4px;font-size:14px;color:" + statusColor + ";font-weight:700'>Duration so far: " + formatDuration(totalSoFarSeconds(t)) + "</div>";
       if (t.segments && t.segments.length) {
@@ -4062,6 +4214,7 @@ async function fetchAdminReport() {
   try {
     var res = await apiRequest("/api/admin/report?employee_id=" + empId + "&month=" + month, "GET");
     renderAdminReport(res);
+    expandCollapsibleChildren("adminReportResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -4421,6 +4574,7 @@ async function fetchProjectCostReport() {
       res.projects = res.projects.filter(function(p) { return p.project_code === parts[0] && p.project_name === parts[1]; });
     }
     renderProjectCostReport(res);
+    expandCollapsibleChildren("projectCostReportResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -4543,6 +4697,7 @@ async function fetchProfitLossReport() {
   try {
     var res = await apiRequest("/api/admin/profit-loss-report?month=" + month, "GET");
     renderProfitLossReport(res);
+    expandCollapsibleChildren("profitLossReportResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -4621,6 +4776,7 @@ async function fetchPettyCash() {
   try {
     var res = await apiRequest("/api/admin/petty-cash?month=" + month, "GET");
     renderPettyCash(res);
+    expandCollapsibleChildren("pettyCashResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -4661,6 +4817,7 @@ async function fetchProjectsReport() {
   try {
     var res = await apiRequest("/api/admin/projects-report?month=" + month, "GET");
     renderProjectsReport(res);
+    expandCollapsibleChildren("projectsReportResult");
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -5136,6 +5293,22 @@ async function loadTasksForBrowsedDate() {
   } catch(e) { /* non-fatal */ }
 }
 
+function onTaskBrowseModeChange() {
+  var isMonth = document.getElementById("taskBrowseMode").value === "month";
+  document.getElementById("taskBrowseDayWrap").style.display = isMonth ? "none" : "block";
+  document.getElementById("taskBrowseMonthWrap").style.display = isMonth ? "block" : "none";
+  if (isMonth) loadTasksForBrowsedMonth(); else loadTasksForBrowsedDate();
+}
+
+async function loadTasksForBrowsedMonth() {
+  var month = getMonthFilterValue("taskBrowseMonthInput", "taskBrowseMonthAllCb");
+  try {
+    var res = await apiRequest("/api/tasks/list-by-month?month=" + month, "GET");
+    browsedTasks = res.tasks || [];
+    renderBrowsedTasks();
+  } catch(e) { /* non-fatal */ }
+}
+
 var editTaskId = null;
 var editTaskSelectedProjectId = null;
 
@@ -5288,10 +5461,11 @@ function taskSegmentsTimeline(task) {
   return html;
 }
 
-function formatCountdown(seconds) {
+function formatCountdown(seconds, workingDays) {
   if (seconds < 0) seconds = 0;
-  var days = Math.floor(seconds / 86400);
-  if (days >= 1) return days + (days === 1 ? " يوم" : " أيام");
+  if (workingDays !== undefined && workingDays !== null && workingDays >= 1) {
+    return workingDays + (workingDays === 1 ? " يوم عمل" : " أيام عمل");
+  }
   var hours = Math.floor(seconds / 3600);
   var mins = Math.floor((seconds % 3600) / 60);
   return String(hours).padStart(2,"0") + "h " + String(mins).padStart(2,"0") + "m";
@@ -5302,21 +5476,31 @@ function taskDeadlineBoxHtml(t) {
   if (!d || d.status === "no_deadline") {
     return "<div class='task-deadline-empty'>مفيش ميعاد تسليم لسه</div>";
   }
-  var color, statusLabel, countdownText;
+  var color, statusLabel, countdownText, liveTicking = false;
   if (d.status === "on_time") {
     color = "var(--ok)"; statusLabel = "DELIVERED ON TIME · في الميعاد"; countdownText = "✓";
+  } else if (d.status === "on_time_buffer") {
+    color = "var(--warn)"; statusLabel = "DELIVERED · حوالين الميعاد (±6h)"; countdownText = (d.delta_seconds >= 0 ? "+" : "-") + formatCountdown(Math.abs(d.delta_seconds || 0));
   } else if (d.status === "late") {
     color = "var(--danger)"; statusLabel = "DELIVERED LATE · تسليم متأخر"; countdownText = "+" + formatCountdown(d.delay_seconds || 0);
   } else if (d.status === "in_progress") {
-    color = "var(--warn)"; statusLabel = "TIME LEFT · متبقي";
-    countdownText = "<span class='task-deadline-countdown-live' data-deadline='" + d.deadline_at + "'>" + formatCountdown(d.remaining_seconds || 0) + "</span>";
+    color = "var(--warn)"; statusLabel = "TIME LEFT · متبقي (أيام شغل فعلية)";
+    if (d.remaining_working_days >= 1) {
+      countdownText = d.remaining_working_days + (d.remaining_working_days === 1 ? " يوم عمل" : " أيام عمل");
+    } else {
+      liveTicking = true;
+      countdownText = "<span class='task-deadline-countdown-live' data-deadline='" + d.deadline_at + "'>" + formatCountdown(d.remaining_seconds || 0) + "</span>";
+    }
   } else { // overdue
-    color = "var(--danger)"; statusLabel = "OVERDUE · متأخر"; countdownText = "+" + formatCountdown(d.overdue_seconds || 0);
+    color = "var(--danger)"; statusLabel = "OVERDUE · متأخر"; countdownText = "+" + formatCountdown(d.overdue_seconds || 0, d.overdue_working_days);
   }
   var html = "<div class='task-deadline-box' style='border-color:" + color + "'>";
   html += "<div class='task-deadline-status' style='color:" + color + "'>" + statusLabel + "</div>";
   html += "<div class='task-deadline-countdown' style='color:" + color + "'>" + countdownText + "</div>";
   html += "<div class='task-deadline-date'>" + (d.deadline_display || "") + "</div>";
+  if (d.deadline_on_non_working_day) {
+    html += "<div class='task-deadline-date' style='color:var(--warn);margin-top:2px'>⚠️ الميعاد في يوم إجازة</div>";
+  }
   html += "</div>";
   return html;
 }
@@ -5508,6 +5692,12 @@ function switchTab(name) {
   if (name === "admin" && user && user.role === "admin") {
     loadAdminData();
     switchAdminPage("overview");
+    var adminEl = document.getElementById("content-admin");
+    if (adminEl && !adminEl.dataset.accObserved) {
+      adminEl.dataset.accObserved = "1";
+      accordionObserver.observe(adminEl, { childList: true, subtree: true });
+    }
+    processAdminCollapsibles();
   }
 }
 
@@ -5560,7 +5750,15 @@ function jumpTo(id) {
   var pageName = SECTION_TO_PAGE[id];
   if (pageName) switchAdminPage(pageName);
   var el = document.getElementById(id);
-  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (el) {
+    var wrap = el.closest(".collapsible");
+    if (wrap && !wrap.classList.contains("expanded")) {
+      wrap.classList.add("expanded");
+      var key = accordionKeyFor(wrap);
+      if (key) accordionState[key] = true;
+    }
+    setTimeout(function() { el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 50);
+  }
   var sideNav = document.getElementById("adminSideNav");
   var sideArrow = document.getElementById("adminSideNavArrow");
   if (sideNav && sideNav.classList.contains("open")) {
