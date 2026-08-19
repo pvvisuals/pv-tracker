@@ -187,7 +187,9 @@ select option{background:#111;}
 .collapsible > .log-header:hover .acc-chevron,.collapsible > .settings-label:hover .acc-chevron{background:rgba(255,255,255,0.08);color:#fff;}
 .collapsible > .log-header,.collapsible > .settings-label{cursor:pointer;user-select:none;}
 .collapsible > .log-header:hover,.collapsible > .settings-label:hover{background:rgba(255,255,255,0.03);}
-.collapsible > *:not(.log-header):not(.settings-label){max-height:0;opacity:0;overflow:hidden;transition:max-height 0.4s cubic-bezier(.4,0,.2,1),opacity 0.3s ease,padding 0.4s cubic-bezier(.4,0,.2,1),margin 0.4s cubic-bezier(.4,0,.2,1);margin-top:0 !important;margin-bottom:0 !important;padding-top:0 !important;padding-bottom:0 !important;border-top-width:0 !important;border-bottom-width:0 !important;}
+.collapsible{border:1px solid var(--border2);margin-bottom:14px;}
+.collapsible > *:not(.log-header):not(.settings-label){transition:max-height 0.4s cubic-bezier(.4,0,.2,1),opacity 0.3s ease,padding 0.4s cubic-bezier(.4,0,.2,1),margin 0.4s cubic-bezier(.4,0,.2,1);}
+.collapsible:not(.expanded) > *:not(.log-header):not(.settings-label){max-height:0;opacity:0;overflow:hidden;margin-top:0 !important;margin-bottom:0 !important;padding-top:0 !important;padding-bottom:0 !important;border-top-width:0 !important;border-bottom-width:0 !important;}
 .collapsible.expanded > *:not(.log-header):not(.settings-label){max-height:4000px;opacity:1;}
 .collapsible.expanded > .log-header .acc-chevron,.collapsible.expanded > .settings-label .acc-chevron{transform:rotate(180deg);}
 .collapsible > .settings-label{margin-bottom:0 !important;padding-bottom:14px;}
@@ -1931,7 +1933,10 @@ function processCollapsibles(containerId) {
   accordionProcessing = true;
   try {
     var freshSections = root.querySelectorAll(".log-wrap:not(.collapsible), .task-form:not(.collapsible)");
-    freshSections.forEach(function(s) { s.classList.add("collapsible"); });
+    freshSections.forEach(function(s) {
+      if (s.closest(".collapsible")) return; // already part of an outer function's group — keep it together, don't make it its own accordion
+      s.classList.add("collapsible");
+    });
 
     var wraps = root.querySelectorAll(".collapsible");
     wraps.forEach(function(wrap) {
@@ -3138,21 +3143,20 @@ async function loadTasksForDeadlineSetting() {
 
 function renderSetDeadlineTasksList(tasks) {
   var el = document.getElementById("setDeadlineTasksList");
-  var withDeadline = tasks.filter(function(t){ return !!t.deadline_at; }).length;
-  var withoutDeadline = tasks.length - withDeadline;
+  var withDeadline = tasks.filter(function(t){ return !!t.deadline_at; });
+  var withoutDeadline = tasks.filter(function(t){ return !t.deadline_at; });
   var counterHtml = "<div class='info-grid' style='margin-bottom:14px'>";
   counterHtml += infoCard("Total Tasks <span class='fla'>الإجمالي</span>", tasks.length);
-  counterHtml += infoCard("Deadline Set <span class='fla'>اتحدد ليها ميعاد</span>", "<span style='color:var(--ok)'>" + withDeadline + "</span>");
-  counterHtml += infoCard("No Deadline Yet <span class='fla'>لسه من غير ميعاد</span>", "<span style='color:var(--warn)'>" + withoutDeadline + "</span>");
+  counterHtml += infoCard("Deadline Set <span class='fla'>اتحدد ليها ميعاد</span>", "<span style='color:var(--ok)'>" + withDeadline.length + "</span>");
+  counterHtml += infoCard("No Deadline Yet <span class='fla'>لسه من غير ميعاد</span>", "<span style='color:var(--warn)'>" + withoutDeadline.length + "</span>");
   counterHtml += "</div>";
 
   if (!tasks.length) { el.innerHTML = counterHtml + "<div class='empty-log'>مفيش تاسكات في الفترة دي</div>"; return; }
-  var html = "<div class='log-wrap'>";
-  for (var i = 0; i < tasks.length; i++) {
-    var t = tasks[i];
+
+  var rowHtml = function(t) {
     var hasDeadline = t.deadline_at;
     var statusColor = hasDeadline ? (t.delivery && t.delivery.status === "on_time" ? "var(--ok)" : (t.delivery && (t.delivery.status === "late" || t.delivery.status === "overdue") ? "var(--danger)" : "var(--warn)")) : "var(--muted)";
-    html += "<div class='proj-row'>";
+    var html = "<div class='proj-row'>";
     html += "<div class='proj-row-top'>";
     html += "<div class='proj-id'>#" + t.emp_code + " " + t.employee_name + " — " + t.project + "</div>";
     html += "<div class='proj-badges'><span class='proj-badge' style='color:" + statusColor + ";border-color:" + statusColor + "'>" + (hasDeadline ? (t.delivery.deadline_display || "") : "مفيش ميعاد") + "</span></div>";
@@ -3160,7 +3164,15 @@ function renderSetDeadlineTasksList(tasks) {
     html += "<div class='fl-hint' style='margin-top:6px'>" + t.name + (t.description ? " — " + t.description : "") + " — بدأ: " + t.start_time + " (" + t.date + ")</div>";
     html += "<button class='btn-end-task' style='margin-top:8px' onclick='openSetDeadlineModal(" + t.id + ", " + JSON.stringify(t.deadline_at || null) + ", " + t.employee_id + ")'>" + (hasDeadline ? "EDIT DEADLINE · تعديل الميعاد" : "SET DEADLINE · تحديد ميعاد") + "</button>";
     html += "</div>";
-  }
+    return html;
+  };
+
+  var html = "<div class='log-wrap'><div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>NO DEADLINE YET · لسه من غير ميعاد</span></div>";
+  html += withoutDeadline.length ? withoutDeadline.map(rowHtml).join("") : "<div class='empty-log'>كل التاسكات ليها ميعاد</div>";
+  html += "</div>";
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>DEADLINE SET · اتحدد ليها ميعاد</span></div>";
+  html += withDeadline.length ? withDeadline.map(rowHtml).join("") : "<div class='empty-log'>مفيش تاسكات ليها ميعاد لسه</div>";
   html += "</div>";
   el.innerHTML = counterHtml + html;
 }
