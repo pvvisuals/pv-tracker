@@ -121,6 +121,9 @@ select option{background:#111;}
 .kind-btn.active .kind-count{color:#5a4a00;}
 @media(max-width:560px){.info-grid{grid-template-columns:1fr;}}
 .info-card{background:var(--card);padding:20px 22px;box-shadow:0 2px 10px rgba(0,0,0,0.35);transition:transform 0.15s,box-shadow 0.15s;}
+.filter-card{cursor:pointer;user-select:none;border:2px solid transparent;transition:border-color 0.2s,transform 0.15s,background 0.2s;}
+.filter-card:hover{transform:translateY(-2px);background:rgba(255,255,255,0.04);}
+.filter-card.active{border-color:#fff;background:rgba(255,255,255,0.06);}
 .info-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,0.5);}
 .info-card-label{font-size:15px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text);margin-bottom:8px;}
 .info-card-value{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1px;}
@@ -801,10 +804,21 @@ textarea{resize:vertical;min-height:76px;}
 
 <div class="task-form">
 <div class="settings-label" id="section-deadline-requests" style="color:var(--warn)">Deadline Change Requests <span class="fla">طلبات تأجيل الميعاد</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Employee <span class="fla">الموظف</span></div>
+<select id="deadlineReqFilterEmployee" onchange="fetchDeadlineRequestsOverview()"><option value="all">All Employees · كل الموظفين</option></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Month <span class="fla">الشهر</span></div>
+<input type="month" id="deadlineReqFilterMonth" onchange="fetchDeadlineRequestsOverview()"/>
+<label class="all-months-toggle"><input type="checkbox" id="deadlineReqFilterMonthAll" onchange="onAllMonthsToggle('deadlineReqFilterMonth','deadlineReqFilterMonthAll'); fetchDeadlineRequestsOverview();"/><span>All Months · كل الشهور</span></label>
+</div>
+</div>
 <div id="deadlineRequestsOverview"></div>
 </div>
 
-<div class="task-form">
+<div class="task-form no-accordion">
 <div class="settings-label" id="section-daily-tasks">Daily Tasks Browser <span class="fla">مين شغال في إيه</span></div>
 <div class="sec-sub" style="margin-bottom:12px">هنا التصنيف الكامل (Category/Type) ظاهر زي ما دخّلته بالظبط</div>
 <div class="form-row">
@@ -820,7 +834,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
-<div id="dailyTasksResult"></div>
+<div id="dailyTasksResult" class="no-accordion"></div>
 
 <div class="task-form">
 <div class="settings-label" id="section-delivery-status" style="color:var(--ok)">Deadlines &amp; Delivery Status <span class="fla">مواعيد وحالات التسليم</span></div>
@@ -1347,8 +1361,8 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <button class="btn-add" onclick="fetchAdminReport()">GET REPORT · عرض التقرير</button>
-</div>
 <div id="adminReportResult"></div>
+</div>
 <div class="task-form">
 <div class="settings-label" id="section-projects-report">Projects Report <span class="fla">تقرير المشاريع (كل الموظفين)</span></div>
 <div class="sec-sub" style="margin-bottom:12px">إجمالي ساعات كل مشروع، مجمّعة من كل الموظفين اللي اشتغلوا فيه</div>
@@ -1935,6 +1949,7 @@ function processCollapsibles(containerId) {
     var freshSections = root.querySelectorAll(".log-wrap:not(.collapsible), .task-form:not(.collapsible)");
     freshSections.forEach(function(s) {
       if (s.closest(".collapsible")) return; // already part of an outer function's group — keep it together, don't make it its own accordion
+      if (s.closest(".no-accordion")) return; // explicitly excluded section (e.g. admin's Daily Tasks Browser)
       s.classList.add("collapsible");
     });
 
@@ -2622,6 +2637,8 @@ async function loadAdminData() {
     loadTasksForDeadlineSetting();
     populateDeliveryStatusEmployeeSelect();
     fetchDeliveryStatusReport();
+    populateDeadlineReqFilterEmployee();
+    fetchDeadlineRequestsOverview();
 
     await reloadMonthDependentAdminData();
   } catch(e) { /* non-fatal */ }
@@ -2661,7 +2678,6 @@ async function reloadMonthDependentAdminData() {
   renderAdminPenalties();
   renderAdminNotices();
   renderAdminBonuses();
-  fetchDeadlineRequestsOverview();
 }
 
 function requestRowHtml(cfg, r, status) {
@@ -3141,14 +3157,20 @@ async function loadTasksForDeadlineSetting() {
   } catch(e) { showToast("!", e.message); }
 }
 
+var setDeadlineCardFilter = "all";
+function filterSetDeadlineCards(val) {
+  setDeadlineCardFilter = val;
+  loadTasksForDeadlineSetting();
+}
+
 function renderSetDeadlineTasksList(tasks) {
   var el = document.getElementById("setDeadlineTasksList");
   var withDeadline = tasks.filter(function(t){ return !!t.deadline_at; });
   var withoutDeadline = tasks.filter(function(t){ return !t.deadline_at; });
   var counterHtml = "<div class='info-grid' style='margin-bottom:14px'>";
-  counterHtml += infoCard("Total Tasks <span class='fla'>الإجمالي</span>", tasks.length);
-  counterHtml += infoCard("Deadline Set <span class='fla'>اتحدد ليها ميعاد</span>", "<span style='color:var(--ok)'>" + withDeadline.length + "</span>");
-  counterHtml += infoCard("No Deadline Yet <span class='fla'>لسه من غير ميعاد</span>", "<span style='color:var(--warn)'>" + withoutDeadline.length + "</span>");
+  counterHtml += filterCard("Total Tasks <span class='fla'>الإجمالي</span>", tasks.length, "filterSetDeadlineCards('all')", setDeadlineCardFilter === "all");
+  counterHtml += filterCard("Deadline Set <span class='fla'>اتحدد ليها ميعاد</span>", "<span style='color:var(--ok)'>" + withDeadline.length + "</span>", "filterSetDeadlineCards('set')", setDeadlineCardFilter === "set");
+  counterHtml += filterCard("No Deadline Yet <span class='fla'>لسه من غير ميعاد</span>", "<span style='color:var(--warn)'>" + withoutDeadline.length + "</span>", "filterSetDeadlineCards('unset')", setDeadlineCardFilter === "unset");
   counterHtml += "</div>";
 
   if (!tasks.length) { el.innerHTML = counterHtml + "<div class='empty-log'>مفيش تاسكات في الفترة دي</div>"; return; }
@@ -3167,13 +3189,17 @@ function renderSetDeadlineTasksList(tasks) {
     return html;
   };
 
-  var html = "<div class='log-wrap'><div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>NO DEADLINE YET · لسه من غير ميعاد</span></div>";
-  html += withoutDeadline.length ? withoutDeadline.map(rowHtml).join("") : "<div class='empty-log'>كل التاسكات ليها ميعاد</div>";
-  html += "</div>";
-
-  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>DEADLINE SET · اتحدد ليها ميعاد</span></div>";
-  html += withDeadline.length ? withDeadline.map(rowHtml).join("") : "<div class='empty-log'>مفيش تاسكات ليها ميعاد لسه</div>";
-  html += "</div>";
+  var html = "";
+  if (setDeadlineCardFilter === "all" || setDeadlineCardFilter === "unset") {
+    html += "<div class='log-wrap'><div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>NO DEADLINE YET · لسه من غير ميعاد</span></div>";
+    html += withoutDeadline.length ? withoutDeadline.map(rowHtml).join("") : "<div class='empty-log'>كل التاسكات ليها ميعاد</div>";
+    html += "</div>";
+  }
+  if (setDeadlineCardFilter === "all" || setDeadlineCardFilter === "set") {
+    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>DEADLINE SET · اتحدد ليها ميعاد</span></div>";
+    html += withDeadline.length ? withDeadline.map(rowHtml).join("") : "<div class='empty-log'>مفيش تاسكات ليها ميعاد لسه</div>";
+    html += "</div>";
+  }
   el.innerHTML = counterHtml + html;
 }
 
@@ -3245,24 +3271,46 @@ async function submitSetDeadline() {
 
 // ================= Deadline Change Requests =================
 
+function populateDeadlineReqFilterEmployee() {
+  var sel = document.getElementById("deadlineReqFilterEmployee");
+  if (!sel) return;
+  var cur = sel.value;
+  var html = "<option value='all'>All Employees · كل الموظفين</option>";
+  for (var i = 0; i < adminEmployees.length; i++) {
+    html += "<option value='" + adminEmployees[i].id + "'>#" + adminEmployees[i].emp_code + " - " + adminEmployees[i].name + "</option>";
+  }
+  sel.innerHTML = html;
+  if (cur) sel.value = cur;
+}
+
 async function fetchDeadlineRequestsOverview() {
-  var month = document.getElementById("reqFilterMonth") ? document.getElementById("reqFilterMonth").value : "";
+  var empId = document.getElementById("deadlineReqFilterEmployee") ? document.getElementById("deadlineReqFilterEmployee").value : "all";
+  var month = getMonthFilterValue("deadlineReqFilterMonth", "deadlineReqFilterMonthAll");
+  var empQs = (empId && empId !== "all") ? ("&employee_id=" + empId) : "";
   try {
     var results = await Promise.all([
-      apiRequest("/api/admin/deadline-requests?status=pending" + (month?"&month="+month:""), "GET"),
-      apiRequest("/api/admin/deadline-requests?status=approved" + (month?"&month="+month:""), "GET"),
-      apiRequest("/api/admin/deadline-requests?status=rejected" + (month?"&month="+month:""), "GET"),
+      apiRequest("/api/admin/deadline-requests?status=pending&month=" + month + empQs, "GET"),
+      apiRequest("/api/admin/deadline-requests?status=approved&month=" + month + empQs, "GET"),
+      apiRequest("/api/admin/deadline-requests?status=rejected&month=" + month + empQs, "GET"),
     ]);
     renderDeadlineRequestsOverview(results[0].requests||[], results[1].requests||[], results[2].requests||[]);
   } catch(e) { /* non-fatal */ }
 }
 
+var deadlineReqCardFilter = "all";
+function filterDeadlineReqCards(val) {
+  deadlineReqCardFilter = val;
+  fetchDeadlineRequestsOverview();
+}
+
 function renderDeadlineRequestsOverview(pending, approved, rejected) {
   var el = document.getElementById("deadlineRequestsOverview");
+  var total = pending.length + approved.length + rejected.length;
   var html = "<div class='info-grid'>";
-  html += infoCard("Pending <span class='fla'>معلقة</span>", "<span style='color:var(--warn)'>" + pending.length + "</span>");
-  html += infoCard("Approved <span class='fla'>مقبولة</span>", "<span style='color:var(--ok)'>" + approved.length + "</span>");
-  html += infoCard("Rejected <span class='fla'>مرفوضة</span>", "<span style='color:var(--danger)'>" + rejected.length + "</span>");
+  html += filterCard("All <span class='fla'>الكل</span>", total, "filterDeadlineReqCards('all')", deadlineReqCardFilter === "all");
+  html += filterCard("Pending <span class='fla'>معلقة</span>", "<span style='color:var(--warn)'>" + pending.length + "</span>", "filterDeadlineReqCards('pending')", deadlineReqCardFilter === "pending");
+  html += filterCard("Approved <span class='fla'>مقبولة</span>", "<span style='color:var(--ok)'>" + approved.length + "</span>", "filterDeadlineReqCards('approved')", deadlineReqCardFilter === "approved");
+  html += filterCard("Rejected <span class='fla'>مرفوضة</span>", "<span style='color:var(--danger)'>" + rejected.length + "</span>", "filterDeadlineReqCards('rejected')", deadlineReqCardFilter === "rejected");
   html += "</div>";
 
   var rowHtml = function(r, showActions) {
@@ -3276,17 +3324,21 @@ function renderDeadlineRequestsOverview(pending, approved, rejected) {
     return "<div class='log-entry'><div class='log-type'>" + r.requested_at.slice(0,16) + "</div><div class='log-note'>" + body + "</div>" + actions + "</div>";
   };
 
-  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>PENDING · معلقة</span></div>";
-  html += pending.length ? pending.map(function(r){return rowHtml(r,true);}).join("") : "<div class='empty-log'>مفيش طلبات معلقة</div>";
-  html += "</div>";
-
-  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>APPROVED · مقبولة</span></div>";
-  html += approved.length ? approved.map(function(r){return rowHtml(r,false);}).join("") : "<div class='empty-log'>مفيش طلبات مقبولة</div>";
-  html += "</div>";
-
-  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--danger);border-color:var(--danger)'><span>REJECTED · مرفوضة</span></div>";
-  html += rejected.length ? rejected.map(function(r){return rowHtml(r,false);}).join("") : "<div class='empty-log'>مفيش طلبات مرفوضة</div>";
-  html += "</div>";
+  if (deadlineReqCardFilter === "all" || deadlineReqCardFilter === "pending") {
+    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>PENDING · معلقة</span></div>";
+    html += pending.length ? pending.map(function(r){return rowHtml(r,true);}).join("") : "<div class='empty-log'>مفيش طلبات معلقة</div>";
+    html += "</div>";
+  }
+  if (deadlineReqCardFilter === "all" || deadlineReqCardFilter === "approved") {
+    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--ok);border-color:var(--ok)'><span>APPROVED · مقبولة</span></div>";
+    html += approved.length ? approved.map(function(r){return rowHtml(r,false);}).join("") : "<div class='empty-log'>مفيش طلبات مقبولة</div>";
+    html += "</div>";
+  }
+  if (deadlineReqCardFilter === "all" || deadlineReqCardFilter === "rejected") {
+    html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header' style='color:var(--danger);border-color:var(--danger)'><span>REJECTED · مرفوضة</span></div>";
+    html += rejected.length ? rejected.map(function(r){return rowHtml(r,false);}).join("") : "<div class='empty-log'>مفيش طلبات مرفوضة</div>";
+    html += "</div>";
+  }
 
   el.innerHTML = html;
 }
@@ -3372,33 +3424,84 @@ async function fetchDeliveryStatusReport() {
 function deliveryStatusMeta(d) {
   if (!d || d.status === "no_deadline") return { label: "NO DEADLINE · مفيش ميعاد", color: "var(--muted)" };
   if (d.status === "on_time") return { label: "ON TIME · في الميعاد", color: "var(--ok)" };
+  if (d.status === "on_time_buffer") return { label: "DELIVERED · حوالين الميعاد", color: "var(--warn)" };
   if (d.status === "late") return { label: "LATE · متأخر", color: "var(--danger)" };
   if (d.status === "in_progress") return { label: "IN PROGRESS · شغال، الميعاد لسه", color: "var(--warn)" };
   return { label: "OVERDUE · فات الميعاد", color: "var(--danger)" };
 }
 
+var deliveryStatusCardFilter = "all";
+var deliveryStatusViewMode = "grouped";
+function filterDeliveryStatusCards(val) {
+  deliveryStatusCardFilter = val;
+  fetchDeliveryStatusReport();
+}
+function toggleDeliveryStatusView() {
+  deliveryStatusViewMode = deliveryStatusViewMode === "grouped" ? "table" : "grouped";
+  fetchDeliveryStatusReport();
+}
+
 function renderDeliveryStatusReport(tasks) {
   var el = document.getElementById("deliveryStatusResult");
-  if (!tasks.length) { el.innerHTML = "<div class='empty-log'>مفيش تاسكات في الفترة دي</div>"; return; }
 
   var onTime = 0, late = 0, inProgress = 0, overdue = 0, noDeadline = 0;
-  var byEmp = {}, empOrder = [];
   for (var i = 0; i < tasks.length; i++) {
-    var t = tasks[i];
-    var st = (t.delivery && t.delivery.status) || "no_deadline";
-    if (st === "on_time") onTime++; else if (st === "late") late++; else if (st === "in_progress") inProgress++;
-    else if (st === "overdue") overdue++; else noDeadline++;
-    var key = t.emp_code + "||" + t.employee_name;
-    if (!byEmp[key]) { byEmp[key] = []; empOrder.push(key); }
-    byEmp[key].push(t);
+    var st0 = (tasks[i].delivery && tasks[i].delivery.status) || "no_deadline";
+    if (st0 === "on_time" || st0 === "on_time_buffer") onTime++; else if (st0 === "late") late++; else if (st0 === "in_progress") inProgress++;
+    else if (st0 === "overdue") overdue++; else noDeadline++;
   }
 
   var html = "<div class='info-grid'>";
-  html += infoCard("On Time <span class='fla'>في الميعاد</span>", "<span style='color:var(--ok)'>" + onTime + "</span>");
-  html += infoCard("Late / Overdue <span class='fla'>متأخر</span>", "<span style='color:var(--danger)'>" + (late+overdue) + "</span>");
-  html += infoCard("In Progress <span class='fla'>شغال</span>", "<span style='color:var(--warn)'>" + inProgress + "</span>");
-  html += infoCard("No Deadline <span class='fla'>مفيش ميعاد</span>", "<span style='color:var(--muted)'>" + noDeadline + "</span>");
+  html += filterCard("All <span class='fla'>الكل</span>", tasks.length, "filterDeliveryStatusCards('all')", deliveryStatusCardFilter === "all");
+  html += filterCard("On Time <span class='fla'>في الميعاد</span>", "<span style='color:var(--ok)'>" + onTime + "</span>", "filterDeliveryStatusCards('on_time')", deliveryStatusCardFilter === "on_time");
+  html += filterCard("Late / Overdue <span class='fla'>متأخر</span>", "<span style='color:var(--danger)'>" + (late+overdue) + "</span>", "filterDeliveryStatusCards('late')", deliveryStatusCardFilter === "late");
+  html += filterCard("In Progress <span class='fla'>شغال</span>", "<span style='color:var(--warn)'>" + inProgress + "</span>", "filterDeliveryStatusCards('in_progress')", deliveryStatusCardFilter === "in_progress");
+  html += filterCard("No Deadline <span class='fla'>مفيش ميعاد</span>", "<span style='color:var(--muted)'>" + noDeadline + "</span>", "filterDeliveryStatusCards('no_deadline')", deliveryStatusCardFilter === "no_deadline");
   html += "</div>";
+
+  var filtered = tasks.filter(function(t) {
+    if (deliveryStatusCardFilter === "all") return true;
+    var st = (t.delivery && t.delivery.status) || "no_deadline";
+    if (deliveryStatusCardFilter === "late") return st === "late" || st === "overdue";
+    if (deliveryStatusCardFilter === "on_time") return st === "on_time" || st === "on_time_buffer";
+    return st === deliveryStatusCardFilter;
+  });
+
+  html += "<button class='btn-end-task' style='margin:10px 0' onclick='toggleDeliveryStatusView()'>" + (deliveryStatusViewMode === "grouped" ? "📋 SHOW AS TABLE · اعرض كجدول" : "📇 SHOW AS CARDS · اعرض ككروت") + "</button>";
+
+  if (!filtered.length) { el.innerHTML = html + "<div class='empty-log'>مفيش تاسكات تطابق الفلتر ده</div>"; return; }
+
+  if (deliveryStatusViewMode === "table") {
+    html += "<div style='overflow-x:auto'><table style='width:100%;border-collapse:collapse;font-size:14px'>";
+    html += "<tr style='border-bottom:2px solid var(--border)'>" +
+      "<th style='text-align:right;padding:8px'>Employee · الموظف</th>" +
+      "<th style='text-align:right;padding:8px'>Project · المشروع</th>" +
+      "<th style='text-align:right;padding:8px'>Task · التاسك</th>" +
+      "<th style='text-align:right;padding:8px'>Started · بدأ</th>" +
+      "<th style='text-align:right;padding:8px'>Deadline · الميعاد</th>" +
+      "<th style='text-align:right;padding:8px'>Status · الحالة</th></tr>";
+    for (var k = 0; k < filtered.length; k++) {
+      var tr = filtered[k];
+      var m = deliveryStatusMeta(tr.delivery);
+      html += "<tr style='border-bottom:1px solid var(--border2)'>" +
+        "<td style='padding:8px'>#" + tr.emp_code + " " + tr.employee_name + "</td>" +
+        "<td style='padding:8px'>" + tr.project + "</td>" +
+        "<td style='padding:8px'>" + tr.name + "</td>" +
+        "<td style='padding:8px'>" + tr.start_time + " (" + tr.date + ")</td>" +
+        "<td style='padding:8px'>" + (tr.delivery && tr.delivery.deadline_display ? tr.delivery.deadline_display : "—") + "</td>" +
+        "<td style='padding:8px;color:" + m.color + ";font-weight:700'>" + m.label + "</td></tr>";
+    }
+    html += "</table></div>";
+    el.innerHTML = html;
+    return;
+  }
+
+  var byEmp = {}, empOrder = [];
+  for (var i2 = 0; i2 < filtered.length; i2++) {
+    var key = filtered[i2].emp_code + "||" + filtered[i2].employee_name;
+    if (!byEmp[key]) { byEmp[key] = []; empOrder.push(key); }
+    byEmp[key].push(filtered[i2]);
+  }
 
   for (var e = 0; e < empOrder.length; e++) {
     var empTasks = byEmp[empOrder[e]];
@@ -5080,6 +5183,9 @@ function renderAdminReport(res) {
 
 function infoCard(label, value) {
   return "<div class='info-card'><div class='info-card-label'>" + label + "</div><div class='info-card-value'>" + value + "</div></div>";
+}
+function filterCard(label, value, onclickAttr, isActive) {
+  return "<div class='info-card filter-card" + (isActive ? " active" : "") + "' onclick=\"" + onclickAttr + "\"><div class='info-card-label'>" + label + "</div><div class='info-card-value'>" + value + "</div></div>";
 }
 function logRow(label, value) {
   return "<div class='log-entry'><div class='log-type'>" + label + "</div><div class='log-note'>" + value + "</div></div>";
