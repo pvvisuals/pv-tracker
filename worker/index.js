@@ -459,7 +459,11 @@ export default {
       if (path === "/api/deadline-requests/mine" && method === "GET") return await myDeadlineRequests(db, me, url.searchParams.get("month"));
       const attachUploadMatch = path.match(/^\/api\/requests\/(leave|financial|offclock|permission)\/(\d+)\/attachment$/);
       if (attachUploadMatch && method === "POST") return await uploadRequestAttachment(db, me, attachUploadMatch[1], Number(attachUploadMatch[2]), body);
-      if (attachUploadMatch && method === "GET") return await getMyRequestAttachment(db, me, attachUploadMatch[1], Number(attachUploadMatch[2]));
+      const attachListMatch = path.match(/^\/api\/requests\/(leave|financial|offclock|permission)\/(\d+)\/attachments$/);
+      if (attachListMatch && method === "GET") return await listMyRequestAttachments(db, me, attachListMatch[1], Number(attachListMatch[2]));
+      const attachByIdMatch = path.match(/^\/api\/attachments\/(\d+)$/);
+      if (attachByIdMatch && method === "GET") return await getAttachmentById(db, me, Number(attachByIdMatch[1]));
+      if (attachByIdMatch && method === "DELETE") return await deleteAttachmentById(db, me, Number(attachByIdMatch[1]));
       const ownReqMatch = path.match(/^\/api\/requests\/(leave|financial|offclock|permission)\/(\d+)$/);
       if (ownReqMatch && method === "PATCH") return await editOwnPendingRequest(db, me, ownReqMatch[1], Number(ownReqMatch[2]), body);
       if (ownReqMatch && method === "DELETE") return await deleteOwnPendingRequest(db, me, ownReqMatch[1], Number(ownReqMatch[2]));
@@ -954,6 +958,8 @@ const MAX_ATTACHMENT_BASE64_CHARS = 4 * 1024 * 1024; // ~3MB actual file size
 // Employee attaches a file to their OWN request — works uniformly for any
 // request type via the shared request_attachments table, so any future
 // request type gets attachment support for free.
+const MAX_ATTACHMENTS_PER_REQUEST = 6;
+
 async function uploadRequestAttachment(db, me, reqType, reqId, body) {
   const table = REQUEST_ATTACHMENT_TABLE[reqType];
   const missing = requireFields(body, ["filename", "mimetype", "data_base64"]);
@@ -961,7 +967,8 @@ async function uploadRequestAttachment(db, me, reqType, reqId, body) {
   if (body.data_base64.length > MAX_ATTACHMENT_BASE64_CHARS) return err("الملف كبير جداً — الحد الأقصى تقريباً 3 ميجا", 413);
   const own = await db.execute({ sql: `SELECT id FROM ${table} WHERE id = ? AND employee_id = ?`, args: [reqId, me.id] });
   if (!own.rows[0]) return err("Request not found", 404);
-  await db.execute({ sql: "DELETE FROM request_attachments WHERE request_type = ? AND request_id = ?", args: [reqType, reqId] });
+  const countRes = await db.execute({ sql: "SELECT COUNT(*) as c FROM request_attachments WHERE request_type = ? AND request_id = ?", args: [reqType, reqId] });
+  if (Number(countRes.rows[0].c) >= MAX_ATTACHMENTS_PER_REQUEST) return err(`أقصى عدد مرفقات للطلب الواحد ${MAX_ATTACHMENTS_PER_REQUEST}`, 409);
   const res = await db.execute({
     sql: `INSERT INTO request_attachments (request_type, request_id, filename, mimetype, data_base64, uploaded_by) VALUES (?,?,?,?,?,?) RETURNING id, filename, mimetype, uploaded_at`,
     args: [reqType, reqId, body.filename, body.mimetype, body.data_base64, me.id],
@@ -969,19 +976,43 @@ async function uploadRequestAttachment(db, me, reqType, reqId, body) {
   return json({ attachment: res.rows[0] }, 201);
 }
 
-async function getMyRequestAttachment(db, me, reqType, reqId) {
+async function listMyRequestAttachments(db, me, reqType, reqId) {
   const table = REQUEST_ATTACHMENT_TABLE[reqType];
   const own = await db.execute({ sql: `SELECT id FROM ${table} WHERE id = ? AND employee_id = ?`, args: [reqId, me.id] });
   if (!own.rows[0]) return err("Request not found", 404);
-  const res = await db.execute({ sql: "SELECT * FROM request_attachments WHERE request_type = ? AND request_id = ? ORDER BY id DESC LIMIT 1", args: [reqType, reqId] });
-  if (!res.rows[0]) return err("مفيش مرفق للطلب ده", 404);
-  return json({ attachment: res.rows[0] });
+  const res = await db.execute({ sql: "SELECT id, filename, mimetype, uploaded_at FROM request_attachments WHERE request_type = ? AND request_id = ? ORDER BY id ASC", args: [reqType, reqId] });
+  return json({ attachments: res.rows });
 }
 
-async function getAdminRequestAttachment(db, reqType, reqId) {
-  const res = await db.execute({ sql: "SELECT * FROM request_attachments WHERE request_type = ? AND request_id = ? ORDER BY id DESC LIMIT 1", args: [reqType, reqId] });
-  if (!res.rows[0]) return err("مفيش مرفق للطلب ده", 404);
-  return json({ attachment: res.rows[0] });
+async function listAdminRequestAttachments(db, reqType, reqId) {
+  const res = await db.execute({ sql: "SELECT id, filename, mimetype, uploaded_at FROM request_attachments WHERE request_type = ? AND request_id = ? ORDER BY id ASC", args: [reqType, reqId] });
+  return json({ attachments: res.rows });
+}
+
+// Fetching/deleting one specific attachment by its own id — works whether
+// the request has one attachment or several.
+async function getAttachmentById(db, me, attId) {
+  const res = await db.execute({ sql: "SELECT * FROM request_attachments WHERE id = ?", args: [attId] });
+  const att = res.rows[0];
+  if (!att) return err("مفيش مرفق بالرقم ده", 404);
+  if (me.role !== "admin") {
+    const table = REQUEST_ATTACHMENT_TABLE[att.request_type];
+    const own = await db.execute({ sql: `SELECT id FROM ${table} WHERE id = ? AND employee_id = ?`, args: [att.request_id, me.id] });
+    if (!own.rows[0]) return err("Not authorized", 403);
+  }
+  return json({ attachment: att });
+}
+
+async function deleteAttachmentById(db, me, attId) {
+  const res = await db.execute({ sql: "SELECT * FROM request_attachments WHERE id = ?", args: [attId] });
+  const att = res.rows[0];
+  if (!att) return err("مفيش مرفق بالرقم ده", 404);
+  const table = REQUEST_ATTACHMENT_TABLE[att.request_type];
+  const own = await db.execute({ sql: `SELECT * FROM ${table} WHERE id = ? AND employee_id = ?`, args: [att.request_id, me.id] });
+  if (!own.rows[0]) return err("Not authorized", 403);
+  if (own.rows[0].status !== "pending") return err("الطلب ده اتقرر فيه بالفعل، مينفعش تعدل مرفقاته", 409);
+  await db.execute({ sql: "DELETE FROM request_attachments WHERE id = ?", args: [attId] });
+  return json({ ok: true });
 }
 
 async function resumeTask(db, me, taskId) {
@@ -1960,8 +1991,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ task: (await attachDeliveryStatus(db, await attachSegments(db, updated.rows)))[0] });
   }
 
-  const adminAttachMatch = path.match(/^\/api\/admin\/requests\/(leave|financial|offclock|permission)\/(\d+)\/attachment$/);
-  if (adminAttachMatch && method === "GET") return await getAdminRequestAttachment(db, adminAttachMatch[1], Number(adminAttachMatch[2]));
+  const adminAttachListMatch = path.match(/^\/api\/admin\/requests\/(leave|financial|offclock|permission)\/(\d+)\/attachments$/);
+  if (adminAttachListMatch && method === "GET") return await listAdminRequestAttachments(db, adminAttachListMatch[1], Number(adminAttachListMatch[2]));
 
   if (path === "/api/admin/deadline-requests" && method === "GET") {
     const status = url.searchParams.get("status") || "pending";
