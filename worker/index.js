@@ -1359,7 +1359,7 @@ async function monthlyReport(db, employeeId, monthStr) {
     monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
   }
 
-  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows, bonusRows, lateRows, deadlineTaskRows] = await Promise.all([
+  const [attRows, leaveRows, otRows, holidayRows, finRows, offRows, permRows, penaltyRows, projectRows, breakRows, bonusRows, lateRows, deadlineTaskRows, dayTaskRows] = await Promise.all([
     db.execute({
       sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC",
       args: [employeeId, firstDay, addDaysToDateStr(lastDay, 1)],
@@ -1417,6 +1417,15 @@ async function monthlyReport(db, employeeId, monthStr) {
     }),
     db.execute({
       sql: "SELECT * FROM tasks WHERE employee_id = ? AND date BETWEEN ? AND ? AND deadline_at IS NOT NULL AND end_time IS NOT NULL",
+      args: [employeeId, firstDay, lastDay],
+    }),
+    db.execute({
+      sql: `SELECT DISTINCT t.*, p.code as p_code, p.name as p_name, p.category, p.type, p.sub_code, p.simple_label,
+                   ts.date as segment_date
+            FROM tasks t
+            JOIN task_segments ts ON ts.task_id = t.id
+            LEFT JOIN projects p ON p.id = t.project_id
+            WHERE t.employee_id = ? AND ts.date BETWEEN ? AND ?`,
       args: [employeeId, firstDay, lastDay],
     }),
   ]);
@@ -1631,6 +1640,27 @@ async function monthlyReport(db, employeeId, monthStr) {
   const baseSalary = Number(emp.monthly_salary) || 0;
   const salaryAdjustment = +(hoursDiff * rate).toFixed(2);
   const finalSalary = +(baseSalary + salaryAdjustment + bonusesTotalEGP - penaltiesTotalEGP).toFixed(2);
+
+  // Attach each day's worked tasks (grouped by which day they had an active
+  // segment on, so a multi-day task shows up under every day it was
+  // actually worked) — used to fill the "what did they work on" column
+  // next to each day's attendance details.
+  const dayTasksWithSegments = await attachSegments(db, dayTaskRows.rows);
+  const tasksByDate = {};
+  for (const t of dayTasksWithSegments) {
+    const dk = t.segment_date;
+    if (!tasksByDate[dk]) tasksByDate[dk] = [];
+    tasksByDate[dk].push({
+      id: t.id, name: t.name, description: t.description,
+      project: (t.p_code ? (t.p_code + " - " + t.p_name) : (t.project || "")),
+      project_type: t.p_code ? (t.category + " / " + t.type + (t.sub_code ? " " + t.sub_code : "") + (t.simple_label ? " (" + t.simple_label + ")" : "")) : null,
+      start_time: t.start_time, end_time: t.end_time, paused: !!t.paused,
+      segments: t.segments,
+    });
+  }
+  for (const d of days) {
+    d.tasks = tasksByDate[d.date] || [];
+  }
 
   return json({
     employee: publicEmployee(emp),
@@ -2126,6 +2156,9 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (body.work_days_per_month !== undefined) { fields.push("work_days_per_month = ?"); args.push(Number(body.work_days_per_month) || 0); }
     if (body.daily_work_hours !== undefined) { fields.push("daily_work_hours = ?"); args.push(Number(body.daily_work_hours) || 8); }
     if (body.birth_date !== undefined) { fields.push("birth_date = ?"); args.push(body.birth_date || null); }
+    if (body.casual_balance !== undefined) { fields.push("casual_balance = ?"); args.push(Number(body.casual_balance) || 0); }
+    if (body.annual_balance !== undefined) { fields.push("annual_balance = ?"); args.push(Number(body.annual_balance) || 0); }
+    if (body.sick_balance !== undefined) { fields.push("sick_balance = ?"); args.push(Number(body.sick_balance) || 0); }
     if (!fields.length) return err("مفيش بيانات للتحديث");
     args.push(empId);
     await db.execute({ sql: `UPDATE employees SET ${fields.join(", ")} WHERE id = ?`, args });
