@@ -626,12 +626,16 @@ textarea{resize:vertical;min-height:76px;}
 <div id="leaveBalanceAndForm">
 <div class="info-grid">
 <div class="info-card">
-<div class="info-card-label">Casual Leave / عارضة</div>
+<div class="info-card-label">Casual Leave — Remaining <span class="fla">عارضة — المتبقي</span></div>
 <div class="info-card-value" id="casualBalance">-</div>
 </div>
 <div class="info-card">
-<div class="info-card-label">Annual Leave / اعتيادية</div>
+<div class="info-card-label">Annual Leave — Remaining <span class="fla">اعتيادية — المتبقي</span></div>
 <div class="info-card-value" id="annualBalance">-</div>
+</div>
+<div class="info-card">
+<div class="info-card-label">Sick Leave — Taken <span class="fla">مرضية — المستخدم (بلا حد أقصى)</span></div>
+<div class="info-card-value" id="sickBalanceUsed">-</div>
 </div>
 </div>
 <div class="task-form">
@@ -897,19 +901,20 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="form-row" style="margin-top:14px">
 <div class="fg" style="margin:0">
-<div class="fl">Casual Leave Balance <span class="fla">رصيد الإجازة العارضة</span></div>
-<input type="number" id="salaryCasualBalance" min="0" step="0.5"/>
+<div class="fl">Casual Leave — Days Taken <span class="fla">العارضة — كام يوم أخد (من 6)</span></div>
+<input type="number" id="salaryCasualBalance" min="0" step="0.5" oninput="updateLeaveRemainingPreview()"/>
 </div>
 <div class="fg" style="margin:0">
-<div class="fl">Annual Leave Balance <span class="fla">رصيد الإجازة الاعتيادية</span></div>
-<input type="number" id="salaryAnnualBalance" min="0" step="0.5"/>
+<div class="fl">Annual Leave — Days Taken <span class="fla">الاعتيادية — كام يوم أخد (من 15)</span></div>
+<input type="number" id="salaryAnnualBalance" min="0" step="0.5" oninput="updateLeaveRemainingPreview()"/>
 </div>
 </div>
 <div class="fg" style="margin:10px 0 0">
-<div class="fl">Sick Leave Balance <span class="fla">رصيد الإجازة المرضية</span></div>
+<div class="fl">Sick Leave — Days Taken <span class="fla">المرضية — كام يوم أخد (بلا حد أقصى)</span></div>
 <input type="number" id="salarySickBalance" min="0" step="0.5"/>
 </div>
-<div class="fl-hint" style="margin-top:6px">الأرقام دي هي نفسها اللي بتتحسب منها كل طلبات الإجازة والتقارير — أي تعديل هنا بيتحدّث في النظام كله فوراً</div>
+<div class="fl-hint" style="margin-top:6px">العارضة والاعتيادية بعدد أيام ثابت لكل الموظفين (6 و15) — هنا بتحدد بس كام يوم الموظف أخد فعلاً، والباقي بيتحسب تلقائي. المرضية مفيهاش حد أقصى خالص، الرقم للاطلاع بس. موظف جديد لسه ماخدش حاجة سيبه صفر.</div>
+<div id="leaveRemainingPreview" class="fl-hint" style="margin-top:6px;color:var(--ok)"></div>
 <div class="info-grid" style="margin-top:14px">
 <div class="info-card">
 <div class="info-card-label">Hourly Rate <span class="fla">قيمة الساعة</span></div>
@@ -974,14 +979,26 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 
 <div style="margin-top:24px;padding-top:18px;border-top:1px solid #ff4444;">
-<div class="settings-label" style="color:#ff4444">Delete Employee <span class="fla" style="color:#ff4444">حذف الموظف نهائياً</span></div>
-<div class="sec-sub" style="margin-bottom:12px;color:#ff4444">⚠️ هيمسح كل بيانات الموظف نهائياً (حضور، مهام، طلبات، كل حاجة) — إجراء لا رجعة فيه</div>
+<div class="settings-label" style="color:#ff4444">Deactivate Employee <span class="fla" style="color:#ff4444">تعطيل الموظف</span></div>
+<div class="sec-sub" style="margin-bottom:12px;color:#ff4444">⚠️ هيقفل حساب الموظف ويختفي من القوائم النشطة ومش هيقدر يسجّل دخول — بس كل بياناته التاريخية (تقارير، تكلفة مشاريع) تفضل سليمة بالكامل. تقدر ترجّعه تاني من سجل الموظفين المعطّلين.</div>
 <div class="fg" style="margin:0 0 12px">
 <div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
 <input type="password" id="deletePin" placeholder="****" autocomplete="off"/>
 </div>
-<button class="btn-add" style="background:#ff4444;border-color:#ff4444;color:#fff" onclick="deleteEmployeeConfirm()">DELETE EMPLOYEE · حذف نهائي</button>
+<button class="btn-add" style="background:#ff4444;border-color:#ff4444;color:#fff" onclick="deleteEmployeeConfirm()">DEACTIVATE EMPLOYEE · تعطيل الموظف</button>
 </div>
+</div>
+
+<div class="task-form">
+<div class="settings-label" id="section-deactivated-employees" style="color:var(--muted)">Deactivated Employees Log <span class="fla">سجل الموظفين المعطّلين</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Search <span class="fla">بحث بالاسم أو الكود</span></div>
+<input type="text" id="deactivatedSearchInput" placeholder="اكتب اسم أو كود..." oninput="loadDeactivatedEmployees()"/>
+</div>
+</div>
+<button class="btn-add" onclick="loadDeactivatedEmployees()">عرض السجل · SHOW LOG</button>
+<div id="deactivatedEmployeesList" style="margin-top:12px"></div>
 </div>
 </div>
 <div class="admin-page" id="admin-page-requests">
@@ -1717,6 +1734,7 @@ textarea{resize:vertical;min-height:76px;}
 <a onclick="jumpTo('section-manage-admins')">إدارة الأدمن</a>
 <a onclick="jumpTo('section-probation')">فترة الاختبار</a>
 <a onclick="jumpTo('section-full-info')">بيانات الموظف</a>
+<a onclick="jumpTo('section-deactivated-employees')">سجل المعطّلين</a>
 <a onclick="jumpTo('section-report')">تقرير الموظف</a>
 <a onclick="jumpTo('section-projects-report')">تقرير المشاريع</a>
 <a onclick="jumpTo('section-project-cost')">تكلفة المشاريع</a>
@@ -1760,7 +1778,7 @@ var myPenalties = [];
 var myBonuses = [];
 var myLateArrivals = [];
 var myNotices = [];
-var leaveBalance = { casual: 6, annual: 15 };
+var leaveBalance = { casual: 0, annual: 0, sick: 0 };
 var adminRequestsData = {};
 var adminHolidaysMonth = [];
 var empStatuses = [];
@@ -2496,8 +2514,12 @@ async function refreshMyProbationStatus() {
 }
 
 function renderLeaveBalance() {
-  document.getElementById("casualBalance").textContent = leaveBalance.casual;
-  document.getElementById("annualBalance").textContent = leaveBalance.annual;
+  var casualUsed = leaveBalance.casual || 0;
+  var annualUsed = leaveBalance.annual || 0;
+  var sickUsed = leaveBalance.sick || 0;
+  document.getElementById("casualBalance").textContent = (6 - casualUsed) + " (أخد " + casualUsed + " من 6)";
+  document.getElementById("annualBalance").textContent = (15 - annualUsed) + " (أخد " + annualUsed + " من 15)";
+  document.getElementById("sickBalanceUsed").textContent = sickUsed + " يوم";
 }
 
 function renderOfficialHolidaysEmployee() {
@@ -2849,6 +2871,7 @@ async function loadAdminData() {
     fetchDeliveryStatusReport();
     populateDeadlineReqFilterEmployee();
     fetchDeadlineRequestsOverview();
+    loadDeactivatedEmployees();
 
     await reloadMonthDependentAdminData();
   } catch(e) { /* non-fatal */ }
@@ -4004,10 +4027,20 @@ function fillSalaryForm() {
   document.getElementById("salaryAmount").value = emp.monthly_salary || "";
   document.getElementById("salaryWorkDays").value = emp.work_days_per_month || 22;
   document.getElementById("salaryDayHours").value = emp.daily_work_hours || 8;
-  document.getElementById("salaryCasualBalance").value = emp.casual_balance != null ? emp.casual_balance : 6;
-  document.getElementById("salaryAnnualBalance").value = emp.annual_balance != null ? emp.annual_balance : 21;
-  document.getElementById("salarySickBalance").value = emp.sick_balance != null ? emp.sick_balance : 15;
+  document.getElementById("salaryCasualBalance").value = emp.casual_balance != null ? emp.casual_balance : 0;
+  document.getElementById("salaryAnnualBalance").value = emp.annual_balance != null ? emp.annual_balance : 0;
+  document.getElementById("salarySickBalance").value = emp.sick_balance != null ? emp.sick_balance : 0;
   updateHourlyRatePreview();
+  updateLeaveRemainingPreview();
+}
+
+function updateLeaveRemainingPreview() {
+  var casualUsed = Number(document.getElementById("salaryCasualBalance").value) || 0;
+  var annualUsed = Number(document.getElementById("salaryAnnualBalance").value) || 0;
+  var casualLeft = 6 - casualUsed;
+  var annualLeft = 15 - annualUsed;
+  document.getElementById("leaveRemainingPreview").textContent =
+    "المتبقي: عارضة " + casualLeft + " يوم — اعتيادية " + annualLeft + " يوم";
 }
 
 function updateHourlyRatePreview() {
@@ -4529,9 +4562,9 @@ async function showEmployeeFullInfo() {
       "<div class='profile-row'><span class='profile-key'>Work Days / Month</span><span class='profile-val'>" + e.work_days_per_month + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Work Hours / Day</span><span class='profile-val'>" + e.daily_work_hours + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Hourly Rate</span><span class='profile-val'>" + e.hourly_rate + " EGP</span></div>" +
-      "<div class='profile-row'><span class='profile-key'>Casual Balance</span><span class='profile-val'>" + e.casual_balance + "</span></div>" +
-      "<div class='profile-row'><span class='profile-key'>Annual Balance</span><span class='profile-val'>" + e.annual_balance + "</span></div>" +
-      "<div class='profile-row'><span class='profile-key'>Sick Balance</span><span class='profile-val'>" + e.sick_balance + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Casual Leave</span><span class='profile-val'>متبقي " + (6 - e.casual_balance) + "/6 (أخد " + e.casual_balance + ")</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Annual Leave</span><span class='profile-val'>متبقي " + (15 - e.annual_balance) + "/15 (أخد " + e.annual_balance + ")</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Sick Leave</span><span class='profile-val'>أخد " + e.sick_balance + " (بلا حد أقصى)</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Penalties</span><span class='profile-val' style='color:var(--danger)'>" + res.penalties_active_count + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Bonuses</span><span class='profile-val' style='color:var(--ok)'>" + res.bonuses_active_count + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Notices</span><span class='profile-val' style='color:var(--warn)'>" + res.notices_active_count + "</span></div>" +
@@ -4589,7 +4622,7 @@ function deleteEmployeeConfirm() {
   if (!id) { showToast("!", "اختار موظف"); return; }
   if (!pin) { showToast("!", "ادخل كود الأمان"); return; }
   var emp = adminEmployees.find(function(e) { return String(e.id) === String(id); });
-  openModal("DELETE EMPLOYEE", "متأكد عايز تمسح " + (emp ? emp.name : "الموظف ده") + " نهائياً؟ الإجراء ده لا رجعة فيه ومش هيتقدر يترجع.", function() {
+  openModal("DEACTIVATE EMPLOYEE · تعطيل الموظف", "متأكد عايز تعطّل " + (emp ? emp.name : "الموظف ده") + "؟ هيختفي من القوائم النشطة ومش هيقدر يسجّل دخول، بس تقدر ترجّعه تاني من سجل المعطّلين وقت ما تحب.", function() {
     deleteEmployeeExecute(id, pin);
   });
 }
@@ -4597,11 +4630,47 @@ function deleteEmployeeConfirm() {
 async function deleteEmployeeExecute(id, pin) {
   showLoading(true);
   try {
-    await apiRequest("/api/admin/employees/" + id + "/delete", "POST", { pin: pin });
-    showToast("v", "تم حذف الموظف نهائياً");
+    await apiRequest("/api/admin/employees/" + id + "/deactivate", "POST", { pin: pin });
+    showToast("v", "تم تعطيل الموظف");
     document.getElementById("deletePin").value = "";
     document.getElementById("employeeFullInfoDisplay").innerHTML = "";
     await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function loadDeactivatedEmployees() {
+  var search = document.getElementById("deactivatedSearchInput").value.trim();
+  var el = document.getElementById("deactivatedEmployeesList");
+  try {
+    var res = await apiRequest("/api/admin/deactivated-employees?search=" + encodeURIComponent(search), "GET");
+    var list = res.employees || [];
+    if (!list.length) { el.innerHTML = "<div class='empty-log'>مفيش موظفين معطّلين" + (search ? " بيطابقوا البحث" : "") + "</div>"; return; }
+    var html = "<div class='log-wrap'>";
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      html += "<div class='log-entry'><div class='log-type'>#" + e.emp_code + "</div><div class='log-time'>" + e.name + "</div>" +
+        "<div class='log-note'>اتعطل في " + (e.deactivated_at ? e.deactivated_at.slice(0,16) : "-") + (e.deactivated_by_name ? " بواسطة " + e.deactivated_by_name : "") + "</div>" +
+        "<button class='btn-end-task' onclick=\"reactivateEmployeePrompt(" + e.id + ", '" + e.name.replace(/'/g,"") + "')\">↺ REACTIVATE · إرجاع</button></div>";
+    }
+    html += "</div>";
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = "<div class='empty-log'>فشل تحميل السجل</div>"; }
+}
+
+function reactivateEmployeePrompt(id, name) {
+  openPinModal("REACTIVATE EMPLOYEE · إرجاع الموظف", "هيرجع " + name + " يقدر يسجّل دخول ويظهر في القوائم النشطة تاني. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeReactivateEmployee(id, pin);
+  });
+}
+async function executeReactivateEmployee(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/employees/" + id + "/reactivate", "POST", { pin: pin });
+    showToast("v", "تم إرجاع الموظف");
+    await loadDeactivatedEmployees();
+    await refreshEmployeesOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -5358,9 +5427,9 @@ function renderAdminReport(res) {
   // ---- Attendance summary ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>ATTENDANCE SUMMARY · ملخص الحضور</span></div>";
   html += logRow("Absent Days <span class='fla'>أيام غياب بدون إجازة</span>", "<span style='color:" + (t.absent_days>0?"var(--danger)":"var(--text)") + "'>" + t.absent_days + " يوم</span>");
-  html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " (رصيد متبقي / left: " + res.leave_balance.casual + ")");
-  html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " (رصيد متبقي / left: " + res.leave_balance.annual + ")");
-  html += logRow("Sick Leave Taken <span class='fla'>مرضي مستخدمة</span>", (t.leave_days_sick||0) + " (رصيد متبقي / left: " + res.leave_balance.sick + ")");
+  html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " هذا الشهر — إجمالي مستخدم: " + res.leave_balance.casual + "/6 — متبقي: " + (6 - res.leave_balance.casual));
+  html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " هذا الشهر — إجمالي مستخدم: " + res.leave_balance.annual + "/15 — متبقي: " + (15 - res.leave_balance.annual));
+  html += logRow("Sick Leave Taken <span class='fla'>مرضي مستخدمة</span>", (t.leave_days_sick||0) + " هذا الشهر — إجمالي مستخدم: " + res.leave_balance.sick + " (بلا حد أقصى)");
   if (res.late_arrivals) {
     var laNote = "<span style='color:" + (res.late_arrivals.count>0?"var(--danger)":"var(--text)") + "'>" + res.late_arrivals.count + "</span>";
     if (res.late_arrivals.count > 0) {
@@ -6152,7 +6221,7 @@ function getMonthFilterValue(monthInputId, checkboxId) {
 var SECTION_TO_PAGE = {
   "section-emp-status": "overview", "section-birthdays": "overview", "section-daily-tasks": "overview",
   "section-set-deadlines": "overview", "section-deadline-requests": "overview", "section-delivery-status": "overview",
-  "section-salary": "employees", "section-manage-admins": "employees", "section-probation": "employees", "section-full-info": "employees",
+  "section-salary": "employees", "section-manage-admins": "employees", "section-probation": "employees", "section-full-info": "employees", "section-deactivated-employees": "employees",
   "section-requests": "requests", "section-holidays": "requests", "section-late-arrivals-title": "requests",
   "section-penalties": "requests", "section-bonuses": "requests", "section-notices": "requests",
   "section-projects": "clients", "section-project-cost": "clients",
