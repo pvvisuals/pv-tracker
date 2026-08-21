@@ -114,6 +114,11 @@ function leaveBalanceField(type) {
   if (type === "sick") return "sick_balance";
   return "annual_balance";
 }
+function leaveExtraField(type) {
+  if (type === "casual") return "casual_extra_used";
+  if (type === "annual") return "annual_extra_used";
+  return null; // sick has no quota, no extra field needed
+}
 
 function isWeekendStr(dateStr) {
   // dateStr = YYYY-MM-DD, treat as a Cairo calendar date (noon avoids DST edge issues)
@@ -379,10 +384,22 @@ async function getAuthedEmployee(req, db) {
 }
 
 function publicEmployee(e) {
+  const casualSystemUsed = Number(e.casual_balance) || 0;
+  const annualSystemUsed = Number(e.annual_balance) || 0;
+  const casualExtraUsed = Number(e.casual_extra_used) || 0;
+  const annualExtraUsed = Number(e.annual_extra_used) || 0;
   return {
     id: e.id, emp_code: e.emp_code, name: e.name, phone: e.phone,
     title: e.title, dept: e.dept, avatar_url: e.avatar_url, role: e.role,
-    casual_balance: e.casual_balance, annual_balance: e.annual_balance, sick_balance: e.sick_balance,
+    // Combined total used (system-tracked + manual pre-system adjustment) —
+    // this is what every existing "remaining = quota - used" calculation
+    // and display already reads, so it stays accurate everywhere for free.
+    casual_balance: casualSystemUsed + casualExtraUsed,
+    annual_balance: annualSystemUsed + annualExtraUsed,
+    sick_balance: e.sick_balance,
+    // Raw breakdown, only for the Salary Settings admin form.
+    casual_system_used: casualSystemUsed, annual_system_used: annualSystemUsed,
+    casual_extra_used: casualExtraUsed, annual_extra_used: annualExtraUsed,
     birth_date: e.birth_date || null, age: calcAge(e.birth_date),
     is_probation: !!e.is_probation,
     is_birthday_today: isBirthdayToday(e.birth_date),
@@ -2164,8 +2181,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (body.work_days_per_month !== undefined) { fields.push("work_days_per_month = ?"); args.push(Number(body.work_days_per_month) || 0); }
     if (body.daily_work_hours !== undefined) { fields.push("daily_work_hours = ?"); args.push(Number(body.daily_work_hours) || 8); }
     if (body.birth_date !== undefined) { fields.push("birth_date = ?"); args.push(body.birth_date || null); }
-    if (body.casual_balance !== undefined) { fields.push("casual_balance = ?"); args.push(Number(body.casual_balance) || 0); }
-    if (body.annual_balance !== undefined) { fields.push("annual_balance = ?"); args.push(Number(body.annual_balance) || 0); }
+    if (body.casual_extra_used !== undefined) { fields.push("casual_extra_used = ?"); args.push(Number(body.casual_extra_used) || 0); }
+    if (body.annual_extra_used !== undefined) { fields.push("annual_extra_used = ?"); args.push(Number(body.annual_extra_used) || 0); }
     if (body.sick_balance !== undefined) { fields.push("sick_balance = ?"); args.push(Number(body.sick_balance) || 0); }
     if (!fields.length) return err("مفيش بيانات للتحديث");
     args.push(empId);
@@ -2828,6 +2845,35 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ ok: true });
   }
 
+  // ---------- repair tool: recompute casual_balance/annual_balance/sick_balance
+  // for EVERY employee directly from their actual approved leave_requests,
+  // instead of trusting whatever number is currently stored. Never touches
+  // casual_extra_used/annual_extra_used (the manual pre-system adjustment).
+  if (path === "/api/admin/recompute-leave-balances" && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const empRes = await db.execute("SELECT id FROM employees");
+    const results = [];
+    for (const emp of empRes.rows) {
+      const leaveRes = await db.execute({
+        sql: "SELECT type, date, end_date FROM leave_requests WHERE employee_id = ? AND status = 'approved'",
+        args: [emp.id],
+      });
+      let casual = 0, annual = 0, sick = 0;
+      for (const r of leaveRes.rows) {
+        const days = workingDaysInRange(r.date, r.end_date || r.date).length;
+        if (r.type === "casual") casual += days;
+        else if (r.type === "sick") sick += days;
+        else annual += days;
+      }
+      await db.execute({
+        sql: "UPDATE employees SET casual_balance = ?, annual_balance = ?, sick_balance = ? WHERE id = ?",
+        args: [casual, annual, sick, emp.id],
+      });
+      results.push({ employee_id: emp.id, casual_used: casual, annual_used: annual, sick_used: sick });
+    }
+    return json({ ok: true, recomputed: results });
+  }
+
   if (path === "/api/admin/deactivated-employees" && method === "GET") {
     const search = (url.searchParams.get("search") || "").trim();
     let sql = `SELECT e.*, a.name as deactivated_by_name FROM employees e
@@ -2862,10 +2908,11 @@ async function decideLeave(db, admin, requestId, body) {
     const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [request.employee_id] });
     const emp = empRes.rows[0];
     const field = leaveBalanceField(request.type);
+    const extraField = leaveExtraField(request.type);
     const days = workingDaysInRange(request.date, request.end_date || request.date).length;
     const quota = LEAVE_QUOTAS[request.type]; // undefined for sick — no cap
     if (quota !== undefined) {
-      const usedSoFar = Number(emp[field]) || 0;
+      const usedSoFar = (Number(emp[field]) || 0) + (extraField ? (Number(emp[extraField]) || 0) : 0);
       const remaining = quota - usedSoFar;
       if (remaining < days) return err(`رصيد الإجازة مش كفاية (متبقي ${remaining} من ${quota}، مطلوب ${days})`, 409);
     }
@@ -2902,6 +2949,7 @@ async function redecideRequest(db, admin, kind, requestId, action) {
 
   if (kind === "leave") {
     const field = leaveBalanceField(request.type);
+    const extraField = leaveExtraField(request.type);
     const days = workingDaysInRange(request.date, request.end_date || request.date).length;
     const quota = LEAVE_QUOTAS[request.type]; // undefined for sick — no cap
     if (request.status === "approved" && newStatus === "rejected") {
@@ -2912,7 +2960,7 @@ async function redecideRequest(db, admin, kind, requestId, action) {
       const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [request.employee_id] });
       const emp = empRes.rows[0];
       if (quota !== undefined) {
-        const usedSoFar = Number(emp[field]) || 0;
+        const usedSoFar = (Number(emp[field]) || 0) + (extraField ? (Number(emp[extraField]) || 0) : 0);
         const remaining = quota - usedSoFar;
         if (remaining < days) return err(`رصيد الإجازة مش كفاية (متبقي ${remaining} من ${quota}، مطلوب ${days})`, 409);
       }
