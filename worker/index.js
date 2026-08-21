@@ -2513,27 +2513,79 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const res = await db.execute("SELECT * FROM clients ORDER BY client_code ASC");
     return json({ clients: res.rows });
   }
+  if (path === "/api/admin/clients/check-code" && method === "GET") {
+    const code = String(url.searchParams.get("code") || "").trim();
+    if (!/^\d{2}$/.test(code)) return json({ exists: false });
+    const res = await db.execute({ sql: "SELECT * FROM clients WHERE client_code = ?", args: [code] });
+    return json({ exists: !!res.rows[0], client: res.rows[0] || null });
+  }
+  if (path === "/api/admin/client-types" && method === "GET") {
+    const builtIn = ["Designer", "Developer", "Marketing Agency"];
+    const res = await db.execute("SELECT DISTINCT client_type FROM clients WHERE client_type IS NOT NULL AND client_type != ''");
+    const custom = res.rows.map((r) => r.client_type).filter((t) => !builtIn.includes(t));
+    return json({ types: [...builtIn, ...custom] });
+  }
   if (path === "/api/admin/clients" && method === "POST") {
     if (!pinOk(body)) return err("كود الأمان غلط", 403);
     const missing = requireFields(body, ["client_code", "client_name"]);
     if (missing) return err(`Missing field: ${missing}`);
     const code = String(body.client_code).trim();
     if (!/^\d{2}$/.test(code)) return err("كود الكلاينت لازم يكون رقمين بالظبط (مثال: 01)");
-    try {
-      const res = await db.execute({
-        sql: `INSERT INTO clients (client_code, client_name, created_by) VALUES (?,?,?) RETURNING *`,
-        args: [code, body.client_name.trim(), admin.id],
+    // Same code can already exist (e.g. a project using it was added first)
+    // — upsert instead of failing, so "whichever gets entered first,
+    // client or project, doesn't matter" holds true.
+    const existing = await db.execute({ sql: "SELECT id FROM clients WHERE client_code = ?", args: [code] });
+    const fields = {
+      client_name: body.client_name.trim(),
+      client_type: body.client_type || null,
+      entity_type: body.entity_type || null,
+      address: body.address || null,
+      instagram_url: body.instagram_url || null,
+      facebook_url: body.facebook_url || null,
+      website_url: body.website_url || null,
+      phone: body.phone || null,
+      contact_person_name: body.contact_person_name || null,
+      contact_person_title: body.contact_person_title || null,
+      rating: body.rating ? Number(body.rating) : null,
+    };
+    if (existing.rows[0]) {
+      const setClauses = Object.keys(fields).map((k) => `${k} = ?`).join(", ");
+      await db.execute({
+        sql: `UPDATE clients SET ${setClauses}, updated_by = ?, updated_at = datetime('now') WHERE id = ?`,
+        args: [...Object.values(fields), admin.id, existing.rows[0].id],
       });
-      return json({ client: res.rows[0] }, 201);
-    } catch (e) {
-      return err("الكود ده متسجل قبل كده لعميل تاني", 409);
+      const updated = await db.execute({ sql: "SELECT * FROM clients WHERE id = ?", args: [existing.rows[0].id] });
+      return json({ client: updated.rows[0] });
     }
+    const res = await db.execute({
+      sql: `INSERT INTO clients (client_code, client_name, client_type, entity_type, address, instagram_url, facebook_url, website_url, phone, contact_person_name, contact_person_title, rating, created_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      args: [code, fields.client_name, fields.client_type, fields.entity_type, fields.address, fields.instagram_url, fields.facebook_url, fields.website_url, fields.phone, fields.contact_person_name, fields.contact_person_title, fields.rating, admin.id],
+    });
+    return json({ client: res.rows[0] }, 201);
   }
   const clientEditMatch = path.match(/^\/api\/admin\/clients\/(\d+)$/);
   if (clientEditMatch && method === "PATCH") {
     if (!pinOk(body)) return err("كود الأمان غلط", 403);
     if (!body.client_name) return err("اكتب اسم العميل");
-    await db.execute({ sql: "UPDATE clients SET client_name = ? WHERE id = ?", args: [body.client_name.trim(), Number(clientEditMatch[1])] });
+    const fields = {
+      client_name: body.client_name.trim(),
+      client_type: body.client_type || null,
+      entity_type: body.entity_type || null,
+      address: body.address || null,
+      instagram_url: body.instagram_url || null,
+      facebook_url: body.facebook_url || null,
+      website_url: body.website_url || null,
+      phone: body.phone || null,
+      contact_person_name: body.contact_person_name || null,
+      contact_person_title: body.contact_person_title || null,
+      rating: body.rating ? Number(body.rating) : null,
+    };
+    const setClauses = Object.keys(fields).map((k) => `${k} = ?`).join(", ");
+    await db.execute({
+      sql: `UPDATE clients SET ${setClauses}, updated_by = ?, updated_at = datetime('now') WHERE id = ?`,
+      args: [...Object.values(fields), admin.id, Number(clientEditMatch[1])],
+    });
     return json({ ok: true });
   }
   if (clientEditMatch && method === "DELETE") {
