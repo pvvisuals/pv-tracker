@@ -795,6 +795,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="admin-subtab" id="subtab-employees" onclick="switchAdminPage('employees')">👥 EMPLOYEES <span class="fla">الموظفين</span></div>
 <div class="admin-subtab" id="subtab-requests" onclick="switchAdminPage('requests')">📋 REQUESTS &amp; DISCIPLINE <span class="fla">الطلبات والجزاءات</span></div>
 <div class="admin-subtab" id="subtab-clients" onclick="switchAdminPage('clients')">📁 CLIENTS &amp; PROJECTS <span class="fla">العملاء والمشاريع</span></div>
+<div class="admin-subtab" id="subtab-financial-reports" onclick="switchAdminPage('financial-reports')">📈 PROJECT FINANCE <span class="fla">التقارير المالية للمشاريع</span></div>
 <div class="admin-subtab" id="subtab-finance" onclick="switchAdminPage('finance')">💰 FINANCE <span class="fla">الحسابات</span></div>
 <div class="admin-subtab" id="subtab-reports" onclick="switchAdminPage('reports')">📈 REPORTS <span class="fla">تقارير</span></div>
 </div>
@@ -1184,9 +1185,90 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="admin-page" id="admin-page-clients">
-<div class="task-form">
+<div class="task-form allow-nested-accordion">
+<div class="settings-label" id="section-client-management">Client Management <span class="fla">إدارة العملاء</span></div>
+<div class="sec-sub" style="margin-bottom:16px">كود العميل هو نفسه أول رقمين من كود أي مشروع بتاعه — أدخل كود موجود قبل كده وهتلاقي بياناته جاهزة للتعديل</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Client Code <span class="fla">كود العميل (رقمين)</span></div>
+<input type="text" id="cmCode" maxlength="2" placeholder="01" inputmode="numeric" onblur="checkClientCodeExists()"/>
+<div class="fl-hint" id="cmCodeHint"></div>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Client Name <span class="fla">اسم العميل</span></div>
+<input type="text" id="cmName"/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Client Type <span class="fla">نوع العميل</span></div>
+<select id="cmType" onchange="onCmTypeChange()"></select>
+<input type="text" id="cmTypeCustom" placeholder="اكتب النوع الجديد..." style="display:none;margin-top:8px"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Entity Type <span class="fla">فرد أو شركة</span></div>
+<select id="cmEntityType">
+<option value="company">Company · شركة</option>
+<option value="individual">Individual · فرد</option>
+</select>
+</div>
+</div>
+<div class="fg">
+<div class="fl">Address <span class="fla">العنوان (اختياري)</span></div>
+<input type="text" id="cmAddress"/>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Instagram <span class="fla">لينك انستجرام (اختياري)</span></div>
+<input type="text" id="cmInstagram" placeholder="https://instagram.com/..."/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Facebook <span class="fla">لينك فيسبوك (اختياري)</span></div>
+<input type="text" id="cmFacebook" placeholder="https://facebook.com/..."/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Website <span class="fla">الويبسايت (اختياري)</span></div>
+<input type="text" id="cmWebsite" placeholder="https://..."/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Phone <span class="fla">رقم الهاتف (اختياري)</span></div>
+<input type="text" id="cmPhone"/>
+</div>
+</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Contact Person <span class="fla">اسم الشخص المسؤول (اختياري)</span></div>
+<input type="text" id="cmContactName"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Contact Person Title <span class="fla">وظيفته (اختياري)</span></div>
+<input type="text" id="cmContactTitle"/>
+</div>
+</div>
+<div class="fg">
+<div class="fl">Rating <span class="fla">التقييم (اختياري)</span></div>
+<select id="cmRating">
+<option value="">-- بدون تقييم --</option>
+<option value="1">⭐ 1</option>
+<option value="2">⭐⭐ 2</option>
+<option value="3">⭐⭐⭐ 3</option>
+<option value="4">⭐⭐⭐⭐ 4</option>
+<option value="5">⭐⭐⭐⭐⭐ 5</option>
+</select>
+</div>
+<button class="btn-add" onclick="saveClientPrompt()">SAVE CLIENT · حفظ العميل</button>
+<div id="clientsListResult" style="margin-top:14px"></div>
+</div>
+
+<div class="task-form allow-nested-accordion">
 <div class="settings-label" id="section-projects">Manage Projects <span class="fla">إدارة المشاريع</span></div>
 <div class="sec-sub" style="margin-bottom:16px">الموظف بيشوف بس الكود والاسم والرمز — مش الـ Category ولا الـ Type</div>
+<div class="fg">
+<div class="fl">Client <span class="fla">العميل (اختياري، بيساعدك تعرف الكود)</span></div>
+<select id="newProjectClientHint" onchange="onNewProjectClientHintChange()"><option value="">-- اختار عميل أو اكتب الكود مباشرة --</option></select>
+</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Project Code</div>
@@ -1235,25 +1317,18 @@ textarea{resize:vertical;min-height:76px;}
 <span class="toggle-label">Enable Overtime · تفعيل الأوفرتايم <span class="fla">(هيطلب كود الأمان)</span></span>
 </div>
 <button class="btn-add" onclick="addProject()">+ ADD PROJECT · إضافة مشروع</button>
+
+<div class="fg" style="margin-top:22px">
+<div class="fl">Filter by Client <span class="fla">فلتر بالعميل</span></div>
+<select id="projectsListClientFilter" onchange="renderAdminProjects()"><option value="">-- All Clients · كل العملاء --</option></select>
+</div>
 <div id="adminProjectsList" style="margin-top:14px"><div class="empty-log">No projects yet</div></div>
 </div>
+</div>
+<div class="admin-page" id="admin-page-financial-reports">
 <div class="task-form">
 <div class="settings-label" id="section-project-cost">Project Cost & Profitability <span class="fla">تكلفة المشاريع والربح/الخسارة</span></div>
 <div class="sec-sub" style="margin-bottom:12px">السعر خاص بالأدمن بس ومش بيظهر للموظف خالص</div>
-
-<div class="settings-label" style="font-size:15px;margin-top:6px">Clients Registry <span class="fla">سجل العملاء (أول رقمين من كود المشروع)</span></div>
-<div class="form-row">
-<div class="fg" style="margin:0">
-<div class="fl">Client Code <span class="fla">رقمين بالظبط، مثال: 01</span></div>
-<input type="text" id="newClientCode" maxlength="2" placeholder="01"/>
-</div>
-<div class="fg" style="margin:0">
-<div class="fl">Client Name <span class="fla">اسم العميل</span></div>
-<input type="text" id="newClientName"/>
-</div>
-</div>
-<button class="btn-add" onclick="addClientPrompt()">+ ADD CLIENT · إضافة عميل</button>
-<div id="clientsListResult" style="margin-top:12px"></div>
 
 <div class="settings-label" style="font-size:15px;margin-top:24px">Project Price, Details &amp; Payments <span class="fla">سعر المشروع وتفاصيله ودفعاته</span></div>
 <div class="form-row">
@@ -1339,6 +1414,7 @@ textarea{resize:vertical;min-height:76px;}
 <div id="projectCostReportResult" style="margin-top:14px"></div>
 </div>
 </div>
+
 <div class="admin-page" id="admin-page-finance">
 <div class="task-form allow-nested-accordion">
 <div class="settings-label" id="section-income-expense">Company Income &amp; Expenses <span class="fla">إيرادات ومصروفات الشركة</span></div>
@@ -1744,6 +1820,7 @@ textarea{resize:vertical;min-height:76px;}
 <a onclick="jumpTo('section-delivery-status')">مواعيد وحالات التسليم</a>
 <a onclick="jumpTo('section-requests')">الطلبات</a>
 <a onclick="jumpTo('section-holidays')">الإجازات الرسمية</a>
+<a onclick="jumpTo('section-client-management')">إدارة العملاء</a>
 <a onclick="jumpTo('section-projects')">المشاريع</a>
 <a onclick="jumpTo('section-salary')">إعدادات الراتب</a>
 <a onclick="jumpTo('section-late-arrivals-title')">التأخيرات</a>
@@ -3290,15 +3367,26 @@ function renderAdminProjects() {
     codesDatalist.innerHTML = codesHtml;
   }
 
+  var clientFilter = document.getElementById("projectsListClientFilter") ? document.getElementById("projectsListClientFilter").value : "";
+  var filtered = adminProjectsFull.filter(function(p) {
+    return !clientFilter || p.code.slice(0, 2) === clientFilter;
+  });
+  var sorted = filtered.slice().sort(function(a, b) { return a.code.localeCompare(b.code); });
+
+  if (!sorted.length) { el.innerHTML = "<div class='empty-log'>مفيش مشاريع تطابق الفلتر ده</div>"; return; }
+
   var html = "";
-  for (var i = 0; i < adminProjectsFull.length; i++) {
-    var p = adminProjectsFull[i];
+  for (var i = 0; i < sorted.length; i++) {
+    var p = sorted[i];
     var typeStr = p.type + (p.type === "SUB" && p.sub_code ? " " + p.sub_code : "");
     var pausedNote = p.active ? "" : " <span style='color:var(--muted);font-size:12px'>(متوقف)</span>";
+    var cName = clientNameForCode(p.code.slice(0, 2));
 
+    html += "<div class='log-wrap' style='margin-top:10px'>";
+    html += "<div class='log-header'><span>" + p.code + " - " + p.name + pausedNote + "</span>" +
+      (cName ? "<span style='font-size:13px;color:var(--muted)'>العميل: " + cName + "</span>" : "") + "</div>";
     html += "<div class='proj-row'>";
     html += "<div class='proj-row-top'>";
-    html += "<div class='proj-id'" + (p.active?"":" style='color:var(--muted)'") + ">" + p.code + " - " + p.name + pausedNote + "</div>";
     html += "<div class='proj-badges'>";
     html += "<span class='proj-badge'>" + p.category + "</span>";
     html += "<span class='proj-badge'>" + typeStr + "</span>";
@@ -3316,7 +3404,7 @@ function renderAdminProjects() {
       html += "<button class='btn-end-task' onclick=\"reactivateProjectPrompt(" + p.id + ")\">RESTORE · إرجاع</button>";
     }
     html += "<button class='btn-end-task' onclick=\"deleteProjectPrompt(" + p.id + ")\">DELETE PERMANENTLY · حذف نهائي</button>";
-    html += "</div></div>";
+    html += "</div></div></div>";
   }
   el.innerHTML = html;
 }
@@ -4789,21 +4877,104 @@ async function loadClients() {
     adminClients = res.clients || [];
     renderClientsList();
     populatePcClientSelect();
+    populateNewProjectClientHintSelect();
+    populateProjectsListClientFilterSelect();
     onPcClientChange();
+    if (typeof renderAdminProjects === "function") renderAdminProjects();
   } catch(e) { /* non-fatal */ }
+  loadClientTypes();
+}
+
+async function loadClientTypes() {
+  var sel = document.getElementById("cmType");
+  if (!sel) return;
+  try {
+    var res = await apiRequest("/api/admin/client-types", "GET");
+    var types = res.types || ["Designer", "Developer", "Marketing Agency"];
+    var html = "";
+    for (var i = 0; i < types.length; i++) {
+      html += "<option value='" + types[i] + "'>" + types[i] + "</option>";
+    }
+    html += "<option value='__custom__'>+ Add New Type · نوع جديد</option>";
+    sel.innerHTML = html;
+  } catch(e) { /* non-fatal */ }
+}
+
+function onCmTypeChange() {
+  var isCustom = document.getElementById("cmType").value === "__custom__";
+  document.getElementById("cmTypeCustom").style.display = isCustom ? "block" : "none";
+}
+
+var cmEditingId = null;
+async function checkClientCodeExists() {
+  var code = document.getElementById("cmCode").value.trim();
+  var hint = document.getElementById("cmCodeHint");
+  cmEditingId = null;
+  if (!/^\d{2}$/.test(code)) { hint.textContent = ""; return; }
+  try {
+    var res = await apiRequest("/api/admin/clients/check-code?code=" + code, "GET");
+    if (res.exists) {
+      var c = res.client;
+      cmEditingId = c.id;
+      hint.textContent = "⚠️ الكود ده متسجل بالفعل لـ \"" + c.client_name + "\" — البيانات هتتحدّث لو حفظت";
+      document.getElementById("cmName").value = c.client_name || "";
+      document.getElementById("cmEntityType").value = c.entity_type || "company";
+      document.getElementById("cmAddress").value = c.address || "";
+      document.getElementById("cmInstagram").value = c.instagram_url || "";
+      document.getElementById("cmFacebook").value = c.facebook_url || "";
+      document.getElementById("cmWebsite").value = c.website_url || "";
+      document.getElementById("cmPhone").value = c.phone || "";
+      document.getElementById("cmContactName").value = c.contact_person_name || "";
+      document.getElementById("cmContactTitle").value = c.contact_person_title || "";
+      document.getElementById("cmRating").value = c.rating || "";
+      if (c.client_type) {
+        var typeSel = document.getElementById("cmType");
+        var hasOption = Array.from(typeSel.options).some(function(o){ return o.value === c.client_type; });
+        if (hasOption) typeSel.value = c.client_type;
+      }
+    } else {
+      hint.textContent = "كود جديد — هيتسجل عميل جديد";
+    }
+  } catch(e) { hint.textContent = ""; }
 }
 
 function renderClientsList() {
   var el = document.getElementById("clientsListResult");
   if (!el) return;
   if (!adminClients.length) { el.innerHTML = "<div class='empty-log'>لسه مفيش عملاء متسجلين</div>"; return; }
-  var html = "";
-  for (var i = 0; i < adminClients.length; i++) {
-    var c = adminClients[i];
-    html += "<div class='log-entry'><div class='log-type'>" + c.client_code + "</div><div class='log-note'>" + c.client_name + "</div>" +
-      "<button class='btn-end-task' onclick=\"deleteClientPrompt(" + c.id + ")\">DELETE · حذف</button></div>";
+  var sorted = adminClients.slice().sort(function(a,b){ return a.client_code.localeCompare(b.client_code); });
+  var html = "<div class='log-wrap'>";
+  for (var i = 0; i < sorted.length; i++) {
+    var c = sorted[i];
+    var lines = [];
+    if (c.client_type) lines.push(c.client_type);
+    if (c.entity_type) lines.push(c.entity_type === "individual" ? "فرد" : "شركة");
+    if (c.phone) lines.push("📞 " + c.phone);
+    if (c.address) lines.push("📍 " + c.address);
+    if (c.contact_person_name) lines.push("👤 " + c.contact_person_name + (c.contact_person_title ? " (" + c.contact_person_title + ")" : ""));
+    if (c.rating) lines.push("⭐".repeat(c.rating));
+    var socials = [];
+    if (c.website_url) socials.push("<a href='" + c.website_url + "' target='_blank' style='color:#fff'>Website</a>");
+    if (c.instagram_url) socials.push("<a href='" + c.instagram_url + "' target='_blank' style='color:#fff'>Instagram</a>");
+    if (c.facebook_url) socials.push("<a href='" + c.facebook_url + "' target='_blank' style='color:#fff'>Facebook</a>");
+    html += "<div class='proj-row'>";
+    html += "<div class='proj-row-top'><div class='proj-id'>#" + c.client_code + " — " + c.client_name + "</div></div>";
+    if (lines.length) html += "<div class='fl-hint' style='margin-top:6px'>" + lines.join(" — ") + "</div>";
+    if (socials.length) html += "<div class='fl-hint' style='margin-top:4px'>" + socials.join(" · ") + "</div>";
+    html += "<button class='btn-end-task' style='margin-top:8px' onclick=\"editClientPrompt(" + c.id + ")\">✎ EDIT · تعديل</button> ";
+    html += "<button class='btn-end-task' onclick=\"deleteClientPrompt(" + c.id + ")\">DELETE · حذف</button>";
+    html += "</div>";
   }
+  html += "</div>";
   el.innerHTML = html;
+}
+
+function editClientPrompt(id) {
+  var c = adminClients.find(function(x){ return x.id === id; });
+  if (!c) return;
+  document.getElementById("cmCode").value = c.client_code;
+  checkClientCodeExists();
+  document.getElementById("cmCode").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function populatePcClientSelect() {
@@ -4818,22 +4989,74 @@ function populatePcClientSelect() {
   if (cur) sel.value = cur;
 }
 
-function addClientPrompt() {
-  var code = document.getElementById("newClientCode").value.trim();
-  var name = document.getElementById("newClientName").value.trim();
+function populateNewProjectClientHintSelect() {
+  var sel = document.getElementById("newProjectClientHint");
+  if (!sel) return;
+  var html = "<option value=''>-- اختار عميل أو اكتب الكود مباشرة --</option>";
+  var sorted = adminClients.slice().sort(function(a,b){ return a.client_code.localeCompare(b.client_code); });
+  for (var i = 0; i < sorted.length; i++) {
+    html += "<option value='" + sorted[i].client_code + "'>" + sorted[i].client_code + " - " + sorted[i].client_name + "</option>";
+  }
+  sel.innerHTML = html;
+}
+function onNewProjectClientHintChange() {
+  var code = document.getElementById("newProjectClientHint").value;
+  if (code) document.getElementById("newProjectCode").value = code;
+}
+
+function populateProjectsListClientFilterSelect() {
+  var sel = document.getElementById("projectsListClientFilter");
+  if (!sel) return;
+  var cur = sel.value;
+  var html = "<option value=''>-- All Clients · كل العملاء --</option>";
+  var sorted = adminClients.slice().sort(function(a,b){ return a.client_code.localeCompare(b.client_code); });
+  for (var i = 0; i < sorted.length; i++) {
+    html += "<option value='" + sorted[i].client_code + "'>" + sorted[i].client_code + " - " + sorted[i].client_name + "</option>";
+  }
+  sel.innerHTML = html;
+  if (cur) sel.value = cur;
+}
+
+function clientNameForCode(code) {
+  var c = adminClients.find(function(x){ return x.client_code === code; });
+  return c ? c.client_name : null;
+}
+
+function saveClientPrompt() {
+  var code = document.getElementById("cmCode").value.trim();
+  var name = document.getElementById("cmName").value.trim();
   if (!/^\d{2}$/.test(code) || !name) { showToast("!", "الكود لازم يكون رقمين، والاسم مطلوب"); return; }
-  openPinModal("ADD CLIENT · إضافة عميل", "ادخل كود الأمان للتأكيد:", function(pin) {
+  openPinModal("SAVE CLIENT · حفظ العميل", "ادخل كود الأمان للتأكيد:", function(pin) {
     if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
-    executeAddClient(code, name, pin);
+    executeSaveClient(pin);
   });
 }
-async function executeAddClient(code, name, pin) {
+async function executeSaveClient(pin) {
+  var typeSel = document.getElementById("cmType");
+  var clientType = typeSel.value === "__custom__" ? document.getElementById("cmTypeCustom").value.trim() : typeSel.value;
+  var body = {
+    client_code: document.getElementById("cmCode").value.trim(),
+    client_name: document.getElementById("cmName").value.trim(),
+    client_type: clientType || null,
+    entity_type: document.getElementById("cmEntityType").value,
+    address: document.getElementById("cmAddress").value.trim(),
+    instagram_url: document.getElementById("cmInstagram").value.trim(),
+    facebook_url: document.getElementById("cmFacebook").value.trim(),
+    website_url: document.getElementById("cmWebsite").value.trim(),
+    phone: document.getElementById("cmPhone").value.trim(),
+    contact_person_name: document.getElementById("cmContactName").value.trim(),
+    contact_person_title: document.getElementById("cmContactTitle").value.trim(),
+    rating: document.getElementById("cmRating").value,
+    pin: pin,
+  };
   showLoading(true);
   try {
-    await apiRequest("/api/admin/clients", "POST", { client_code: code, client_name: name, pin: pin });
-    showToast("v", "تم إضافة العميل");
-    document.getElementById("newClientCode").value = "";
-    document.getElementById("newClientName").value = "";
+    await apiRequest("/api/admin/clients", "POST", body);
+    showToast("v", "تم حفظ العميل");
+    ["cmCode","cmName","cmAddress","cmInstagram","cmFacebook","cmWebsite","cmPhone","cmContactName","cmContactTitle"].forEach(function(id){ document.getElementById(id).value = ""; });
+    document.getElementById("cmRating").value = "";
+    document.getElementById("cmCodeHint").textContent = "";
+    cmEditingId = null;
     await loadClients();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
@@ -5105,8 +5328,9 @@ function renderProjectCostReport(res) {
   for (var i = 0; i < res.projects.length; i++) {
     var p = res.projects[i];
     var viewId = "pcview_" + i;
+    var pcClientName = clientNameForCode(String(p.project_code).slice(0, 2));
     html += "<div class='log-wrap' style='margin-top:14px'>";
-    html += "<div class='log-header'><span>" + p.project_code + " - " + p.project_name + "</span></div>";
+    html += "<div class='log-header'><span>" + p.project_code + " - " + p.project_name + (pcClientName ? " <span style='color:var(--muted);font-size:13px'>— العميل: " + pcClientName + "</span>" : "") + "</span></div>";
     html += "<div style='padding:12px 18px'>";
     html += "<select id='" + viewId + "' onchange='renderProjectCostView(" + i + ", this.value)' style='width:100%;margin-bottom:10px'>";
     html += "<option value='whole'>Whole Project · المشروع كامل</option>";
@@ -5341,8 +5565,10 @@ function renderProjectsReport(res) {
   var html = "";
   for (var i = 0; i < res.projects.length; i++) {
     var p = res.projects[i];
+    var pCode = p.project.split(" - ")[0];
+    var pClientName = clientNameForCode(pCode.slice(0, 2));
     html += "<div class='log-wrap' style='margin-top:14px'>";
-    html += "<div class='log-header'><span>" + p.project + "</span><span>" + p.hours + " h إجمالي كل الأنواع</span></div>";
+    html += "<div class='log-header'><span>" + p.project + (pClientName ? " <span style='color:var(--muted);font-size:13px'>— العميل: " + pClientName + "</span>" : "") + "</span><span>" + p.hours + " h إجمالي كل الأنواع</span></div>";
     for (var k = 0; k < p.types.length; k++) {
       var ty = p.types[k];
       html += "<div class='log-entry' style='background:rgba(255,255,255,0.03)'><div class='log-type'>" + ty.type + "</div><div class='log-note'>" + ty.hours + " h</div></div>";
@@ -6270,7 +6496,7 @@ var SECTION_TO_PAGE = {
   "section-salary": "employees", "section-manage-admins": "employees", "section-probation": "employees", "section-full-info": "employees", "section-deactivated-employees": "employees",
   "section-requests": "requests", "section-holidays": "requests", "section-late-arrivals-title": "requests",
   "section-penalties": "requests", "section-bonuses": "requests", "section-notices": "requests",
-  "section-projects": "clients", "section-project-cost": "clients",
+  "section-client-management": "clients", "section-projects": "clients", "section-project-cost": "financial-reports",
   "section-income-expense": "finance", "section-petty-cash": "finance",
   "section-report": "reports", "section-projects-report": "reports",
 };
