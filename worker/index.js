@@ -9,8 +9,6 @@ import { createClient } from "@libsql/client/web";
 
 const TZ = "Africa/Cairo";
 const WORK_DAY_SECONDS = 8 * 3600;
-const CASUAL_YEARLY = 6;
-const ANNUAL_YEARLY = 15;
 const SESSION_DAYS = 30;
 const PBKDF2_ITER = 100000;
 
@@ -105,6 +103,12 @@ function cairoHourMinute(date = new Date()) {
   const get = (t) => Number(parts.find((p) => p.type === t).value);
   return { hour: get("hour"), minute: get("minute") };
 }
+// Casual/annual leave quotas are fixed system-wide constants (not per
+// employee) — the employees.casual_balance/annual_balance columns now
+// track how many days the employee has ALREADY USED, and remaining is
+// always computed as quota - used. Sick leave has no quota at all.
+const LEAVE_QUOTAS = { casual: 6, annual: 15 };
+
 function leaveBalanceField(type) {
   if (type === "casual") return "casual_balance";
   if (type === "sick") return "sick_balance";
@@ -392,6 +396,9 @@ function adminEmployeeView(e) {
     work_days_per_month: Number(e.work_days_per_month) || 0,
     daily_work_hours: Number(e.daily_work_hours) || 8,
     hourly_rate: +hourlyRate(e).toFixed(2),
+    is_active: !!e.is_active,
+    deactivated_at: e.deactivated_at || null,
+    deactivated_by_name: e.deactivated_by_name || null,
   };
 }
 
@@ -532,10 +539,10 @@ async function register(db, body) {
   const secretAHash = await makeSecretHash(String(body.secret_a).trim().toLowerCase());
 
   const insert = await db.execute({
-    sql: `INSERT INTO employees (emp_code, name, phone, password_hash, title, dept, secret_q, secret_a, birth_date, role, casual_balance, annual_balance)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+    sql: `INSERT INTO employees (emp_code, name, phone, password_hash, title, dept, secret_q, secret_a, birth_date, role, casual_balance, annual_balance, sick_balance)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
     args: [empCode, body.name, body.phone, passwordHash, body.title, body.dept, body.secret_q, secretAHash, body.birth_date,
-           isFirst ? "admin" : "employee", CASUAL_YEARLY, ANNUAL_YEARLY],
+           isFirst ? "admin" : "employee", 0, 0, 0],
   });
 
   return json({ employee: publicEmployee(insert.rows[0]) }, 201);
@@ -550,6 +557,7 @@ async function login(db, body) {
   if (!emp || !(await verifySecretHash(body.password, emp.password_hash))) {
     return err("رقم الموبايل او الباسورد غلط", 401);
   }
+  if (!emp.is_active) return err("الحساب ده متعطل، تواصل مع الإدارة", 403);
 
   const token = newToken();
   const expires = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
@@ -1970,7 +1978,7 @@ function pinOkShared(env, body) {
 
 async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/employees" && method === "GET") {
-    const res = await db.execute("SELECT * FROM employees ORDER BY emp_code ASC");
+    const res = await db.execute("SELECT * FROM employees WHERE is_active = 1 ORDER BY emp_code ASC");
     return json({ employees: res.rows.map(adminEmployeeView) });
   }
 
@@ -2785,22 +2793,51 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     return json({ ok: true });
   }
 
-  // ---------- permanently delete an employee and all their data (PIN required) ----------
-  const deleteEmpMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/delete$/);
-  if (deleteEmpMatch && method === "POST") {
+  // ---------- deactivate an employee (PIN required) — replaces permanent delete.
+  // The employees row is NEVER removed, so every historical report (project
+  // cost, project hours, monthly reports) that joins against it stays
+  // accurate forever. The employee just can't log in or appear in active
+  // lists anymore.
+  const deactivateEmpMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/deactivate$/);
+  if (deactivateEmpMatch && method === "POST") {
     if (!pinOk(body)) return err("كود الأمان غلط", 403);
-    const targetId = Number(deleteEmpMatch[1]);
-    if (targetId === admin.id) return err("منقدرش تمسح حسابك انت نفسك", 400);
-    const ownedTables = [
-      "sessions", "attendance", "breaks", "tasks", "leave_requests",
-      "financial_requests", "offclock_requests", "permission_requests", "penalties", "bonuses", "notices", "task_segments", "late_arrivals", "task_deadline_requests",
-    ];
-    for (const t of ownedTables) {
-      await db.execute({ sql: `DELETE FROM ${t} WHERE employee_id = ?`, args: [targetId] });
-    }
-    await db.execute({ sql: "DELETE FROM request_attachments WHERE uploaded_by = ?", args: [targetId] });
-    await db.execute({ sql: "DELETE FROM employees WHERE id = ?", args: [targetId] });
+    const targetId = Number(deactivateEmpMatch[1]);
+    if (targetId === admin.id) return err("منقدرش تعطّل حسابك انت نفسك", 400);
+    const cur = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [targetId] });
+    if (!cur.rows[0]) return err("Employee not found", 404);
+    if (!cur.rows[0].is_active) return err("الموظف ده متعطل بالفعل", 409);
+    await db.execute({
+      sql: "UPDATE employees SET is_active = 0, deactivated_at = datetime('now'), deactivated_by = ? WHERE id = ?",
+      args: [admin.id, targetId],
+    });
+    await db.execute({ sql: "DELETE FROM sessions WHERE employee_id = ?", args: [targetId] });
     return json({ ok: true });
+  }
+
+  const reactivateEmpMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/reactivate$/);
+  if (reactivateEmpMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const targetId = Number(reactivateEmpMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [targetId] });
+    if (!cur.rows[0]) return err("Employee not found", 404);
+    if (cur.rows[0].is_active) return err("الموظف ده أصلاً شغال", 409);
+    await db.execute({
+      sql: "UPDATE employees SET is_active = 1, deactivated_at = NULL, deactivated_by = NULL WHERE id = ?",
+      args: [targetId],
+    });
+    return json({ ok: true });
+  }
+
+  if (path === "/api/admin/deactivated-employees" && method === "GET") {
+    const search = (url.searchParams.get("search") || "").trim();
+    let sql = `SELECT e.*, a.name as deactivated_by_name FROM employees e
+               LEFT JOIN employees a ON a.id = e.deactivated_by
+               WHERE e.is_active = 0`;
+    const args = [];
+    if (search) { sql += " AND (e.name LIKE ? OR e.emp_code LIKE ?)"; args.push("%" + search + "%", "%" + search + "%"); }
+    sql += " ORDER BY e.deactivated_at DESC";
+    const res = await db.execute({ sql, args });
+    return json({ employees: res.rows.map(adminEmployeeView) });
   }
 
   // ---------- reverse an already-decided request: approved<->rejected (PIN required) ----------
@@ -2826,8 +2863,13 @@ async function decideLeave(db, admin, requestId, body) {
     const emp = empRes.rows[0];
     const field = leaveBalanceField(request.type);
     const days = workingDaysInRange(request.date, request.end_date || request.date).length;
-    if (Number(emp[field]) < days) return err(`رصيد الإجازة مش كفاية (متاح ${emp[field]}، مطلوب ${days})`, 409);
-    await db.execute({ sql: `UPDATE employees SET ${field} = ${field} - ? WHERE id = ?`, args: [days, request.employee_id] });
+    const quota = LEAVE_QUOTAS[request.type]; // undefined for sick — no cap
+    if (quota !== undefined) {
+      const usedSoFar = Number(emp[field]) || 0;
+      const remaining = quota - usedSoFar;
+      if (remaining < days) return err(`رصيد الإجازة مش كفاية (متبقي ${remaining} من ${quota}، مطلوب ${days})`, 409);
+    }
+    await db.execute({ sql: `UPDATE employees SET ${field} = ${field} + ? WHERE id = ?`, args: [days, request.employee_id] });
   }
 
   await db.execute({
@@ -2861,15 +2903,20 @@ async function redecideRequest(db, admin, kind, requestId, action) {
   if (kind === "leave") {
     const field = leaveBalanceField(request.type);
     const days = workingDaysInRange(request.date, request.end_date || request.date).length;
+    const quota = LEAVE_QUOTAS[request.type]; // undefined for sick — no cap
     if (request.status === "approved" && newStatus === "rejected") {
-      // was approved (days already deducted) → now reversed to rejected: give the days back
-      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} + ? WHERE id = ?`, args: [days, request.employee_id] });
+      // was approved (days already counted as used) → now reversed to rejected: undo the usage
+      await db.execute({ sql: `UPDATE employees SET ${field} = MAX(0, ${field} - ?) WHERE id = ?`, args: [days, request.employee_id] });
     } else if (request.status === "rejected" && newStatus === "approved") {
-      // was rejected (no days deducted) → now approved: deduct the days, but check balance first
+      // was rejected (no usage counted) → now approved: count the usage, but check quota first
       const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [request.employee_id] });
       const emp = empRes.rows[0];
-      if (Number(emp[field]) < days) return err(`رصيد الإجازة مش كفاية (متاح ${emp[field]}، مطلوب ${days})`, 409);
-      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} - ? WHERE id = ?`, args: [days, request.employee_id] });
+      if (quota !== undefined) {
+        const usedSoFar = Number(emp[field]) || 0;
+        const remaining = quota - usedSoFar;
+        if (remaining < days) return err(`رصيد الإجازة مش كفاية (متبقي ${remaining} من ${quota}، مطلوب ${days})`, 409);
+      }
+      await db.execute({ sql: `UPDATE employees SET ${field} = ${field} + ? WHERE id = ?`, args: [days, request.employee_id] });
     }
   }
 
@@ -2922,7 +2969,7 @@ async function adminTasksByMonth(db, employeeId, monthStr) {
 }
 
 async function adminBirthdays(db) {
-  const res = await db.execute("SELECT id, emp_code, name, birth_date FROM employees WHERE birth_date IS NOT NULL ORDER BY emp_code ASC");
+  const res = await db.execute("SELECT id, emp_code, name, birth_date FROM employees WHERE birth_date IS NOT NULL AND is_active = 1 ORDER BY emp_code ASC");
   const list = res.rows.map((e) => ({
     id: e.id, emp_code: e.emp_code, name: e.name, birth_date: e.birth_date,
     is_today: isBirthdayToday(e.birth_date),
@@ -2939,7 +2986,7 @@ async function adminEmployeesStatus(db) {
   const [attRes, brkRes, empRes] = await Promise.all([
     db.execute({ sql: "SELECT * FROM attendance WHERE date IN (?, ?) ORDER BY employee_id ASC, created_at ASC", args: [yesterday, today] }),
     db.execute({ sql: "SELECT * FROM breaks WHERE date = ? ORDER BY employee_id ASC, created_at ASC", args: [today] }),
-    db.execute("SELECT id, emp_code, name FROM employees ORDER BY emp_code ASC"),
+    db.execute("SELECT id, emp_code, name FROM employees WHERE is_active = 1 ORDER BY emp_code ASC"),
   ]);
 
   const attByEmp = {};
