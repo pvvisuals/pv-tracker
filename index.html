@@ -901,11 +901,22 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="form-row" style="margin-top:14px">
 <div class="fg" style="margin:0">
-<div class="fl">Casual Leave — Days Taken <span class="fla">العارضة — كام يوم أخد (من 6)</span></div>
+<div class="fl">Casual — Tracked by System <span class="fla">العارضة — متتبّع تلقائياً (من الطلبات المعتمدة)</span></div>
+<div id="salaryCasualSystemUsed" style="padding:11px 14px;border:1px solid var(--border);color:var(--text);font-size:16px;">0 يوم</div>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Annual — Tracked by System <span class="fla">الاعتيادية — متتبّع تلقائياً (من الطلبات المعتمدة)</span></div>
+<div id="salaryAnnualSystemUsed" style="padding:11px 14px;border:1px solid var(--border);color:var(--text);font-size:16px;">0 يوم</div>
+</div>
+</div>
+<div class="fl-hint" style="margin-top:6px">الرقمين دول بيتحدّثوا لوحدهم تلقائي من الطلبات المعتمدة فعلاً — متعدلش عليهم يدوي</div>
+<div class="form-row" style="margin-top:14px">
+<div class="fg" style="margin:0">
+<div class="fl">Casual — Extra (Pre-System) <span class="fla">العارضة — إضافي (قبل النظام)</span></div>
 <input type="number" id="salaryCasualBalance" min="0" step="0.5" oninput="updateLeaveRemainingPreview()"/>
 </div>
 <div class="fg" style="margin:0">
-<div class="fl">Annual Leave — Days Taken <span class="fla">الاعتيادية — كام يوم أخد (من 15)</span></div>
+<div class="fl">Annual — Extra (Pre-System) <span class="fla">الاعتيادية — إضافي (قبل النظام)</span></div>
 <input type="number" id="salaryAnnualBalance" min="0" step="0.5" oninput="updateLeaveRemainingPreview()"/>
 </div>
 </div>
@@ -913,8 +924,16 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Sick Leave — Days Taken <span class="fla">المرضية — كام يوم أخد (بلا حد أقصى)</span></div>
 <input type="number" id="salarySickBalance" min="0" step="0.5"/>
 </div>
-<div class="fl-hint" style="margin-top:6px">العارضة والاعتيادية بعدد أيام ثابت لكل الموظفين (6 و15) — هنا بتحدد بس كام يوم الموظف أخد فعلاً، والباقي بيتحسب تلقائي. المرضية مفيهاش حد أقصى خالص، الرقم للاطلاع بس. موظف جديد لسه ماخدش حاجة سيبه صفر.</div>
+<div class="fl-hint" style="margin-top:6px">العارضة والاعتيادية بعدد أيام ثابت لكل الموظفين (6 و15). خانة "إضافي" دي بتتجمع فوق رقم النظام، مش بتمسحه — استخدمها بس للموظفين القدام اللي أخدوا إجازات قبل ما نبدأ نتتبعها هنا. المرضية مفيهاش حد أقصى خالص.</div>
 <div id="leaveRemainingPreview" class="fl-hint" style="margin-top:6px;color:var(--ok)"></div>
+<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+<div class="fl-hint">لو رقم "متتبّع تلقائياً" مش متطابق مع الواقع لأي سبب، اضغط الزرار ده — هيعيد حسابه لكل الموظفين من طلبات الإجازة المعتمدة فعلياً</div>
+<div class="fg" style="margin:10px 0">
+<div class="fl">Admin PIN <span class="fla">كود الأمان</span></div>
+<input type="password" id="recomputeLeavePin" placeholder="****" autocomplete="off"/>
+</div>
+<button class="btn-end-task" onclick="recomputeLeaveBalances()">🔧 RECOMPUTE FROM REAL REQUESTS · إعادة حساب من الطلبات الحقيقية</button>
+</div>
 <div class="info-grid" style="margin-top:14px">
 <div class="info-card">
 <div class="info-card-label">Hourly Rate <span class="fla">قيمة الساعة</span></div>
@@ -2517,8 +2536,12 @@ function renderLeaveBalance() {
   var casualUsed = leaveBalance.casual || 0;
   var annualUsed = leaveBalance.annual || 0;
   var sickUsed = leaveBalance.sick || 0;
-  document.getElementById("casualBalance").textContent = (6 - casualUsed) + " (أخد " + casualUsed + " من 6)";
-  document.getElementById("annualBalance").textContent = (15 - annualUsed) + " (أخد " + annualUsed + " من 15)";
+  var casualRemaining = Math.max(0, 6 - casualUsed);
+  var annualRemaining = Math.max(0, 15 - annualUsed);
+  document.getElementById("casualBalance").innerHTML =
+    "أخد " + casualUsed + " من 6<div style='font-size:13px;color:var(--ok);margin-top:4px'>متبقي: " + casualRemaining + "</div>";
+  document.getElementById("annualBalance").innerHTML =
+    "أخد " + annualUsed + " من 15<div style='font-size:13px;color:var(--ok);margin-top:4px'>متبقي: " + annualRemaining + "</div>";
   document.getElementById("sickBalanceUsed").textContent = sickUsed + " يوم";
 }
 
@@ -4027,20 +4050,24 @@ function fillSalaryForm() {
   document.getElementById("salaryAmount").value = emp.monthly_salary || "";
   document.getElementById("salaryWorkDays").value = emp.work_days_per_month || 22;
   document.getElementById("salaryDayHours").value = emp.daily_work_hours || 8;
-  document.getElementById("salaryCasualBalance").value = emp.casual_balance != null ? emp.casual_balance : 0;
-  document.getElementById("salaryAnnualBalance").value = emp.annual_balance != null ? emp.annual_balance : 0;
+  document.getElementById("salaryCasualSystemUsed").textContent = (emp.casual_system_used != null ? emp.casual_system_used : 0) + " يوم";
+  document.getElementById("salaryAnnualSystemUsed").textContent = (emp.annual_system_used != null ? emp.annual_system_used : 0) + " يوم";
+  document.getElementById("salaryCasualBalance").value = emp.casual_extra_used != null ? emp.casual_extra_used : 0;
+  document.getElementById("salaryAnnualBalance").value = emp.annual_extra_used != null ? emp.annual_extra_used : 0;
   document.getElementById("salarySickBalance").value = emp.sick_balance != null ? emp.sick_balance : 0;
   updateHourlyRatePreview();
   updateLeaveRemainingPreview();
 }
 
 function updateLeaveRemainingPreview() {
-  var casualUsed = Number(document.getElementById("salaryCasualBalance").value) || 0;
-  var annualUsed = Number(document.getElementById("salaryAnnualBalance").value) || 0;
-  var casualLeft = 6 - casualUsed;
-  var annualLeft = 15 - annualUsed;
+  var casualSystem = Number((document.getElementById("salaryCasualSystemUsed").textContent || "0").replace(/[^0-9.]/g,"")) || 0;
+  var annualSystem = Number((document.getElementById("salaryAnnualSystemUsed").textContent || "0").replace(/[^0-9.]/g,"")) || 0;
+  var casualExtra = Number(document.getElementById("salaryCasualBalance").value) || 0;
+  var annualExtra = Number(document.getElementById("salaryAnnualBalance").value) || 0;
+  var casualLeft = 6 - (casualSystem + casualExtra);
+  var annualLeft = 15 - (annualSystem + annualExtra);
   document.getElementById("leaveRemainingPreview").textContent =
-    "المتبقي: عارضة " + casualLeft + " يوم — اعتيادية " + annualLeft + " يوم";
+    "المتبقي المتوقع: عارضة " + casualLeft + " يوم — اعتيادية " + annualLeft + " يوم";
 }
 
 function updateHourlyRatePreview() {
@@ -4058,8 +4085,8 @@ async function saveSalarySettings() {
     monthly_salary: Number(document.getElementById("salaryAmount").value) || 0,
     work_days_per_month: Number(document.getElementById("salaryWorkDays").value) || 22,
     daily_work_hours: Number(document.getElementById("salaryDayHours").value) || 8,
-    casual_balance: Number(document.getElementById("salaryCasualBalance").value) || 0,
-    annual_balance: Number(document.getElementById("salaryAnnualBalance").value) || 0,
+    casual_extra_used: Number(document.getElementById("salaryCasualBalance").value) || 0,
+    annual_extra_used: Number(document.getElementById("salaryAnnualBalance").value) || 0,
     sick_balance: Number(document.getElementById("salarySickBalance").value) || 0,
   };
   showLoading(true);
@@ -4067,6 +4094,25 @@ async function saveSalarySettings() {
     await apiRequest("/api/admin/employees/" + id + "/salary", "POST", body);
     showToast("v", "تم الحفظ");
     await refreshEmployeesOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function recomputeLeaveBalances() {
+  var pin = document.getElementById("recomputeLeavePin").value;
+  if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+  openModal("RECOMPUTE LEAVE BALANCES · إعادة حساب رصيد الإجازات", "هيعيد حساب رصيد الإجازة المتتبّع تلقائياً لكل الموظفين من طلبات الإجازة المعتمدة فعلياً، ومش هيمس الخانة الإضافية اللي دخّلتها يدوي. متأكد؟", function() {
+    executeRecomputeLeaveBalances(pin);
+  });
+}
+async function executeRecomputeLeaveBalances(pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/recompute-leave-balances", "POST", { pin: pin });
+    showToast("v", "تم إعادة الحساب لكل الموظفين");
+    document.getElementById("recomputeLeavePin").value = "";
+    await refreshEmployeesOnly();
+    fillSalaryForm();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
