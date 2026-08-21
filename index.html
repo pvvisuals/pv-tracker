@@ -895,6 +895,21 @@ textarea{resize:vertical;min-height:76px;}
 <div class="fl">Work Hours / Day <span class="fla">ساعات العمل اليومية</span></div>
 <input type="number" id="salaryDayHours" min="1" max="24" step="0.5" oninput="updateHourlyRatePreview()"/>
 </div>
+<div class="form-row" style="margin-top:14px">
+<div class="fg" style="margin:0">
+<div class="fl">Casual Leave Balance <span class="fla">رصيد الإجازة العارضة</span></div>
+<input type="number" id="salaryCasualBalance" min="0" step="0.5"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Annual Leave Balance <span class="fla">رصيد الإجازة الاعتيادية</span></div>
+<input type="number" id="salaryAnnualBalance" min="0" step="0.5"/>
+</div>
+</div>
+<div class="fg" style="margin:10px 0 0">
+<div class="fl">Sick Leave Balance <span class="fla">رصيد الإجازة المرضية</span></div>
+<input type="number" id="salarySickBalance" min="0" step="0.5"/>
+</div>
+<div class="fl-hint" style="margin-top:6px">الأرقام دي هي نفسها اللي بتتحسب منها كل طلبات الإجازة والتقارير — أي تعديل هنا بيتحدّث في النظام كله فوراً</div>
 <div class="info-grid" style="margin-top:14px">
 <div class="info-card">
 <div class="info-card-label">Hourly Rate <span class="fla">قيمة الساعة</span></div>
@@ -2481,8 +2496,8 @@ async function refreshMyProbationStatus() {
 }
 
 function renderLeaveBalance() {
-  document.getElementById("casualBalance").textContent = leaveBalance.casual + " / 6";
-  document.getElementById("annualBalance").textContent = leaveBalance.annual + " / 15";
+  document.getElementById("casualBalance").textContent = leaveBalance.casual;
+  document.getElementById("annualBalance").textContent = leaveBalance.annual;
 }
 
 function renderOfficialHolidaysEmployee() {
@@ -3989,6 +4004,9 @@ function fillSalaryForm() {
   document.getElementById("salaryAmount").value = emp.monthly_salary || "";
   document.getElementById("salaryWorkDays").value = emp.work_days_per_month || 22;
   document.getElementById("salaryDayHours").value = emp.daily_work_hours || 8;
+  document.getElementById("salaryCasualBalance").value = emp.casual_balance != null ? emp.casual_balance : 6;
+  document.getElementById("salaryAnnualBalance").value = emp.annual_balance != null ? emp.annual_balance : 21;
+  document.getElementById("salarySickBalance").value = emp.sick_balance != null ? emp.sick_balance : 15;
   updateHourlyRatePreview();
 }
 
@@ -4007,6 +4025,9 @@ async function saveSalarySettings() {
     monthly_salary: Number(document.getElementById("salaryAmount").value) || 0,
     work_days_per_month: Number(document.getElementById("salaryWorkDays").value) || 22,
     daily_work_hours: Number(document.getElementById("salaryDayHours").value) || 8,
+    casual_balance: Number(document.getElementById("salaryCasualBalance").value) || 0,
+    annual_balance: Number(document.getElementById("salaryAnnualBalance").value) || 0,
+    sick_balance: Number(document.getElementById("salarySickBalance").value) || 0,
   };
   showLoading(true);
   try {
@@ -4508,9 +4529,9 @@ async function showEmployeeFullInfo() {
       "<div class='profile-row'><span class='profile-key'>Work Days / Month</span><span class='profile-val'>" + e.work_days_per_month + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Work Hours / Day</span><span class='profile-val'>" + e.daily_work_hours + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Hourly Rate</span><span class='profile-val'>" + e.hourly_rate + " EGP</span></div>" +
-      "<div class='profile-row'><span class='profile-key'>Casual Balance</span><span class='profile-val'>" + e.casual_balance + " / 6</span></div>" +
-      "<div class='profile-row'><span class='profile-key'>Annual Balance</span><span class='profile-val'>" + e.annual_balance + " / 15</span></div>" +
-      "<div class='profile-row'><span class='profile-key'>Sick Balance</span><span class='profile-val'>" + e.sick_balance + " / 15</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Casual Balance</span><span class='profile-val'>" + e.casual_balance + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Annual Balance</span><span class='profile-val'>" + e.annual_balance + "</span></div>" +
+      "<div class='profile-row'><span class='profile-key'>Sick Balance</span><span class='profile-val'>" + e.sick_balance + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Penalties</span><span class='profile-val' style='color:var(--danger)'>" + res.penalties_active_count + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Bonuses</span><span class='profile-val' style='color:var(--ok)'>" + res.bonuses_active_count + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Active Notices</span><span class='profile-val' style='color:var(--warn)'>" + res.notices_active_count + "</span></div>" +
@@ -5337,9 +5358,9 @@ function renderAdminReport(res) {
   // ---- Attendance summary ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>ATTENDANCE SUMMARY · ملخص الحضور</span></div>";
   html += logRow("Absent Days <span class='fla'>أيام غياب بدون إجازة</span>", "<span style='color:" + (t.absent_days>0?"var(--danger)":"var(--text)") + "'>" + t.absent_days + " يوم</span>");
-  html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " (رصيد متبقي / left: " + res.leave_balance.casual + "/6)");
-  html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " (رصيد متبقي / left: " + res.leave_balance.annual + "/15)");
-  html += logRow("Sick Leave Taken <span class='fla'>مرضي مستخدمة</span>", (t.leave_days_sick||0) + " (رصيد متبقي / left: " + res.leave_balance.sick + "/15)");
+  html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " (رصيد متبقي / left: " + res.leave_balance.casual + ")");
+  html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " (رصيد متبقي / left: " + res.leave_balance.annual + ")");
+  html += logRow("Sick Leave Taken <span class='fla'>مرضي مستخدمة</span>", (t.leave_days_sick||0) + " (رصيد متبقي / left: " + res.leave_balance.sick + ")");
   if (res.late_arrivals) {
     var laNote = "<span style='color:" + (res.late_arrivals.count>0?"var(--danger)":"var(--text)") + "'>" + res.late_arrivals.count + "</span>";
     if (res.late_arrivals.count > 0) {
@@ -5420,11 +5441,34 @@ function renderAdminReport(res) {
       badges.push("<span class='proj-badge' style='color:" + bc + ";border-color:" + bc + "'>Break (للاطلاع فقط): " + formatDuration(d.break_seconds) + "</span>");
     }
 
-    html += "<div class='proj-row'>";
+    var tasksHtml = "";
+    if (d.tasks && d.tasks.length) {
+      for (var ti = 0; ti < d.tasks.length; ti++) {
+        var tk = d.tasks[ti];
+        var taskStatus = tk.end_time ? "انتهت · Done" : (tk.paused ? "متوقفة · Paused" : "شغالة · Active");
+        var taskStatusColor = tk.end_time ? "var(--muted)" : (tk.paused ? "var(--warn)" : "var(--ok)");
+        tasksHtml += "<div style='margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border2)'>";
+        tasksHtml += "<div style='font-size:15px;color:#fff;font-weight:600'>" + tk.project + "</div>";
+        if (tk.project_type) tasksHtml += "<div style='font-size:12px;color:var(--muted2)'>" + tk.project_type + "</div>";
+        tasksHtml += "<div style='font-size:14px;color:var(--muted);margin-top:3px'>" + tk.name + (tk.description ? " — " + tk.description : "") + "</div>";
+        tasksHtml += "<div style='font-size:12px;color:" + taskStatusColor + ";margin-top:3px'>" + taskStatus + "</div>";
+        tasksHtml += "</div>";
+      }
+    } else {
+      tasksHtml = "<div class='fl-hint'>مفيش تاسكات اتشتغلت في اليوم ده</div>";
+    }
+
+    html += "<div class='proj-row' style='display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;padding:18px'>";
+    html += "<div style='flex:1;min-width:260px'>";
     html += "<div class='proj-row-top'>";
     html += "<div class='proj-id'>" + d.date + " <span style='color:" + statusColor + "'>— " + statusLabel + "</span></div>";
     html += "</div>";
     if (badges.length) html += "<div class='proj-badges' style='margin-top:8px'>" + badges.join("") + "</div>";
+    html += "</div>";
+    html += "<div style='flex:1;min-width:260px;border-right:1px solid var(--border2);padding-right:18px'>";
+    html += "<div style='font-size:12px;letter-spacing:1px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px'>TASKS WORKED · التاسكات اللي اشتغل عليها</div>";
+    html += tasksHtml;
+    html += "</div>";
     html += "</div>";
   }
   html += "</div>";
