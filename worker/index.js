@@ -1823,22 +1823,7 @@ async function profitLossReport(db, monthStr) {
   });
 }
 
-async function projectCostReport(db, mode, monthStr) {
-  const isMonthly = mode === "monthly";
-  let firstDay = null, lastDay = null, year = null, month = null;
-  if (isMonthly) {
-    const now = new Date();
-    if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
-      [year, month] = monthStr.split("-").map(Number);
-    } else {
-      const p = cairoParts(now);
-      year = Number(p.y); month = Number(p.m);
-    }
-    firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
-    const lastDayNum = daysInMonth(year, month);
-    lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
-  }
-
+async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
   let taskSql = `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
                         t.employee_id, e.name as employee_name, e.emp_code,
                         e.monthly_salary, e.work_days_per_month, e.daily_work_hours,
@@ -1892,7 +1877,7 @@ async function projectCostReport(db, mode, monthStr) {
     g.price_egp = Number(r.cost_egp);
   }
 
-  const projects = Object.values(byProject).map((g) => {
+  return Object.values(byProject).map((g) => {
     const laborCost = +g.labor_cost_egp.toFixed(2);
     const externalExp = +g.external_expenses_egp.toFixed(2);
     const actualCost = +(laborCost + externalExp).toFixed(2);
@@ -1926,8 +1911,93 @@ async function projectCostReport(db, mode, monthStr) {
       types,
     };
   }).sort((a, b) => a.project_code.localeCompare(b.project_code));
+}
 
+async function projectCostReport(db, mode, monthStr) {
+  const isMonthly = mode === "monthly";
+  let firstDay = null, lastDay = null, year = null, month = null;
+  if (isMonthly) {
+    const now = new Date();
+    if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
+      [year, month] = monthStr.split("-").map(Number);
+    } else {
+      const p = cairoParts(now);
+      year = Number(p.y); month = Number(p.m);
+    }
+    firstDay = `${year}-${String(month).padStart(2, "0")}-01`;
+    const lastDayNum = daysInMonth(year, month);
+    lastDay = `${year}-${String(month).padStart(2, "0")}-${String(lastDayNum).padStart(2, "0")}`;
+  }
+  const projects = await projectCostReportData(db, isMonthly, firstDay, lastDay);
   return json({ mode: isMonthly ? "monthly" : "total", year, month, projects });
+}
+
+async function clientFinancialReport(db, clientCode, monthStr) {
+  if (!clientCode) return err("client_code required");
+  const clientRes = await db.execute({ sql: "SELECT * FROM clients WHERE client_code = ?", args: [clientCode] });
+  const client = clientRes.rows[0] || { client_code: clientCode, client_name: null };
+
+  // Reuse the all-time cost report, then narrow to this client's projects
+  // (matched by the code prefix — the first 2 digits are the client code).
+  const full = await projectCostReportData(db, false, null, null);
+  const clientProjects = full.filter((p) => String(p.project_code).slice(0, 2) === clientCode);
+
+  const isAll = monthStr === "all" || !monthStr;
+  let monthFirst = null, monthLast = null;
+  if (!isAll) {
+    const [y, m] = monthStr.split("-").map(Number);
+    monthFirst = `${y}-${String(m).padStart(2, "0")}-01`;
+    monthLast = `${y}-${String(m).padStart(2, "0")}-${String(daysInMonth(y, m)).padStart(2, "0")}`;
+  }
+
+  // Pull each project's own row (for its delivered_at / active status) to
+  // know delivery counts and to compute the "delivered within this month"
+  // percentage of total client value.
+  const projRows = await db.execute({
+    sql: "SELECT DISTINCT code, name, active, delivered_at FROM projects WHERE substr(code,1,2) = ?",
+    args: [clientCode],
+  });
+  const statusByKey = {};
+  for (const r of projRows.rows) {
+    const k = r.code + "||" + r.name.trim().toLowerCase();
+    if (!statusByKey[k]) statusByKey[k] = { active: !!r.active, delivered_at: r.delivered_at };
+    else if (r.delivered_at) statusByKey[k].delivered_at = r.delivered_at; // any variant delivered counts as delivered
+  }
+
+  let totalPrice = 0, totalLabor = 0, totalExternal = 0, totalActual = 0, deliveredCount = 0;
+  let deliveredInMonthValue = 0;
+  const projects = clientProjects.map((p) => {
+    const k = p.project_code + "||" + p.project_name.trim().toLowerCase();
+    const st = statusByKey[k] || {};
+    const isDelivered = !!st.delivered_at;
+    totalPrice += p.price_egp || 0;
+    totalLabor += p.labor_cost_egp || 0;
+    totalExternal += p.external_expenses_egp || 0;
+    totalActual += p.actual_cost_egp || 0;
+    if (isDelivered) deliveredCount++;
+    if (isDelivered && !isAll && st.delivered_at.slice(0, 10) >= monthFirst && st.delivered_at.slice(0, 10) <= monthLast) {
+      deliveredInMonthValue += p.price_egp || 0;
+    }
+    return {
+      project_code: p.project_code, project_name: p.project_name,
+      price_egp: p.price_egp, labor_cost_egp: p.labor_cost_egp, external_expenses_egp: p.external_expenses_egp,
+      actual_cost_egp: p.actual_cost_egp, profit_loss_egp: p.profit_loss_egp,
+      active: st.active !== undefined ? st.active : true, delivered_at: st.delivered_at || null,
+    };
+  }).sort((a, b) => a.project_code.localeCompare(b.project_code));
+
+  return json({
+    client, month: isAll ? "all" : monthStr,
+    projects,
+    totals: {
+      project_count: projects.length, delivered_count: deliveredCount,
+      total_price_egp: +totalPrice.toFixed(2), total_labor_cost_egp: +totalLabor.toFixed(2),
+      total_external_expenses_egp: +totalExternal.toFixed(2), total_actual_cost_egp: +totalActual.toFixed(2),
+      total_profit_loss_egp: +(totalPrice - totalActual).toFixed(2),
+    },
+    month_delivered_value_egp: isAll ? null : +deliveredInMonthValue.toFixed(2),
+    month_delivered_percentage: (!isAll && totalPrice > 0) ? +((deliveredInMonthValue / totalPrice) * 100).toFixed(1) : null,
+  });
 }
 
 async function projectsReport(db, monthStr) {
@@ -2482,6 +2552,18 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     await db.execute({ sql: "UPDATE projects SET active = 1 WHERE id = ?", args: [Number(projectReactivateMatch[1])] });
     return json({ ok: true });
   }
+  const projectDeliveredMatch = path.match(/^\/api\/admin\/projects\/(\d+)\/deliver$/);
+  if (projectDeliveredMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    await db.execute({ sql: "UPDATE projects SET delivered_at = datetime('now'), delivered_by = ? WHERE id = ?", args: [admin.id, Number(projectDeliveredMatch[1])] });
+    return json({ ok: true });
+  }
+  const projectUndoDeliveredMatch = path.match(/^\/api\/admin\/projects\/(\d+)\/undo-deliver$/);
+  if (projectUndoDeliveredMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    await db.execute({ sql: "UPDATE projects SET delivered_at = NULL, delivered_by = NULL WHERE id = ?", args: [Number(projectUndoDeliveredMatch[1])] });
+    return json({ ok: true });
+  }
 
   // ---------- permanent delete: irreversible, blocked if any task references it ----------
   const projectDeleteMatch = path.match(/^\/api\/admin\/projects\/(\d+)$/);
@@ -2525,6 +2607,10 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const custom = res.rows.map((r) => r.client_type).filter((t) => !builtIn.includes(t));
     return json({ types: [...builtIn, ...custom] });
   }
+  if (path === "/api/admin/client-governorates" && method === "GET") {
+    const res = await db.execute("SELECT DISTINCT governorate FROM clients WHERE governorate IS NOT NULL AND governorate != '' ORDER BY governorate ASC");
+    return json({ governorates: res.rows.map((r) => r.governorate) });
+  }
   if (path === "/api/admin/clients" && method === "POST") {
     if (!pinOk(body)) return err("كود الأمان غلط", 403);
     const missing = requireFields(body, ["client_code", "client_name"]);
@@ -2540,6 +2626,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       client_type: body.client_type || null,
       entity_type: body.entity_type || null,
       address: body.address || null,
+      governorate: body.governorate || null,
+      city_area: body.city_area || null,
       instagram_url: body.instagram_url || null,
       facebook_url: body.facebook_url || null,
       website_url: body.website_url || null,
@@ -2573,6 +2661,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       client_type: body.client_type || null,
       entity_type: body.entity_type || null,
       address: body.address || null,
+      governorate: body.governorate || null,
+      city_area: body.city_area || null,
       instagram_url: body.instagram_url || null,
       facebook_url: body.facebook_url || null,
       website_url: body.website_url || null,
@@ -2705,6 +2795,9 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/project-cost-report" && method === "GET") {
     return await projectCostReport(db, url.searchParams.get("mode"), url.searchParams.get("month"));
   }
+  if (path === "/api/admin/client-financial-report" && method === "GET") {
+    return await clientFinancialReport(db, url.searchParams.get("client_code"), url.searchParams.get("month"));
+  }
 
   // ---------- company income & expenses (profit/loss) ----------
   if (path === "/api/admin/company-transactions" && method === "GET") {
@@ -2775,7 +2868,42 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   const pettyCashDeleteMatch = path.match(/^\/api\/admin\/petty-cash\/(\d+)$/);
   if (pettyCashDeleteMatch && method === "DELETE") {
     if (!pinOk(body)) return err("كود الأمان غلط", 403);
-    await db.execute({ sql: "DELETE FROM petty_cash WHERE id = ?", args: [Number(pettyCashDeleteMatch[1])] });
+    const pcId = Number(pettyCashDeleteMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM petty_cash WHERE id = ?", args: [pcId] });
+    if (cur.rows[0] && cur.rows[0].linked_transaction_id) {
+      await db.execute({ sql: "DELETE FROM company_transactions WHERE id = ?", args: [cur.rows[0].linked_transaction_id] });
+    }
+    await db.execute({ sql: "DELETE FROM petty_cash WHERE id = ?", args: [pcId] });
+    return json({ ok: true });
+  }
+
+  // Link/unlink a petty-cash EXPENSE to Company Expenses — mirrors the same
+  // details and uses the ORIGINAL registration date, not the linking date.
+  const pcLinkMatch = path.match(/^\/api\/admin\/petty-cash\/(\d+)\/link-company-expense$/);
+  if (pcLinkMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const pcId = Number(pcLinkMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM petty_cash WHERE id = ?", args: [pcId] });
+    const entry = cur.rows[0];
+    if (!entry) return err("Entry not found", 404);
+    if (entry.type !== "expense") return err("الربط ده متاح بس لمصروفات العهدة");
+    if (entry.linked_transaction_id) return err("المصروف ده متضاف بالفعل لمصروفات الشركة", 409);
+    const txRes = await db.execute({
+      sql: `INSERT INTO company_transactions (type, amount_egp, date, description, created_by) VALUES ('expense',?,?,?,?) RETURNING id`,
+      args: [entry.amount_egp, entry.date, (entry.description || "") + " (من العهدة)", admin.id],
+    });
+    await db.execute({ sql: "UPDATE petty_cash SET linked_transaction_id = ? WHERE id = ?", args: [txRes.rows[0].id, pcId] });
+    return json({ ok: true });
+  }
+  const pcUnlinkMatch = path.match(/^\/api\/admin\/petty-cash\/(\d+)\/unlink-company-expense$/);
+  if (pcUnlinkMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const pcId = Number(pcUnlinkMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM petty_cash WHERE id = ?", args: [pcId] });
+    const entry = cur.rows[0];
+    if (!entry || !entry.linked_transaction_id) return err("مفيش ربط لإلغائه", 404);
+    await db.execute({ sql: "DELETE FROM company_transactions WHERE id = ?", args: [entry.linked_transaction_id] });
+    await db.execute({ sql: "UPDATE petty_cash SET linked_transaction_id = NULL WHERE id = ?", args: [pcId] });
     return json({ ok: true });
   }
 
