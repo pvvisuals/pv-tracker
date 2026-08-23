@@ -795,7 +795,7 @@ textarea{resize:vertical;min-height:76px;}
 <div class="admin-subtab" id="subtab-employees" onclick="switchAdminPage('employees')">👥 EMPLOYEES <span class="fla">الموظفين</span></div>
 <div class="admin-subtab" id="subtab-requests" onclick="switchAdminPage('requests')">📋 REQUESTS &amp; DISCIPLINE <span class="fla">الطلبات والجزاءات</span></div>
 <div class="admin-subtab" id="subtab-clients" onclick="switchAdminPage('clients')">📁 CLIENTS &amp; PROJECTS <span class="fla">العملاء والمشاريع</span></div>
-<div class="admin-subtab" id="subtab-financial-reports" onclick="switchAdminPage('financial-reports')">📈 PROJECT FINANCE <span class="fla">التقارير المالية للمشاريع</span></div>
+<div class="admin-subtab" id="subtab-financial-reports" onclick="switchAdminPage('financial-reports')">📈 PROJECT &amp; CLIENT FINANCE <span class="fla">التقارير المالية للمشاريع والعملاء</span></div>
 <div class="admin-subtab" id="subtab-finance" onclick="switchAdminPage('finance')">💰 FINANCE <span class="fla">الحسابات</span></div>
 <div class="admin-subtab" id="subtab-reports" onclick="switchAdminPage('reports')">📈 REPORTS <span class="fla">تقارير</span></div>
 </div>
@@ -1213,8 +1213,19 @@ textarea{resize:vertical;min-height:76px;}
 </select>
 </div>
 </div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Governorate <span class="fla">المحافظة (اختياري، بيتفلتر بيها)</span></div>
+<input type="text" id="cmGovernorate" list="cmGovernorateDatalist" autocomplete="off"/>
+<datalist id="cmGovernorateDatalist"></datalist>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">City / Area <span class="fla">المدينة أو المنطقة (اختياري)</span></div>
+<input type="text" id="cmCityArea"/>
+</div>
+</div>
 <div class="fg">
-<div class="fl">Address <span class="fla">العنوان (اختياري)</span></div>
+<div class="fl">Address <span class="fla">العنوان بالتفصيل (اختياري، مالوش علاقة بالفلتر)</span></div>
 <input type="text" id="cmAddress"/>
 </div>
 <div class="form-row">
@@ -1259,6 +1270,29 @@ textarea{resize:vertical;min-height:76px;}
 </select>
 </div>
 <button class="btn-add" onclick="saveClientPrompt()">SAVE CLIENT · حفظ العميل</button>
+
+<div class="settings-label" style="font-size:15px;margin-top:22px">Registered Clients <span class="fla">العملاء المسجلين</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Filter by Code <span class="fla">فلتر بالكود</span></div>
+<input type="text" id="clFilterCode" maxlength="2" oninput="renderClientsList()"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Filter by Type <span class="fla">فلتر بالنوع</span></div>
+<select id="clFilterType" onchange="renderClientsList()"><option value="">-- All Types · كل الأنواع --</option></select>
+</div>
+</div>
+<div class="fg">
+<div class="fl">Filter by Rating <span class="fla">فلتر بالتقييم</span></div>
+<select id="clFilterRating" onchange="renderClientsList()">
+<option value="">-- All Ratings · كل التقييمات --</option>
+<option value="5">⭐⭐⭐⭐⭐ 5</option>
+<option value="4">⭐⭐⭐⭐ 4+</option>
+<option value="3">⭐⭐⭐ 3+</option>
+<option value="2">⭐⭐ 2+</option>
+<option value="1">⭐ 1+</option>
+</select>
+</div>
 <div id="clientsListResult" style="margin-top:14px"></div>
 </div>
 
@@ -1371,31 +1405,49 @@ textarea{resize:vertical;min-height:76px;}
 
 <div class="form-row" style="margin-top:22px">
 <div class="fg" style="margin:0">
-<div class="fl">Project <span class="fla">مصروف خارجي على</span></div>
-<select id="projExpProjectSelect"></select>
+<div class="fl">Client <span class="fla">فلتر العميل</span></div>
+<select id="projExpClientSelect" onchange="onProjExpClientChange()"><option value="">-- All Clients · كل العملاء --</option></select>
 </div>
+<div class="fg" style="margin:0">
+<div class="fl">Project <span class="fla">مصروف خارجي على</span></div>
+<select id="projExpProjectSelect" onchange="onProjExpProjectChange()"></select>
+</div>
+</div>
+<div id="projExpTypesInfo" class="fl-hint" style="margin-top:4px"></div>
+<div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Amount (EGP)</div>
 <input type="number" id="projExpAmount" min="1" step="1"/>
 </div>
-</div>
-<div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Date</div>
 <input type="date" id="projExpDate"/>
 </div>
-<div class="fg" style="margin:0">
+</div>
+<div class="fg">
 <div class="fl">Description <span class="fla">البند</span></div>
 <input type="text" id="projExpDesc"/>
-</div>
 </div>
 <button class="btn-add" onclick="addProjectExpense()">+ ADD EXPENSE · إضافة مصروف خارجي</button>
 
 <div class="form-row" style="margin-top:22px">
+</div>
+</div>
+
+<div class="task-form">
+<div class="settings-label" id="section-projects-financial-report">Financial Report for Projects <span class="fla">التقرير المالي للمشاريع</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Client <span class="fla">فلتر العميل</span></div>
+<select id="pcrClientSelect" onchange="onPcrClientChange()"><option value="">-- All Clients · كل العملاء --</option></select>
+</div>
 <div class="fg" style="margin:0">
 <div class="fl">Project <span class="fla">اختار مشروع (أو كلهم)</span></div>
-<select id="projCostFilterProject" onchange="fetchProjectCostReport()"><option value="">-- All Projects · كل المشاريع --</option></select>
+<select id="projCostFilterProject" onchange="onProjCostFilterProjectChange()"><option value="">-- All Projects · كل المشاريع --</option></select>
 </div>
+</div>
+<div id="projCostTypesCheckboxes" class="fl-hint" style="margin-top:4px"></div>
+<div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Mode <span class="fla">نوع الحساب</span></div>
 <select id="projCostMode" onchange="onProjCostModeChange()">
@@ -1412,6 +1464,23 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <button class="btn-add" onclick="fetchProjectCostReport()">GET REPORT · عرض التقرير</button>
 <div id="projectCostReportResult" style="margin-top:14px"></div>
+</div>
+
+<div class="task-form">
+<div class="settings-label" id="section-client-financial-report">Financial Report for Clients <span class="fla">التقرير المالي للعملاء</span></div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Client <span class="fla">اختار عميل</span></div>
+<select id="cfrClientSelect"><option value="">-- اختار عميل --</option></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Month <span class="fla">الشهر</span></div>
+<input type="month" id="cfrMonth"/>
+<label class="all-months-toggle"><input type="checkbox" id="cfrMonthAll" checked onchange="onAllMonthsToggle('cfrMonth','cfrMonthAll')"/><span>All Months · كل الشهور</span></label>
+</div>
+</div>
+<button class="btn-add" onclick="fetchClientFinancialReport()">GET REPORT · عرض التقرير</button>
+<div id="clientFinancialReportResult" style="margin-top:14px"></div>
 </div>
 </div>
 
@@ -3379,12 +3448,13 @@ function renderAdminProjects() {
   for (var i = 0; i < sorted.length; i++) {
     var p = sorted[i];
     var typeStr = p.type + (p.type === "SUB" && p.sub_code ? " " + p.sub_code : "");
-    var pausedNote = p.active ? "" : " <span style='color:var(--muted);font-size:12px'>(متوقف)</span>";
     var cName = clientNameForCode(p.code.slice(0, 2));
+    var statusColor = p.delivered_at ? "var(--ok)" : (p.active ? "var(--warn)" : "var(--muted)");
+    var statusLabel = p.delivered_at ? "DELIVERED · تم التسليم" : (p.active ? "ACTIVE · شغال" : "PAUSED · متوقف");
 
-    html += "<div class='log-wrap' style='margin-top:10px'>";
-    html += "<div class='log-header'><span>" + p.code + " - " + p.name + pausedNote + "</span>" +
-      (cName ? "<span style='font-size:13px;color:var(--muted)'>العميل: " + cName + "</span>" : "") + "</div>";
+    html += "<div class='log-wrap' style='margin-top:10px;border-right:3px solid " + statusColor + "'>";
+    html += "<div class='log-header'><span>" + p.code + " - " + p.name + "</span>" +
+      "<span style='font-size:13px;color:" + statusColor + "'>" + statusLabel + (cName ? " — العميل: " + cName : "") + "</span></div>";
     html += "<div class='proj-row'>";
     html += "<div class='proj-row-top'>";
     html += "<div class='proj-badges'>";
@@ -3403,10 +3473,37 @@ function renderAdminProjects() {
     } else {
       html += "<button class='btn-end-task' onclick=\"reactivateProjectPrompt(" + p.id + ")\">RESTORE · إرجاع</button>";
     }
+    if (p.delivered_at) {
+      html += "<button class='btn-end-task' onclick=\"undoDeliveredPrompt(" + p.id + ")\">↺ UNDO DELIVERED · تراجع عن التسليم</button>";
+    } else {
+      html += "<button class='btn-end-task' onclick=\"markDeliveredPrompt(" + p.id + ")\">✓ MARK DELIVERED · تم التسليم</button>";
+    }
     html += "<button class='btn-end-task' onclick=\"deleteProjectPrompt(" + p.id + ")\">DELETE PERMANENTLY · حذف نهائي</button>";
     html += "</div></div></div>";
   }
   el.innerHTML = html;
+}
+
+function markDeliveredPrompt(id) {
+  openPinModal("MARK DELIVERED · تم التسليم", "هيتحدد إن المشروع ده تم تسليمه. تقدر تتراجع عن القرار ده وقت ما تحب. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeProjectDeliveryChange(id, "deliver", pin);
+  });
+}
+function undoDeliveredPrompt(id) {
+  openPinModal("UNDO DELIVERED · تراجع عن التسليم", "هيرجع المشروع لحالته قبل التسليم. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeProjectDeliveryChange(id, "undo-deliver", pin);
+  });
+}
+async function executeProjectDeliveryChange(id, action, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/projects/" + id + "/" + action, "POST", { pin: pin });
+    showToast("v", action === "deliver" ? "تم تحديد المشروع كمُسلَّم" : "تم التراجع عن التسليم");
+    await refreshProjectsOnly();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
 }
 
 function onExistingOvertimeToggle(id, checkboxEl) {
@@ -4833,6 +4930,29 @@ function uniqueProjectGroups() {
   return list;
 }
 
+function onProjExpClientChange() {
+  var clientCode = document.getElementById("projExpClientSelect").value;
+  var sel = document.getElementById("projExpProjectSelect");
+  var groups = uniqueProjectGroups();
+  var html = "";
+  for (var i = 0; i < groups.length; i++) {
+    if (clientCode && groups[i].code.slice(0,2) !== clientCode) continue;
+    html += "<option value='" + groups[i].code + "||" + groups[i].name.replace(/'/g,"") + "'>" + groups[i].code + " - " + groups[i].name + "</option>";
+  }
+  sel.innerHTML = html;
+  onProjExpProjectChange();
+}
+function onProjExpProjectChange() {
+  var filterVal = document.getElementById("projExpProjectSelect").value;
+  var box = document.getElementById("projExpTypesInfo");
+  if (!filterVal) { box.textContent = ""; return; }
+  var parts = filterVal.split("||");
+  var variants = adminProjectsFull.filter(function(p){ return p.code === parts[0] && p.name === parts[1]; });
+  if (variants.length <= 1) { box.textContent = ""; return; }
+  var labels = variants.map(function(v){ return v.category + " / " + v.type + (v.sub_code ? " " + v.sub_code : "") + (v.simple_label ? " (" + v.simple_label + ")" : ""); });
+  box.textContent = "المشروع ده فيه أنواع: " + labels.join("، ") + " — المصروف بيتحسب على المشروع كله";
+}
+
 function populateProjectCostSelects() {
   var groups = uniqueProjectGroups();
   var expSel = document.getElementById("projExpProjectSelect");
@@ -4897,6 +5017,25 @@ async function loadClientTypes() {
     }
     html += "<option value='__custom__'>+ Add New Type · نوع جديد</option>";
     sel.innerHTML = html;
+    var filterSel = document.getElementById("clFilterType");
+    if (filterSel) {
+      var cur = filterSel.value;
+      var filterHtml = "<option value=''>-- All Types · كل الأنواع --</option>";
+      for (var j = 0; j < types.length; j++) filterHtml += "<option value='" + types[j] + "'>" + types[j] + "</option>";
+      filterSel.innerHTML = filterHtml;
+      if (cur) filterSel.value = cur;
+    }
+  } catch(e) { /* non-fatal */ }
+  loadClientGovernorates();
+}
+
+async function loadClientGovernorates() {
+  var dl = document.getElementById("cmGovernorateDatalist");
+  if (!dl) return;
+  try {
+    var res = await apiRequest("/api/admin/client-governorates", "GET");
+    var govs = res.governorates || [];
+    dl.innerHTML = govs.map(function(g){ return "<option value='" + g.replace(/'/g,"") + "'></option>"; }).join("");
   } catch(e) { /* non-fatal */ }
 }
 
@@ -4920,6 +5059,8 @@ async function checkClientCodeExists() {
       document.getElementById("cmName").value = c.client_name || "";
       document.getElementById("cmEntityType").value = c.entity_type || "company";
       document.getElementById("cmAddress").value = c.address || "";
+      document.getElementById("cmGovernorate").value = c.governorate || "";
+      document.getElementById("cmCityArea").value = c.city_area || "";
       document.getElementById("cmInstagram").value = c.instagram_url || "";
       document.getElementById("cmFacebook").value = c.facebook_url || "";
       document.getElementById("cmWebsite").value = c.website_url || "";
@@ -4941,8 +5082,17 @@ async function checkClientCodeExists() {
 function renderClientsList() {
   var el = document.getElementById("clientsListResult");
   if (!el) return;
-  if (!adminClients.length) { el.innerHTML = "<div class='empty-log'>لسه مفيش عملاء متسجلين</div>"; return; }
-  var sorted = adminClients.slice().sort(function(a,b){ return a.client_code.localeCompare(b.client_code); });
+  var codeFilter = (document.getElementById("clFilterCode").value || "").trim();
+  var typeFilter = document.getElementById("clFilterType").value;
+  var ratingFilter = Number(document.getElementById("clFilterRating").value) || 0;
+  var filtered = adminClients.filter(function(c) {
+    if (codeFilter && c.client_code.indexOf(codeFilter) === -1) return false;
+    if (typeFilter && c.client_type !== typeFilter) return false;
+    if (ratingFilter && (Number(c.rating) || 0) < ratingFilter) return false;
+    return true;
+  });
+  if (!filtered.length) { el.innerHTML = "<div class='empty-log'>مفيش عملاء يطابقوا الفلتر ده</div>"; return; }
+  var sorted = filtered.slice().sort(function(a,b){ return a.client_code.localeCompare(b.client_code); });
   var html = "<div class='log-wrap'>";
   for (var i = 0; i < sorted.length; i++) {
     var c = sorted[i];
@@ -4950,6 +5100,10 @@ function renderClientsList() {
     if (c.client_type) lines.push(c.client_type);
     if (c.entity_type) lines.push(c.entity_type === "individual" ? "فرد" : "شركة");
     if (c.phone) lines.push("📞 " + c.phone);
+    var locBits = [];
+    if (c.governorate) locBits.push(c.governorate);
+    if (c.city_area) locBits.push(c.city_area);
+    if (locBits.length) lines.push("🗺️ " + locBits.join(" — "));
     if (c.address) lines.push("📍 " + c.address);
     if (c.contact_person_name) lines.push("👤 " + c.contact_person_name + (c.contact_person_title ? " (" + c.contact_person_title + ")" : ""));
     if (c.rating) lines.push("⭐".repeat(c.rating));
@@ -4979,14 +5133,24 @@ function editClientPrompt(id) {
 
 function populatePcClientSelect() {
   var sel = document.getElementById("pcClientSelect");
-  if (!sel) return;
-  var cur = sel.value;
-  var html = "<option value=''>-- All Clients · كل العملاء --</option>";
+  var sel2 = document.getElementById("projExpClientSelect");
+  var sel3 = document.getElementById("pcrClientSelect");
+  var sel4 = document.getElementById("cfrClientSelect");
+  var optsHtml = "";
   for (var i = 0; i < adminClients.length; i++) {
-    html += "<option value='" + adminClients[i].client_code + "'>" + adminClients[i].client_code + " - " + adminClients[i].client_name + "</option>";
+    optsHtml += "<option value='" + adminClients[i].client_code + "'>" + adminClients[i].client_code + " - " + adminClients[i].client_name + "</option>";
   }
-  sel.innerHTML = html;
-  if (cur) sel.value = cur;
+  [sel, sel2, sel3].forEach(function(s) {
+    if (!s) return;
+    var cur = s.value;
+    s.innerHTML = "<option value=''>-- All Clients · كل العملاء --</option>" + optsHtml;
+    if (cur) s.value = cur;
+  });
+  if (sel4) {
+    var cur4 = sel4.value;
+    sel4.innerHTML = "<option value=''>-- اختار عميل --</option>" + optsHtml;
+    if (cur4) sel4.value = cur4;
+  }
 }
 
 function populateNewProjectClientHintSelect() {
@@ -5040,6 +5204,8 @@ async function executeSaveClient(pin) {
     client_type: clientType || null,
     entity_type: document.getElementById("cmEntityType").value,
     address: document.getElementById("cmAddress").value.trim(),
+    governorate: document.getElementById("cmGovernorate").value.trim(),
+    city_area: document.getElementById("cmCityArea").value.trim(),
     instagram_url: document.getElementById("cmInstagram").value.trim(),
     facebook_url: document.getElementById("cmFacebook").value.trim(),
     website_url: document.getElementById("cmWebsite").value.trim(),
@@ -5053,7 +5219,7 @@ async function executeSaveClient(pin) {
   try {
     await apiRequest("/api/admin/clients", "POST", body);
     showToast("v", "تم حفظ العميل");
-    ["cmCode","cmName","cmAddress","cmInstagram","cmFacebook","cmWebsite","cmPhone","cmContactName","cmContactTitle"].forEach(function(id){ document.getElementById(id).value = ""; });
+    ["cmCode","cmName","cmAddress","cmGovernorate","cmCityArea","cmInstagram","cmFacebook","cmWebsite","cmPhone","cmContactName","cmContactTitle"].forEach(function(id){ document.getElementById(id).value = ""; });
     document.getElementById("cmRating").value = "";
     document.getElementById("cmCodeHint").textContent = "";
     cmEditingId = null;
@@ -5294,6 +5460,35 @@ function onProjCostModeChange() {
   document.getElementById("projCostMonthWrap").style.display = mode === "monthly" ? "block" : "none";
 }
 
+function onPcrClientChange() {
+  var clientCode = document.getElementById("pcrClientSelect").value;
+  var projSel = document.getElementById("projCostFilterProject");
+  var groups = uniqueProjectGroups();
+  var html = "<option value=''>-- All Projects · كل المشاريع --</option>";
+  for (var i = 0; i < groups.length; i++) {
+    if (clientCode && groups[i].code.slice(0,2) !== clientCode) continue;
+    html += "<option value='" + groups[i].code + "||" + groups[i].name.replace(/'/g,"") + "'>" + groups[i].code + " - " + groups[i].name + "</option>";
+  }
+  projSel.innerHTML = html;
+  onProjCostFilterProjectChange();
+}
+
+function onProjCostFilterProjectChange() {
+  var filterVal = document.getElementById("projCostFilterProject").value;
+  var box = document.getElementById("projCostTypesCheckboxes");
+  if (!filterVal) { box.innerHTML = ""; return; }
+  var parts = filterVal.split("||");
+  var variants = adminProjectsFull.filter(function(p){ return p.code === parts[0] && p.name === parts[1]; });
+  if (variants.length <= 1) { box.innerHTML = ""; return; }
+  var html = "<div style='margin-top:6px'>الأنواع المتاحة — اختار نوع أو أكتر (سيبها فاضية = كل الأنواع):</div>";
+  for (var i = 0; i < variants.length; i++) {
+    var v = variants[i];
+    var label = v.category + " / " + v.type + (v.sub_code ? " " + v.sub_code : "") + (v.simple_label ? " (" + v.simple_label + ")" : "");
+    html += "<label style='display:inline-flex;align-items:center;gap:6px;margin:6px 12px 0 0'><input type='checkbox' class='pcrTypeCheckbox' value='" + label.replace(/'/g,"") + "'/> " + label + "</label>";
+  }
+  box.innerHTML = html;
+}
+
 async function fetchProjectCostReport() {
   var mode = document.getElementById("projCostMode").value;
   var monthInput = document.getElementById("projCostMonth");
@@ -5309,6 +5504,23 @@ async function fetchProjectCostReport() {
     if (filterVal) {
       var parts = filterVal.split("||");
       res.projects = res.projects.filter(function(p) { return p.project_code === parts[0] && p.project_name === parts[1]; });
+    }
+    var checkedTypes = Array.from(document.querySelectorAll(".pcrTypeCheckbox:checked")).map(function(c){ return c.value; });
+    if (checkedTypes.length && res.projects.length === 1) {
+      var p = res.projects[0];
+      var selected = p.types.filter(function(t){ return checkedTypes.indexOf(t.type) !== -1; });
+      var laborSum = 0, empMap = {};
+      selected.forEach(function(t) {
+        laborSum += t.labor_cost_egp;
+        t.employees.forEach(function(e){ empMap[e.employee_id] = e; });
+      });
+      var actualCost = +(laborSum + p.external_expenses_egp).toFixed(2);
+      p.labor_cost_egp = +laborSum.toFixed(2);
+      p.actual_cost_egp = actualCost;
+      p.profit_loss_egp = +(p.price_egp - actualCost).toFixed(2);
+      p.employees = Object.values(empMap).sort(function(a,b){ return b.cost_egp - a.cost_egp; });
+      p.types = selected;
+      p._selectionNote = "محسوب من الأنواع المختارة بس: " + checkedTypes.join("، ");
     }
     renderProjectCostReport(res);
   } catch(e) { showToast("!", e.message); }
@@ -5331,6 +5543,7 @@ function renderProjectCostReport(res) {
     var pcClientName = clientNameForCode(String(p.project_code).slice(0, 2));
     html += "<div class='log-wrap' style='margin-top:14px'>";
     html += "<div class='log-header'><span>" + p.project_code + " - " + p.project_name + (pcClientName ? " <span style='color:var(--muted);font-size:13px'>— العميل: " + pcClientName + "</span>" : "") + "</span></div>";
+    if (p._selectionNote) html += "<div class='fl-hint' style='padding:8px 18px 0'>" + p._selectionNote + "</div>";
     html += "<div style='padding:12px 18px'>";
     html += "<select id='" + viewId + "' onchange='renderProjectCostView(" + i + ", this.value)' style='width:100%;margin-bottom:10px'>";
     html += "<option value='whole'>Whole Project · المشروع كامل</option>";
@@ -5506,6 +5719,88 @@ async function executeDeletePettyCash(id, pin) {
   showLoading(false);
 }
 
+function linkPettyCashExpensePrompt(id) {
+  openPinModal("ADD TO COMPANY EXPENSES · إضافة لمصروفات الشركة", "هيتضاف نفس المصروف ده بتفاصيله وتاريخه الأصلي في مصروفات الشركة. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeLinkPettyCashExpense(id, pin);
+  });
+}
+async function executeLinkPettyCashExpense(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/petty-cash/" + id + "/link-company-expense", "POST", { pin: pin });
+    showToast("v", "تم إضافته لمصروفات الشركة");
+    await fetchPettyCash();
+    await fetchProfitLossReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+function unlinkPettyCashExpensePrompt(id) {
+  openPinModal("REMOVE FROM COMPANY EXPENSES · إزالة من مصروفات الشركة", "هيتشال المصروف المرتبط ده من مصروفات الشركة (مصروف العهدة نفسه مش هيتأثر). ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeUnlinkPettyCashExpense(id, pin);
+  });
+}
+async function executeUnlinkPettyCashExpense(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/petty-cash/" + id + "/unlink-company-expense", "POST", { pin: pin });
+    showToast("v", "تم إزالته من مصروفات الشركة");
+    await fetchPettyCash();
+    await fetchProfitLossReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function fetchClientFinancialReport() {
+  var clientCode = document.getElementById("cfrClientSelect").value;
+  if (!clientCode) { showToast("!", "اختار عميل الأول"); return; }
+  var month = getMonthFilterValue("cfrMonth", "cfrMonthAll");
+  showLoading(true);
+  try {
+    var res = await apiRequest("/api/admin/client-financial-report?client_code=" + clientCode + "&month=" + month, "GET");
+    renderClientFinancialReport(res);
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function renderClientFinancialReport(res) {
+  var el = document.getElementById("clientFinancialReportResult");
+  var c = res.client;
+  var t = res.totals;
+  var html = "<div class='log-wrap'>";
+  html += "<div class='log-header'><span>#" + c.client_code + " — " + (c.client_name||"") + "</span></div>";
+  html += "<div class='info-grid'>";
+  html += infoCard("Total Projects <span class='fla'>إجمالي المشاريع</span>", t.project_count);
+  html += infoCard("Delivered <span class='fla'>اتسلم</span>", "<span style='color:var(--ok)'>" + t.delivered_count + "</span> / " + t.project_count);
+  html += infoCard("Total Price <span class='fla'>إجمالي سعر المشاريع</span>", t.total_price_egp + " EGP");
+  html += infoCard("Total Cost <span class='fla'>إجمالي التكلفة</span>", t.total_actual_cost_egp + " EGP");
+  html += infoCard("Profit/Loss <span class='fla'>الربح/الخسارة</span>", "<span style='color:" + profitColor(t.total_profit_loss_egp) + "'>" + t.total_profit_loss_egp + " EGP</span>");
+  if (res.month_delivered_percentage !== null) {
+    html += infoCard("Delivered This Month <span class='fla'>اتسلم الشهر ده</span>", "<span style='color:var(--ok)'>" + res.month_delivered_percentage + "%</span> (" + res.month_delivered_value_egp + " EGP)");
+  }
+  html += "</div></div>";
+
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>Projects · المشاريع</span></div>";
+  if (!res.projects.length) {
+    html += "<div class='empty-log'>مفيش مشاريع للعميل ده</div>";
+  } else {
+    for (var i = 0; i < res.projects.length; i++) {
+      var p = res.projects[i];
+      var statusLabel = p.delivered_at ? "DELIVERED · تم التسليم" : (p.active ? "ACTIVE · شغال" : "PAUSED · متوقف");
+      var statusColor = p.delivered_at ? "var(--ok)" : (p.active ? "var(--warn)" : "var(--muted)");
+      html += "<div class='proj-row'>";
+      html += "<div class='proj-row-top'><div class='proj-id'>" + p.project_code + " - " + p.project_name + "</div>" +
+        "<div class='proj-badges'><span class='proj-badge' style='color:" + statusColor + ";border-color:" + statusColor + "'>" + statusLabel + "</span></div></div>";
+      html += "<div class='fl-hint' style='margin-top:6px'>السعر: " + p.price_egp + " EGP — التكلفة: " + p.actual_cost_egp + " EGP — " +
+        "<span style='color:" + profitColor(p.profit_loss_egp) + "'>" + (p.profit_loss_egp >= 0 ? "ربح" : "خسارة") + ": " + p.profit_loss_egp + " EGP</span></div>";
+      html += "</div>";
+    }
+  }
+  html += "</div>";
+  el.innerHTML = html;
+}
+
 async function fetchPettyCash() {
   var month = getMonthFilterValue("pettyFilterMonth", "pettyFilterMonthAll");
   showLoading(true);
@@ -5527,9 +5822,16 @@ function renderPettyCash(res) {
   var rowHtml = function(p) {
     var isFund = p.type === "fund";
     var color = isFund ? "var(--ok)" : "var(--danger)";
+    var linkBtn = "";
+    if (!isFund) {
+      linkBtn = p.linked_transaction_id
+        ? "<button class='btn-end-task' onclick=\"unlinkPettyCashExpensePrompt(" + p.id + ")\">↺ REMOVE FROM COMPANY EXPENSES · إزالة من مصروفات الشركة</button>"
+        : "<button class='btn-end-task' onclick=\"linkPettyCashExpensePrompt(" + p.id + ")\">+ ADD TO COMPANY EXPENSES · إضافة لمصروفات الشركة</button>";
+    }
     return "<div class='log-entry'><div class='log-type' style='color:" + color + "'>" + (isFund?"+":"-") + p.amount_egp + " EGP</div>" +
       "<div class='log-time'>" + p.date + "</div>" +
-      "<div class='log-note'>" + (p.description||"") + "</div>" +
+      "<div class='log-note'>" + (p.description||"") + (p.linked_transaction_id ? " <span style='color:var(--ok)'>(مضاف لمصروفات الشركة)</span>" : "") + "</div>" +
+      linkBtn +
       "<button class='btn-end-task' onclick=\"deletePettyCashPrompt(" + p.id + ")\">DELETE · حذف</button></div>";
   };
   var fundRows = (res.entries || []).filter(function(e) { return e.type === "fund"; });
