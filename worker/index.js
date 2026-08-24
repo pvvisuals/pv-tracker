@@ -168,17 +168,32 @@ const VARIANT_LABEL_MAP = {
 function autoSimpleLabel(category, type) {
   return VARIANT_LABEL_MAP[category + "_" + type] || "?";
 }
-// Egypt has used a fixed UTC+2 offset (no daylight saving) since 2014, so a
-// simple fixed-offset conversion is reliable for deadline scheduling.
+// Egypt REINTRODUCED Daylight Saving Time in 2023 (Law No. 24 of 2023):
+// UTC+3 (EEST) from the last Friday of April through the last Thursday of
+// October each year, UTC+2 (EET) the rest of the year. A fixed offset is
+// no longer correct, so this resolves Cairo's REAL offset for any given
+// instant via the actual IANA timezone database (same source the display
+// functions above already use correctly), instead of hardcoding a number.
+function cairoOffsetHoursForInstant(utcMs) {
+  const d = new Date(utcMs);
+  const utcHour = d.getUTCHours();
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", hour12: false, hourCycle: "h23" }).formatToParts(d);
+  const cairoHourPart = parts.find((p) => p.type === "hour").value;
+  let cairoHour = Number(cairoHourPart) % 24; // "24" shows up for midnight with hourCycle h23 in some engines
+  let diff = cairoHour - utcHour;
+  if (diff < -12) diff += 24;
+  if (diff > 12) diff -= 24;
+  return diff;
+}
 function cairoLocalToUtcString(dateStr, hour) {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const utcMs = Date.UTC(y, m - 1, d, Number(hour), 0, 0) - 2 * 3600 * 1000;
-  return new Date(utcMs).toISOString().slice(0, 19).replace("T", " ");
+  return cairoLocalToUtcStringPrecise(dateStr, hour, 0);
 }
 // Same idea but with minute precision, for editing exact attendance/task times.
 function cairoLocalToUtcStringPrecise(dateStr, hour, minute) {
   const [y, m, d] = dateStr.split("-").map(Number);
-  const utcMs = Date.UTC(y, m - 1, d, Number(hour), Number(minute) || 0, 0) - 2 * 3600 * 1000;
+  const guessMs = Date.UTC(y, m - 1, d, Number(hour), Number(minute) || 0, 0);
+  const offsetHours = cairoOffsetHoursForInstant(guessMs);
+  const utcMs = guessMs - offsetHours * 3600 * 1000;
   return new Date(utcMs).toISOString().slice(0, 19).replace("T", " ");
 }
 function cairoDeadlineDisplay(deadlineAt) {
