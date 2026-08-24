@@ -5133,9 +5133,10 @@ async function executeReactivateEmployee(id, pin) {
 // ================= Day Edit / History / Anomaly Review =================
 function utcToCairo24Time(utcStr) {
   var d = new Date(utcStr + "Z");
-  var cairoMs = d.getTime() + 2 * 3600 * 1000; // Cairo = UTC+2, fixed, no DST
-  var cd = new Date(cairoMs);
-  return String(cd.getUTCHours()).padStart(2, "0") + ":" + String(cd.getUTCMinutes()).padStart(2, "0");
+  var parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(d);
+  var hour = parts.find(function(p){ return p.type === "hour"; }).value;
+  var minute = parts.find(function(p){ return p.type === "minute"; }).value;
+  return hour + ":" + minute;
 }
 
 var currentDayEditEmployeeId = null, currentDayEditDate = null, currentDayEditData = null;
