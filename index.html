@@ -5422,21 +5422,29 @@ async function openDayAnomalyPanel(employeeId, date) {
     var html = "";
     for (var i = 0; i < anomalies.length; i++) {
       var a = anomalies[i];
-      var hours = (a.seconds / 3600).toFixed(1);
-      var typeLabel = a.type === "long_attendance" ? "جلسة حضور طويلة" : "جزء شغل تاسك طويل";
+      var typeLabel = a.type === "long_attendance" ? "جلسة حضور طويلة"
+        : a.type === "unpaired_sign_in" ? "تسجيل دخول من غير خروج مرتبط"
+        : "جزء شغل تاسك طويل";
+      var headerRight = a.seconds != null ? ltrSpan((a.seconds / 3600).toFixed(1) + " ساعة") : "";
       html += "<div class='log-wrap' style='margin-bottom:12px'>";
-      html += "<div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>⚠️ " + typeLabel + " — " + ltrSpan(hours + " ساعة") + "</span></div>";
+      html += "<div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>⚠️ " + typeLabel + (headerRight ? " — " + headerRight : "") + "</span></div>";
       html += "<div style='padding:14px'>";
       if (a.task_name) html += "<div style='color:#fff;margin-bottom:6px'>تاسك: " + a.task_name + "</div>";
       if (a.detail_from && a.detail_to) {
         html += "<div style='color:#fff;margin-bottom:8px'>من " + ltrSpan(a.detail_from) + " — لحد " + ltrSpan(a.detail_to) + "</div>";
+      } else if (a.detail_from) {
+        html += "<div style='color:#fff;margin-bottom:8px'>وقت الدخول: " + ltrSpan(a.detail_from) + "</div>";
       }
-      html += "<div class='fl-hint' style='margin-bottom:10px'>غالباً السبب إن الموظف نسي يقفل ده في وقته الطبيعي. راجع وحدد الوقت الصح من زرار \"تعديل اليوم\"، أو لو متأكد إن الرقم ده صح فعلاً، سيبه زي ما هو.</div>";
+      if (a.type === "unpaired_sign_in") {
+        html += "<div class='fl-hint' style='margin-bottom:10px'>فيه تسجيل دخول تاني بعده من غير ما يتقفل بتسجيل خروج — فالوقت ده مش بيتحسب في الساعات الفعلية خالص. راجع السجلات من \"تعديل اليوم\" واحذف اللي مكرر أو زيادة.</div>";
+      } else {
+        html += "<div class='fl-hint' style='margin-bottom:10px'>غالباً السبب إن الموظف نسي يقفل ده في وقته الطبيعي. راجع وحدد الوقت الصح من زرار \"تعديل اليوم\"، أو لو متأكد إن الرقم ده صح فعلاً، سيبه زي ما هو.</div>";
+      }
       if (a.acknowledged) {
         html += "<div style='color:var(--ok)'>✓ تمت المراجعة — القرار: سيبها زي ما هي</div>";
       } else {
         html += "<button class='btn-end-task' onclick=\"acknowledgeAnomalyAction(" + employeeId + ",'" + date + "','" + a.type + "'," + a.record_id + ")\">✓ سيبها زي ما هي · LEAVE AS IS</button> ";
-        html += "<button class='btn-end-task' onclick=\"closeDayAnomalyModal(); openDayEditModal(" + employeeId + ",'" + date + "');\">✎ عدّل الوقت · EDIT</button>";
+        html += "<button class='btn-end-task' onclick=\"closeDayAnomalyModal(); openDayEditModal(" + employeeId + ",'" + date + "');\">✎ عدّل / احذف · EDIT</button>";
       }
       html += "</div></div>";
     }
@@ -6703,7 +6711,7 @@ function renderAdminReport(res) {
     if (d.anomalies && d.anomalies.length) {
       var unresolvedCount = d.anomalies.filter(function(a){ return !a.acknowledged; }).length;
       var triColor = unresolvedCount > 0 ? "var(--warn)" : "var(--muted)";
-      anomalyBadge = "<span class='proj-badge' style='cursor:pointer;color:" + triColor + ";border-color:" + triColor + "' onclick=\"openDayAnomalyPanel(" + res.employee.id + ",'" + d.date + "')\">⚠️ جلسة طويلة (" + d.anomalies.length + ")</span>";
+      anomalyBadge = "<span class='proj-badge' style='cursor:pointer;color:" + triColor + ";border-color:" + triColor + "' onclick=\"openDayAnomalyPanel(" + res.employee.id + ",'" + d.date + "')\">⚠️ محتاج مراجعة (" + d.anomalies.length + ")</span>";
     }
 
     html += "<div class='proj-row' style='display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;padding:18px'>";
