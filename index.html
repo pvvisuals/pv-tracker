@@ -1387,7 +1387,11 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div id="pcProjectDetailWrap" style="display:none">
 <div class="fg">
-<div class="fl">Price (EGP) <span class="fla">سعر المشروع الكلي</span></div>
+<div class="fl">Price For <span class="fla">السعر ده لإيه — المشروع كله ولا نوع معين</span></div>
+<select id="pcPriceTypeSelect" onchange="onPcPriceTypeChange()"><option value="">Whole Project · المشروع كامل</option></select>
+</div>
+<div class="fg">
+<div class="fl">Price (EGP) <span class="fla">السعر</span></div>
 <input type="number" id="pcPriceInput" min="0" step="1"/>
 </div>
 <div class="fg">
@@ -1395,6 +1399,7 @@ textarea{resize:vertical;min-height:76px;}
 <textarea id="pcDetailsInput" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px;font-family:inherit"></textarea>
 </div>
 <button class="btn-add" onclick="savePcPricePrompt()">SAVE · حفظ</button>
+<div id="pcPriceBreakdown" class="fl-hint" style="margin-top:10px"></div>
 
 <div class="settings-label" style="font-size:14px;margin-top:20px">Payment Schedule <span class="fla">جدول الدفعات</span></div>
 <div class="form-row">
@@ -1423,7 +1428,10 @@ textarea{resize:vertical;min-height:76px;}
 <select id="projExpProjectSelect" onchange="onProjExpProjectChange()"></select>
 </div>
 </div>
-<div id="projExpTypesInfo" class="fl-hint" style="margin-top:4px"></div>
+<div class="fg">
+<div class="fl">Expense For <span class="fla">المصروف ده لإيه — المشروع كله ولا نوع معين</span></div>
+<select id="projExpTypeSelect"><option value="">Whole Project (general) · مصروف عام</option></select>
+</div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Amount (EGP)</div>
@@ -1456,7 +1464,6 @@ textarea{resize:vertical;min-height:76px;}
 <select id="projCostFilterProject" onchange="onProjCostFilterProjectChange()"><option value="">-- All Projects · كل المشاريع --</option></select>
 </div>
 </div>
-<div id="projCostTypesCheckboxes" class="fl-hint" style="margin-top:4px"></div>
 <div class="form-row">
 <div class="fg" style="margin:0">
 <div class="fl">Mode <span class="fla">نوع الحساب</span></div>
@@ -4980,13 +4987,18 @@ function onProjExpClientChange() {
 }
 function onProjExpProjectChange() {
   var filterVal = document.getElementById("projExpProjectSelect").value;
-  var box = document.getElementById("projExpTypesInfo");
-  if (!filterVal) { box.textContent = ""; return; }
-  var parts = filterVal.split("||");
-  var variants = adminProjectsFull.filter(function(p){ return p.code === parts[0] && p.name === parts[1]; });
-  if (variants.length <= 1) { box.textContent = ""; return; }
-  var labels = variants.map(function(v){ return v.category + " / " + v.type + (v.sub_code ? " " + v.sub_code : "") + (v.simple_label ? " (" + v.simple_label + ")" : ""); });
-  box.textContent = "المشروع ده فيه أنواع: " + labels.join("، ") + " — المصروف بيتحسب على المشروع كله";
+  var typeSel = document.getElementById("projExpTypeSelect");
+  var typeHtml = "<option value=''>Whole Project (general) · مصروف عام</option>";
+  if (filterVal) {
+    var parts = filterVal.split("||");
+    var variants = adminProjectsFull.filter(function(p){ return p.code === parts[0] && p.name === parts[1]; });
+    for (var i = 0; i < variants.length; i++) {
+      var v = variants[i];
+      var label = v.category + " / " + v.type + (v.sub_code ? " " + v.sub_code : "") + (v.simple_label ? " (" + v.simple_label + ")" : "");
+      typeHtml += "<option value='" + label.replace(/'/g,"") + "'>" + label + "</option>";
+    }
+  }
+  typeSel.innerHTML = typeHtml;
 }
 
 function populateProjectCostSelects() {
@@ -5329,12 +5341,46 @@ async function onPcProjectChange() {
   try {
     var res = await apiRequest("/api/admin/project-costs", "GET");
     pcCurrentCosts = res.costs || [];
-    var existing = pcCurrentCosts.find(function(c) { return c.project_code === parts[0] && c.project_name === parts[1]; });
-    document.getElementById("pcPriceInput").value = existing ? existing.cost_egp : "";
-    document.getElementById("pcDetailsInput").value = existing ? (existing.details || "") : "";
+    var typeSel = document.getElementById("pcPriceTypeSelect");
+    var variants = adminProjectsFull.filter(function(p){ return p.code === parts[0] && p.name === parts[1]; });
+    var typeHtml = "<option value=''>Whole Project · المشروع كامل</option>";
+    for (var i = 0; i < variants.length; i++) {
+      var v = variants[i];
+      var label = v.category + " / " + v.type + (v.sub_code ? " " + v.sub_code : "") + (v.simple_label ? " (" + v.simple_label + ")" : "");
+      typeHtml += "<option value='" + label.replace(/'/g,"") + "'>" + label + "</option>";
+    }
+    typeSel.innerHTML = typeHtml;
+    typeSel.value = "";
+    loadPcPriceForSelectedType();
+    renderPcPriceBreakdown(parts[0], parts[1]);
     await loadPcPayments(parts[0], parts[1]);
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
+}
+
+function onPcPriceTypeChange() {
+  loadPcPriceForSelectedType();
+}
+
+function loadPcPriceForSelectedType() {
+  var sel = document.getElementById("pcProjectSelect").value;
+  var parts = sel.split("||");
+  var projectType = document.getElementById("pcPriceTypeSelect").value;
+  var existing = pcCurrentCosts.find(function(c) { return c.project_code === parts[0] && c.project_name === parts[1] && (c.project_type || "") === projectType; });
+  document.getElementById("pcPriceInput").value = existing ? existing.cost_egp : "";
+  document.getElementById("pcDetailsInput").value = existing ? (existing.details || "") : "";
+}
+
+function renderPcPriceBreakdown(code, name) {
+  var box = document.getElementById("pcPriceBreakdown");
+  var rows = pcCurrentCosts.filter(function(c) { return c.project_code === code && c.project_name === name; });
+  if (!rows.length) { box.innerHTML = ""; return; }
+  var total = rows.reduce(function(s,r){ return s + Number(r.cost_egp); }, 0);
+  var html = "<div style='margin-bottom:4px'>إجمالي سعر المشروع (كل البنود): <b style='color:#fff'>" + total + " EGP</b></div>";
+  rows.forEach(function(r) {
+    html += "<div>— " + (r.project_type || "المشروع كامل (عام)") + ": " + r.cost_egp + " EGP</div>";
+  });
+  box.innerHTML = html;
 }
 
 function savePcPricePrompt() {
@@ -5351,17 +5397,23 @@ async function executeSavePcPrice(pin) {
   var parts = sel.split("||");
   var price = document.getElementById("pcPriceInput").value;
   var details = document.getElementById("pcDetailsInput").value;
+  var projectType = document.getElementById("pcPriceTypeSelect").value;
   showLoading(true);
   try {
-    await apiRequest("/api/admin/project-costs", "POST", { project_code: parts[0], project_name: parts[1], cost_egp: Number(price), details: details, pin: pin });
+    await apiRequest("/api/admin/project-costs", "POST", { project_code: parts[0], project_name: parts[1], project_type: projectType, cost_egp: Number(price), details: details, pin: pin });
     showToast("v", "تم الحفظ");
+    var res = await apiRequest("/api/admin/project-costs", "GET");
+    pcCurrentCosts = res.costs || [];
+    renderPcPriceBreakdown(parts[0], parts[1]);
     await loadPcPayments(parts[0], parts[1]);
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
 
 var pcCurrentPayments = [];
+var pcCurrentPaymentsProject = null;
 async function loadPcPayments(code, name) {
+  pcCurrentPaymentsProject = { code: code, name: name };
   try {
     var res = await apiRequest("/api/admin/project-payments?project_code=" + encodeURIComponent(code) + "&project_name=" + encodeURIComponent(name), "GET");
     pcCurrentPayments = res.payments || [];
@@ -5370,7 +5422,11 @@ async function loadPcPayments(code, name) {
 }
 
 function renderPcPayments() {
-  var price = Number(document.getElementById("pcPriceInput").value) || 0;
+  var price = 0;
+  if (pcCurrentPaymentsProject) {
+    pcCurrentCosts.filter(function(c) { return c.project_code === pcCurrentPaymentsProject.code && c.project_name === pcCurrentPaymentsProject.name; })
+      .forEach(function(c) { price += Number(c.cost_egp); });
+  }
   var totalPaid = 0;
   for (var i = 0; i < pcCurrentPayments.length; i++) if (pcCurrentPayments[i].paid) totalPaid += Number(pcCurrentPayments[i].amount_egp);
   var remaining = +(price - totalPaid).toFixed(2);
@@ -5484,10 +5540,11 @@ async function executeAddProjectExpense(pin) {
   var amount = document.getElementById("projExpAmount").value;
   var date = document.getElementById("projExpDate").value;
   var desc = document.getElementById("projExpDesc").value.trim();
+  var projectType = document.getElementById("projExpTypeSelect").value;
   var parts = sel.split("||");
   showLoading(true);
   try {
-    await apiRequest("/api/admin/project-expenses", "POST", { project_code: parts[0], project_name: parts[1], amount_egp: Number(amount), date: date, description: desc, pin: pin });
+    await apiRequest("/api/admin/project-expenses", "POST", { project_code: parts[0], project_name: parts[1], project_type: projectType, amount_egp: Number(amount), date: date, description: desc, pin: pin });
     showToast("v", "تم إضافة المصروف");
     document.getElementById("projExpAmount").value = "";
     document.getElementById("projExpDesc").value = "";
@@ -5527,23 +5584,6 @@ function onPcrClientChange() {
     html += "<option value='" + groups[i].code + "||" + groups[i].name.replace(/'/g,"") + "'>" + groups[i].code + " - " + groups[i].name + "</option>";
   }
   projSel.innerHTML = html;
-  onProjCostFilterProjectChange();
-}
-
-function onProjCostFilterProjectChange() {
-  var filterVal = document.getElementById("projCostFilterProject").value;
-  var box = document.getElementById("projCostTypesCheckboxes");
-  if (!filterVal) { box.innerHTML = ""; return; }
-  var parts = filterVal.split("||");
-  var variants = adminProjectsFull.filter(function(p){ return p.code === parts[0] && p.name === parts[1]; });
-  if (variants.length <= 1) { box.innerHTML = ""; return; }
-  var html = "<div style='margin-top:6px'>الأنواع المتاحة — اختار نوع أو أكتر (سيبها فاضية = كل الأنواع):</div>";
-  for (var i = 0; i < variants.length; i++) {
-    var v = variants[i];
-    var label = v.category + " / " + v.type + (v.sub_code ? " " + v.sub_code : "") + (v.simple_label ? " (" + v.simple_label + ")" : "");
-    html += "<label style='display:inline-flex;align-items:center;gap:6px;margin:6px 12px 0 0'><input type='checkbox' class='pcrTypeCheckbox' value='" + label.replace(/'/g,"") + "'/> " + label + "</label>";
-  }
-  box.innerHTML = html;
 }
 
 async function fetchProjectCostReport() {
@@ -5561,23 +5601,6 @@ async function fetchProjectCostReport() {
     if (filterVal) {
       var parts = filterVal.split("||");
       res.projects = res.projects.filter(function(p) { return p.project_code === parts[0] && p.project_name === parts[1]; });
-    }
-    var checkedTypes = Array.from(document.querySelectorAll(".pcrTypeCheckbox:checked")).map(function(c){ return c.value; });
-    if (checkedTypes.length && res.projects.length === 1) {
-      var p = res.projects[0];
-      var selected = p.types.filter(function(t){ return checkedTypes.indexOf(t.type) !== -1; });
-      var laborSum = 0, empMap = {};
-      selected.forEach(function(t) {
-        laborSum += t.labor_cost_egp;
-        t.employees.forEach(function(e){ empMap[e.employee_id] = e; });
-      });
-      var actualCost = +(laborSum + p.external_expenses_egp).toFixed(2);
-      p.labor_cost_egp = +laborSum.toFixed(2);
-      p.actual_cost_egp = actualCost;
-      p.profit_loss_egp = +(p.price_egp - actualCost).toFixed(2);
-      p.employees = Object.values(empMap).sort(function(a,b){ return b.cost_egp - a.cost_egp; });
-      p.types = selected;
-      p._selectionNote = "محسوب من الأنواع المختارة بس: " + checkedTypes.join("، ");
     }
     renderProjectCostReport(res);
   } catch(e) { showToast("!", e.message); }
@@ -5642,11 +5665,12 @@ function renderProjectCostView(idx, viewVal) {
   if (!bodyEl) return;
   var view = viewVal === "whole" ? p : p.types[Number(viewVal)];
   var html = projectCostBodyHtml(view, p.price_egp);
-  if (viewVal === "whole" && p.expenses && p.expenses.length) {
+  if (view.expenses && view.expenses.length) {
     html += "<div class='fl-hint' style='margin-top:12px;font-weight:700'>External expenses · المصروفات الخارجية</div>";
-    for (var x = 0; x < p.expenses.length; x++) {
-      var ex = p.expenses[x];
-      html += "<div class='log-entry'><div class='log-type'>" + ex.date + "</div><div class='log-note'>" + ex.amount_egp + " EGP — " + (ex.description||"") + "</div><button class='btn-end-task' onclick=\"deleteProjectExpensePrompt(" + ex.id + ")\">DELETE · حذف</button></div>";
+    for (var x = 0; x < view.expenses.length; x++) {
+      var ex = view.expenses[x];
+      var tagNote = ex.project_type ? (" — " + ex.project_type) : " — عام (كل المشروع)";
+      html += "<div class='log-entry'><div class='log-type'>" + ex.date + "</div><div class='log-note'>" + ex.amount_egp + " EGP" + tagNote + (ex.description ? " — " + ex.description : "") + "</div><button class='btn-end-task' onclick=\"deleteProjectExpensePrompt(" + ex.id + ")\">DELETE · حذف</button></div>";
     }
   }
   bodyEl.innerHTML = html;
