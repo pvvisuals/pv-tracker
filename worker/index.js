@@ -1743,7 +1743,7 @@ async function monthlyReport(db, employeeId, monthStr) {
         return {
           task_name: t.name, project: t.project, date: t.date,
           status: t.delivery.status, deadline_display: t.delivery.deadline_display,
-          delay_seconds: t.delivery.delay_seconds || 0, actual_delivery_display: t.delivery.actual_delivery_display || null,
+          delay_seconds: t.delivery.delay_seconds || 0, delta_seconds: t.delivery.delta_seconds || 0, actual_delivery_display: t.delivery.actual_delivery_display || null,
         };
       });
       return { total: withStatus.length, on_time: onTime, on_time_buffer: onTimeBuffer, late, list };
