@@ -1859,8 +1859,18 @@ async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
   const key = (code, name) => code + "||" + name.trim().toLowerCase();
   const ensure = (code, name) => {
     const k = key(code, name);
-    if (!byProject[k]) byProject[k] = { project_code: code, project_name: name, labor_cost_egp: 0, employees: [], external_expenses_egp: 0, expenses: [], price_egp: 0, types: {} };
+    if (!byProject[k]) byProject[k] = {
+      project_code: code, project_name: name,
+      labor_cost_egp: 0, employees: [],
+      external_expenses_egp: 0, expenses: [],
+      price_egp: 0, price_breakdown: [],
+      types: {},
+    };
     return byProject[k];
+  };
+  const ensureType = (g, typeLabel) => {
+    if (!g.types[typeLabel]) g.types[typeLabel] = { type: typeLabel, labor_cost_egp: 0, employees: [], external_expenses_egp: 0, expenses: [], price_egp: 0 };
+    return g.types[typeLabel];
   };
 
   for (const r of taskRows.rows) {
@@ -1874,45 +1884,61 @@ async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
 
     // Same figures, broken down by this specific variant (category/type/sub_code).
     const typeLabel = r.category + " / " + r.type + (r.sub_code ? " " + r.sub_code : "") + (r.simple_label ? " (" + r.simple_label + ")" : "");
-    if (!g.types[typeLabel]) g.types[typeLabel] = { type: typeLabel, labor_cost_egp: 0, employees: [] };
-    g.types[typeLabel].labor_cost_egp += cost;
-    g.types[typeLabel].employees.push(empEntry);
+    const ty = ensureType(g, typeLabel);
+    ty.labor_cost_egp += cost;
+    ty.employees.push(empEntry);
   }
   for (const r of expRows.rows) {
     const g = ensure(r.project_code, r.project_name);
-    g.external_expenses_egp += Number(r.amount_egp);
-    g.expenses.push({ id: r.id, amount_egp: Number(r.amount_egp), description: r.description, date: r.date });
+    g.external_expenses_egp += Number(r.amount_egp); // always counts toward the whole-project total
+    const expEntry = { id: r.id, amount_egp: Number(r.amount_egp), description: r.description, date: r.date, project_type: r.project_type || null };
+    g.expenses.push(expEntry);
+    if (r.project_type) {
+      // Also tagged to one specific type — counts toward that type's own view too.
+      const ty = ensureType(g, r.project_type);
+      ty.external_expenses_egp += Number(r.amount_egp);
+      ty.expenses.push(expEntry);
+    }
   }
   for (const r of costRows.rows) {
     const g = ensure(r.project_code, r.project_name);
-    g.price_egp = Number(r.cost_egp);
+    g.price_egp += Number(r.cost_egp); // whole-project price = sum of every price entry, type-specific or general
+    g.price_breakdown.push({ project_type: r.project_type || null, cost_egp: Number(r.cost_egp), details: r.details });
+    if (r.project_type) {
+      const ty = ensureType(g, r.project_type);
+      ty.price_egp += Number(r.cost_egp);
+    }
   }
 
   return Object.values(byProject).map((g) => {
     const laborCost = +g.labor_cost_egp.toFixed(2);
     const externalExp = +g.external_expenses_egp.toFixed(2);
     const actualCost = +(laborCost + externalExp).toFixed(2);
-    const profitLoss = +(g.price_egp - actualCost).toFixed(2);
-    // Per-type view: same shared price/expenses (a project has one price
-    // regardless of internal classification), but labor cost narrowed to
-    // just that one variant — useful to compare which type is carrying the
-    // work, not a literal split of the client's payment.
+    const totalPrice = +g.price_egp.toFixed(2);
+    const profitLoss = +(totalPrice - actualCost).toFixed(2);
+    // Per-type view: this variant's OWN labor cost, its OWN tagged external
+    // expenses, and its OWN tagged price entry (0 if none was ever set for
+    // it specifically) — a real narrowed slice, not just a shared total.
     const types = Object.values(g.types).map((ty) => {
       const tyLaborCost = +ty.labor_cost_egp.toFixed(2);
-      const tyActualCost = +(tyLaborCost + externalExp).toFixed(2);
+      const tyExternalExp = +ty.external_expenses_egp.toFixed(2);
+      const tyActualCost = +(tyLaborCost + tyExternalExp).toFixed(2);
+      const tyPrice = +ty.price_egp.toFixed(2);
       return {
         type: ty.type,
         labor_cost_egp: tyLaborCost,
-        external_expenses_egp: externalExp,
+        external_expenses_egp: tyExternalExp,
         actual_cost_egp: tyActualCost,
-        price_egp: g.price_egp,
-        profit_loss_egp: +(g.price_egp - tyActualCost).toFixed(2),
+        price_egp: tyPrice,
+        profit_loss_egp: +(tyPrice - tyActualCost).toFixed(2),
         employees: ty.employees.sort((a, b) => b.cost_egp - a.cost_egp),
+        expenses: ty.expenses.sort((a, b) => (a.date < b.date ? 1 : -1)),
       };
     }).sort((a, b) => b.labor_cost_egp - a.labor_cost_egp);
     return {
       project_code: g.project_code, project_name: g.project_name,
-      price_egp: g.price_egp,
+      price_egp: totalPrice,
+      price_breakdown: g.price_breakdown,
       labor_cost_egp: laborCost,
       external_expenses_egp: externalExp,
       actual_cost_egp: actualCost,
@@ -2710,11 +2736,12 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (missing) return err(`Missing field: ${missing}`);
     const cost = Number(body.cost_egp);
     if (!(cost >= 0)) return err("تكلفة المشروع لازم تكون رقم موجب أو صفر");
+    const projectType = body.project_type || ""; // '' = whole project, not type-specific
     await db.execute({
-      sql: `INSERT INTO project_costs (project_code, project_name, cost_egp, details, updated_by, updated_at)
-            VALUES (?,?,?,?,?,datetime('now'))
-            ON CONFLICT(project_code, project_name) DO UPDATE SET cost_egp = excluded.cost_egp, details = excluded.details, updated_by = excluded.updated_by, updated_at = datetime('now')`,
-      args: [body.project_code, body.project_name, cost, body.details || null, admin.id],
+      sql: `INSERT INTO project_costs (project_code, project_name, project_type, cost_egp, details, updated_by, updated_at)
+            VALUES (?,?,?,?,?,?,datetime('now'))
+            ON CONFLICT(project_code, project_name, project_type) DO UPDATE SET cost_egp = excluded.cost_egp, details = excluded.details, updated_by = excluded.updated_by, updated_at = datetime('now')`,
+      args: [body.project_code, body.project_name, projectType, cost, body.details || null, admin.id],
     });
     return json({ ok: true });
   }
@@ -2795,8 +2822,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const amount = Number(body.amount_egp);
     if (!(amount > 0)) return err("قيمة المصروف لازم تكون رقم موجب");
     const res = await db.execute({
-      sql: `INSERT INTO project_expenses (project_code, project_name, amount_egp, description, date, created_by) VALUES (?,?,?,?,?,?) RETURNING *`,
-      args: [body.project_code, body.project_name, amount, body.description || null, body.date, admin.id],
+      sql: `INSERT INTO project_expenses (project_code, project_name, project_type, amount_egp, description, date, created_by) VALUES (?,?,?,?,?,?,?) RETURNING *`,
+      args: [body.project_code, body.project_name, body.project_type || "", amount, body.description || null, body.date, admin.id],
     });
     return json({ expense: res.rows[0] }, 201);
   }
