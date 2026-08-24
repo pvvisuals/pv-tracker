@@ -1799,6 +1799,38 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="dayEditModalOverlay">
+<div class="modal" style="max-width:640px">
+<h3>EDIT DAY · تعديل اليوم <span id="dayEditDateLabel" style="font-size:14px;color:var(--muted)"></span></h3>
+<div id="dayEditContent" style="max-height:50vh;overflow-y:auto"></div>
+<div class="fg">
+<div class="fl">Note (optional) <span class="fla">ملاحظة عن سبب التعديل (اختياري)</span></div>
+<input type="text" id="dayEditNote"/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeDayEditModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitDayEdit()">Save · حفظ</button>
+</div>
+</div>
+</div>
+<div class="modal-overlay" id="dayHistoryModalOverlay">
+<div class="modal" style="max-width:600px">
+<h3>EDIT HISTORY · سجل التعديلات <span id="dayHistoryDateLabel" style="font-size:14px;color:var(--muted)"></span></h3>
+<div id="dayHistoryContent" style="max-height:60vh;overflow-y:auto"></div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeDayHistoryModal()">Close · إغلاق</button>
+</div>
+</div>
+</div>
+<div class="modal-overlay" id="dayAnomalyModalOverlay">
+<div class="modal" style="max-width:600px">
+<h3>⚠️ LONG SESSION REVIEW · مراجعة جلسة طويلة <span id="dayAnomalyDateLabel" style="font-size:14px;color:var(--muted)"></span></h3>
+<div id="dayAnomalyContent" style="max-height:55vh;overflow-y:auto"></div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeDayAnomalyModal()">Close · إغلاق</button>
+</div>
+</div>
+</div>
 <div class="modal-overlay" id="editSalaryHistoryModalOverlay">
 <div class="modal">
 <h3>EDIT SALARY ENTRY · تعديل سجل الراتب</h3>
@@ -5098,6 +5130,171 @@ async function executeReactivateEmployee(id, pin) {
   showLoading(false);
 }
 
+// ================= Day Edit / History / Anomaly Review =================
+function utcToCairo24Time(utcStr) {
+  var d = new Date(utcStr + "Z");
+  var cairoMs = d.getTime() + 2 * 3600 * 1000; // Cairo = UTC+2, fixed, no DST
+  var cd = new Date(cairoMs);
+  return String(cd.getUTCHours()).padStart(2, "0") + ":" + String(cd.getUTCMinutes()).padStart(2, "0");
+}
+
+var currentDayEditEmployeeId = null, currentDayEditDate = null, currentDayEditData = null;
+
+async function openDayEditModal(employeeId, date) {
+  currentDayEditEmployeeId = employeeId;
+  currentDayEditDate = date;
+  document.getElementById("dayEditDateLabel").textContent = "— " + date;
+  document.getElementById("dayEditContent").innerHTML = "بيحمّل...";
+  document.getElementById("dayEditNote").value = "";
+  document.getElementById("dayEditModalOverlay").classList.add("active");
+  try {
+    var res = await apiRequest("/api/admin/employees/" + employeeId + "/day-detail?date=" + date, "GET");
+    currentDayEditData = res;
+    renderDayEditContent(res);
+  } catch(e) { document.getElementById("dayEditContent").innerHTML = "فشل تحميل بيانات اليوم"; }
+}
+function closeDayEditModal() {
+  document.getElementById("dayEditModalOverlay").classList.remove("active");
+  currentDayEditData = null;
+}
+
+function renderDayEditContent(res) {
+  var html = "";
+  if (res.attendance.length) {
+    html += "<div class='settings-label' style='font-size:14px;margin-top:6px'>Attendance · الحضور</div>";
+    for (var i = 0; i < res.attendance.length; i++) {
+      var a = res.attendance[i];
+      var label = a.action === "sign_in" ? "دخول · Sign In" : "خروج · Sign Out";
+      html += "<div class='fg' style='margin:8px 0'>";
+      html += "<div class='fl'>" + label + "</div>";
+      html += "<input type='time' class='dayEditAttInput' data-record-id='" + a.id + "' value='" + utcToCairo24Time(a.created_at) + "'/>";
+      html += "</div>";
+    }
+  } else {
+    html += "<div class='fl-hint'>مفيش سجل حضور لليوم ده</div>";
+  }
+
+  if (res.segments.length) {
+    html += "<div class='settings-label' style='font-size:14px;margin-top:16px'>Task Segments · أجزاء شغل التاسكات</div>";
+    for (var j = 0; j < res.segments.length; j++) {
+      var s = res.segments[j];
+      html += "<div style='margin:10px 0;padding:10px;border:1px solid var(--border2)'>";
+      html += "<div class='fl-hint' style='margin-bottom:6px;color:#fff'>" + (s.p_code ? s.p_code + " - " + s.p_name : (s.project_display||"")) + " — " + s.task_name + "</div>";
+      html += "<div class='form-row'>";
+      html += "<div class='fg' style='margin:0'><div class='fl'>Start · بداية</div><input type='time' class='dayEditSegStartInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.created_at) + "'/></div>";
+      if (s.ended_at) {
+        html += "<div class='fg' style='margin:0'><div class='fl'>End · نهاية</div><input type='time' class='dayEditSegEndInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.ended_at) + "'/></div>";
+      }
+      html += "</div></div>";
+    }
+  } else {
+    html += "<div class='fl-hint' style='margin-top:10px'>مفيش أجزاء شغل تاسكات لليوم ده</div>";
+  }
+  document.getElementById("dayEditContent").innerHTML = html;
+}
+
+function submitDayEdit() {
+  var edits = [];
+  document.querySelectorAll(".dayEditAttInput").forEach(function(inp) {
+    if (!inp.value) return;
+    var parts = inp.value.split(":");
+    edits.push({ type: "attendance", record_id: Number(inp.dataset.recordId), hour: Number(parts[0]), minute: Number(parts[1]) });
+  });
+  document.querySelectorAll(".dayEditSegStartInput").forEach(function(inp) {
+    if (!inp.value) return;
+    var parts = inp.value.split(":");
+    edits.push({ type: "task_segment", field: "start", record_id: Number(inp.dataset.recordId), hour: Number(parts[0]), minute: Number(parts[1]) });
+  });
+  document.querySelectorAll(".dayEditSegEndInput").forEach(function(inp) {
+    if (!inp.value) return;
+    var parts = inp.value.split(":");
+    edits.push({ type: "task_segment", field: "end", record_id: Number(inp.dataset.recordId), hour: Number(parts[0]), minute: Number(parts[1]) });
+  });
+  if (!edits.length) { showToast("!", "مفيش حاجة للتعديل"); return; }
+  var note = document.getElementById("dayEditNote").value.trim();
+  document.getElementById("dayEditModalOverlay").classList.remove("active"); // hide first, keep currentDayEdit* vars
+  openPinModal("CONFIRM DAY EDIT · تأكيد تعديل اليوم", "هيتعدّل " + edits.length + " قيمة/قيم لليوم ده، وهيتسجل التعديل باسمك. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); document.getElementById("dayEditModalOverlay").classList.add("active"); return; }
+    executeDayEdit(edits, note, pin);
+  });
+}
+async function executeDayEdit(edits, note, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/employees/" + currentDayEditEmployeeId + "/day-detail", "POST", { date: currentDayEditDate, edits: edits, note: note, pin: pin });
+    showToast("v", "تم تعديل اليوم — كل الحسابات المرتبطة اتحدثت فوراً");
+    currentDayEditData = null;
+    await fetchAdminReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+async function openDayHistoryPanel(employeeId, date) {
+  document.getElementById("dayHistoryDateLabel").textContent = "— " + date;
+  document.getElementById("dayHistoryContent").innerHTML = "بيحمّل...";
+  document.getElementById("dayHistoryModalOverlay").classList.add("active");
+  try {
+    var res = await apiRequest("/api/admin/employees/" + employeeId + "/day-detail?date=" + date, "GET");
+    var log = res.edit_log || [];
+    if (!log.length) { document.getElementById("dayHistoryContent").innerHTML = "<div class='empty-log'>مفيش تعديلات على اليوم ده لسه</div>"; return; }
+    var fieldLabels = { sign_in: "وقت الدخول", sign_out: "وقت الخروج", segment_start: "بداية جزء الشغل", segment_end: "نهاية جزء الشغل" };
+    var html = "<div class='log-wrap'>";
+    for (var i = 0; i < log.length; i++) {
+      var l = log[i];
+      html += "<div class='log-entry'><div class='log-type'>" + ltrSpan(l.edited_at.slice(0,16)) + "</div>";
+      html += "<div class='log-note'>" + (fieldLabels[l.field_name] || l.field_name) + " — من " + ltrSpan(l.old_value||"—") + " إلى " + ltrSpan(l.new_value||"—") +
+        "<br/>بواسطة: " + (l.edited_by_name || "-") + (l.note ? "<br/>ملاحظة: " + l.note : "") + "</div></div>";
+    }
+    html += "</div>";
+    document.getElementById("dayHistoryContent").innerHTML = html;
+  } catch(e) { document.getElementById("dayHistoryContent").innerHTML = "فشل تحميل السجل"; }
+}
+function closeDayHistoryModal() {
+  document.getElementById("dayHistoryModalOverlay").classList.remove("active");
+}
+
+async function openDayAnomalyPanel(employeeId, date) {
+  document.getElementById("dayAnomalyDateLabel").textContent = "— " + date;
+  document.getElementById("dayAnomalyContent").innerHTML = "بيحمّل...";
+  document.getElementById("dayAnomalyModalOverlay").classList.add("active");
+  try {
+    var res = await apiRequest("/api/admin/employees/" + employeeId + "/day-detail?date=" + date, "GET");
+    var anomalies = res.anomalies || [];
+    if (!anomalies.length) { document.getElementById("dayAnomalyContent").innerHTML = "<div class='empty-log'>مفيش جلسات طويلة لليوم ده</div>"; return; }
+    var html = "";
+    for (var i = 0; i < anomalies.length; i++) {
+      var a = anomalies[i];
+      var hours = (a.seconds / 3600).toFixed(1);
+      var typeLabel = a.type === "long_attendance" ? "جلسة حضور طويلة" : "جزء شغل تاسك طويل";
+      html += "<div class='log-wrap' style='margin-bottom:12px'>";
+      html += "<div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>⚠️ " + typeLabel + " — " + ltrSpan(hours + " ساعة") + "</span></div>";
+      html += "<div style='padding:14px'>";
+      html += "<div class='fl-hint' style='margin-bottom:10px'>غالباً السبب إن الموظف نسي يقفل ده في وقته الطبيعي. راجع وحدد الوقت الصح من زرار \"تعديل اليوم\"، أو لو متأكد إن الرقم ده صح فعلاً، سيبه زي ما هو.</div>";
+      if (a.acknowledged) {
+        html += "<div style='color:var(--ok)'>✓ تمت المراجعة — القرار: سيبها زي ما هي</div>";
+      } else {
+        html += "<button class='btn-end-task' onclick=\"acknowledgeAnomalyAction(" + employeeId + ",'" + date + "','" + a.type + "'," + a.record_id + ")\">✓ سيبها زي ما هي · LEAVE AS IS</button> ";
+        html += "<button class='btn-end-task' onclick=\"closeDayAnomalyModal(); openDayEditModal(" + employeeId + ",'" + date + "');\">✎ عدّل الوقت · EDIT</button>";
+      }
+      html += "</div></div>";
+    }
+    document.getElementById("dayAnomalyContent").innerHTML = html;
+  } catch(e) { document.getElementById("dayAnomalyContent").innerHTML = "فشل تحميل التفاصيل"; }
+}
+function closeDayAnomalyModal() {
+  document.getElementById("dayAnomalyModalOverlay").classList.remove("active");
+}
+async function acknowledgeAnomalyAction(employeeId, date, type, recordId) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/anomaly-ack", "POST", { employee_id: employeeId, date: date, anomaly_type: type, record_id: recordId });
+    showToast("v", "تم تسجيل القرار");
+    await openDayAnomalyPanel(employeeId, date);
+    await fetchAdminReport();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
 async function fetchAdminReport() {
   var empId = document.getElementById("reportEmployee").value;
   var month = getMonthFilterValue("reportMonth", "reportMonthAll");
@@ -6340,12 +6537,23 @@ function renderAdminReport(res) {
       tasksHtml = "<div class='fl-hint'>مفيش تاسكات اتشتغلت في اليوم ده</div>";
     }
 
+    var anomalyBadge = "";
+    if (d.anomalies && d.anomalies.length) {
+      var unresolvedCount = d.anomalies.filter(function(a){ return !a.acknowledged; }).length;
+      var triColor = unresolvedCount > 0 ? "var(--warn)" : "var(--muted)";
+      anomalyBadge = "<span class='proj-badge' style='cursor:pointer;color:" + triColor + ";border-color:" + triColor + "' onclick=\"openDayAnomalyPanel(" + res.employee.id + ",'" + d.date + "')\">⚠️ جلسة طويلة (" + d.anomalies.length + ")</span>";
+    }
+
     html += "<div class='proj-row' style='display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;padding:18px'>";
     html += "<div style='flex:1;min-width:260px'>";
     html += "<div class='proj-row-top'>";
     html += "<div class='proj-id'>" + ltrSpan(d.date) + " <span style='color:" + statusColor + "'>— " + statusLabel + "</span></div>";
     html += "</div>";
-    if (badges.length) html += "<div class='proj-badges' style='margin-top:8px'>" + badges.join("") + "</div>";
+    if (badges.length || anomalyBadge) html += "<div class='proj-badges' style='margin-top:8px'>" + badges.join("") + anomalyBadge + "</div>";
+    html += "<div style='margin-top:10px'>";
+    html += "<button class='btn-end-task' onclick=\"openDayEditModal(" + res.employee.id + ",'" + d.date + "')\">✎ EDIT DAY · تعديل اليوم</button> ";
+    html += "<button class='btn-end-task' onclick=\"openDayHistoryPanel(" + res.employee.id + ",'" + d.date + "')\">📋 HISTORY · سجل التعديلات</button>";
+    html += "</div>";
     html += "</div>";
     html += "<div style='flex:1;min-width:260px;border-right:1px solid var(--border2);padding-right:18px'>";
     html += "<div style='font-size:12px;letter-spacing:1px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px'>TASKS WORKED · التاسكات اللي اشتغل عليها</div>";
