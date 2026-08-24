@@ -5158,62 +5158,193 @@ function closeDayEditModal() {
   currentDayEditData = null;
 }
 
+var dayEditNewAttendance = []; // rows the admin is adding fresh: {tempId, action, date, time}
+var dayEditDeletedAttendance = []; // record_ids marked for deletion
+var dayEditNewTask = null; // {project_id, name, description, start_date, start_time, end_date, end_time} or null
+
 function renderDayEditContent(res) {
   var html = "";
+  html += "<div class='settings-label' style='font-size:14px;margin-top:6px'>Attendance · الحضور</div>";
   if (res.attendance.length) {
-    html += "<div class='settings-label' style='font-size:14px;margin-top:6px'>Attendance · الحضور</div>";
     for (var i = 0; i < res.attendance.length; i++) {
       var a = res.attendance[i];
       var label = a.action === "sign_in" ? "دخول · Sign In" : "خروج · Sign Out";
-      html += "<div class='fg' style='margin:8px 0'>";
-      html += "<div class='fl'>" + label + "</div>";
-      html += "<input type='time' class='dayEditAttInput' data-record-id='" + a.id + "' value='" + utcToCairo24Time(a.created_at) + "'/>";
+      var isDeleted = dayEditDeletedAttendance.indexOf(a.id) !== -1;
+      html += "<div class='form-row' style='align-items:flex-end" + (isDeleted ? ";opacity:.4" : "") + "'>";
+      html += "<div class='fg' style='margin:0'><div class='fl'>" + label + "</div>";
+      html += "<input type='date' class='dayEditAttDate' data-record-id='" + a.id + "' value='" + a.date + "' " + (isDeleted?"disabled":"") + "/></div>";
+      html += "<div class='fg' style='margin:0'><div class='fl'>&nbsp;</div>";
+      html += "<input type='time' class='dayEditAttInput' data-record-id='" + a.id + "' value='" + utcToCairo24Time(a.created_at) + "' " + (isDeleted?"disabled":"") + "/></div>";
+      html += "<button class='btn-end-task' style='margin:0' onclick=\"toggleDeleteAttendance(" + a.id + ")\">" + (isDeleted ? "↺ تراجع" : "🗑 حذف") + "</button>";
       html += "</div>";
     }
   } else {
     html += "<div class='fl-hint'>مفيش سجل حضور لليوم ده</div>";
   }
+  for (var ni = 0; ni < dayEditNewAttendance.length; ni++) {
+    var na = dayEditNewAttendance[ni];
+    html += "<div class='form-row' style='align-items:flex-end;border-top:1px dashed var(--border2);padding-top:8px'>";
+    html += "<div class='fg' style='margin:0'><div class='fl'>نوع جديد</div><select class='dayEditNewAttType' data-temp-id='" + na.tempId + "'><option value='sign_in'" + (na.action==="sign_in"?" selected":"") + ">دخول · Sign In</option><option value='sign_out'" + (na.action==="sign_out"?" selected":"") + ">خروج · Sign Out</option></select></div>";
+    html += "<div class='fg' style='margin:0'><div class='fl'>التاريخ</div><input type='date' class='dayEditNewAttDate' data-temp-id='" + na.tempId + "' value='" + na.date + "'/></div>";
+    html += "<div class='fg' style='margin:0'><div class='fl'>الوقت</div><input type='time' class='dayEditNewAttTime' data-temp-id='" + na.tempId + "' value='" + na.time + "'/></div>";
+    html += "<button class='btn-end-task' style='margin:0' onclick=\"removeNewAttendance(" + na.tempId + ")\">🗑 إلغاء</button>";
+    html += "</div>";
+  }
+  html += "<button class='btn-end-task' style='margin-top:8px' onclick=\"addNewAttendanceRow('sign_in')\">+ ADD SIGN IN · إضافة تسجيل دخول</button> ";
+  html += "<button class='btn-end-task' onclick=\"addNewAttendanceRow('sign_out')\">+ ADD SIGN OUT · إضافة تسجيل انصراف</button>";
 
+  html += "<div class='settings-label' style='font-size:14px;margin-top:20px'>Task Segments · أجزاء شغل التاسكات</div>";
   if (res.segments.length) {
-    html += "<div class='settings-label' style='font-size:14px;margin-top:16px'>Task Segments · أجزاء شغل التاسكات</div>";
     for (var j = 0; j < res.segments.length; j++) {
       var s = res.segments[j];
       html += "<div style='margin:10px 0;padding:10px;border:1px solid var(--border2)'>";
       html += "<div class='fl-hint' style='margin-bottom:6px;color:#fff'>" + (s.p_code ? s.p_code + " - " + s.p_name : (s.project_display||"")) + " — " + s.task_name + "</div>";
       html += "<div class='form-row'>";
-      html += "<div class='fg' style='margin:0'><div class='fl'>Start · بداية</div><input type='time' class='dayEditSegStartInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.created_at) + "'/></div>";
+      html += "<div class='fg' style='margin:0'><div class='fl'>Start Date · تاريخ البداية</div><input type='date' class='dayEditSegStartDate' data-record-id='" + s.id + "' value='" + s.date + "'/></div>";
+      html += "<div class='fg' style='margin:0'><div class='fl'>Start Time · وقت البداية</div><input type='time' class='dayEditSegStartInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.created_at) + "'/></div>";
+      html += "</div>";
       if (s.ended_at) {
-        html += "<div class='fg' style='margin:0'><div class='fl'>End · نهاية</div><input type='time' class='dayEditSegEndInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.ended_at) + "'/></div>";
+        html += "<div class='form-row' style='margin-top:8px'>";
+        html += "<div class='fg' style='margin:0'><div class='fl'>End Date · تاريخ النهاية</div><input type='date' class='dayEditSegEndDate' data-record-id='" + s.id + "' value='" + s.ended_at.slice(0,10) + "'/></div>";
+        html += "<div class='fg' style='margin:0'><div class='fl'>End Time · وقت النهاية</div><input type='time' class='dayEditSegEndInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.ended_at) + "'/></div>";
+        html += "</div>";
       }
-      html += "</div></div>";
+      html += "</div>";
     }
   } else {
     html += "<div class='fl-hint' style='margin-top:10px'>مفيش أجزاء شغل تاسكات لليوم ده</div>";
   }
+
+  if (dayEditNewTask) {
+    html += "<div style='margin:12px 0;padding:12px;border:1px dashed var(--border2)'>";
+    html += "<div class='fl-hint' style='margin-bottom:8px;color:#fff'>تاسك جديد</div>";
+    html += "<div class='fg'><div class='fl'>Project · المشروع</div><select id='dayEditNewTaskProject'>" + dayEditProjectOptionsHtml() + "</select></div>";
+    html += "<div class='fg'><div class='fl'>Task Name · اسم التاسك</div><input type='text' id='dayEditNewTaskName' value='" + dayEditNewTask.name + "'/></div>";
+    html += "<div class='fg'><div class='fl'>Description · الوصف (اختياري)</div><input type='text' id='dayEditNewTaskDesc' value='" + (dayEditNewTask.description||"") + "'/></div>";
+    html += "<div class='form-row'>";
+    html += "<div class='fg' style='margin:0'><div class='fl'>Start Date</div><input type='date' id='dayEditNewTaskStartDate' value='" + dayEditNewTask.start_date + "'/></div>";
+    html += "<div class='fg' style='margin:0'><div class='fl'>Start Time</div><input type='time' id='dayEditNewTaskStartTime' value='" + dayEditNewTask.start_time + "'/></div>";
+    html += "</div>";
+    html += "<div class='form-row' style='margin-top:8px'>";
+    html += "<div class='fg' style='margin:0'><div class='fl'>End Date</div><input type='date' id='dayEditNewTaskEndDate' value='" + dayEditNewTask.end_date + "'/></div>";
+    html += "<div class='fg' style='margin:0'><div class='fl'>End Time</div><input type='time' id='dayEditNewTaskEndTime' value='" + dayEditNewTask.end_time + "'/></div>";
+    html += "</div>";
+    html += "<button class='btn-end-task' style='margin-top:8px' onclick='removeNewTask()'>🗑 إلغاء التاسك الجديد</button>";
+    html += "</div>";
+  } else {
+    html += "<button class='btn-end-task' style='margin-top:8px' onclick='addNewTaskRow()'>+ ADD TASK · إضافة تاسك جديد</button>";
+  }
   document.getElementById("dayEditContent").innerHTML = html;
+}
+
+function dayEditProjectOptionsHtml() {
+  var groups = uniqueProjectGroups ? uniqueProjectGroups() : [];
+  var html = "";
+  for (var i = 0; i < adminProjectsFull.length; i++) {
+    var p = adminProjectsFull[i];
+    if (!p.active) continue;
+    html += "<option value='" + p.id + "'>" + p.code + " - " + p.name + " (" + p.category + "/" + p.type + (p.sub_code?" "+p.sub_code:"") + ")</option>";
+  }
+  return html;
+}
+
+function addNewAttendanceRow(actionType) {
+  dayEditNewAttendance.push({ tempId: Date.now() + Math.random(), action: actionType, date: currentDayEditDate, time: "09:00" });
+  captureDayEditFormState();
+  renderDayEditContent(currentDayEditData);
+}
+function removeNewAttendance(tempId) {
+  dayEditNewAttendance = dayEditNewAttendance.filter(function(x){ return x.tempId !== tempId; });
+  renderDayEditContent(currentDayEditData);
+}
+function toggleDeleteAttendance(recordId) {
+  var idx = dayEditDeletedAttendance.indexOf(recordId);
+  if (idx === -1) dayEditDeletedAttendance.push(recordId); else dayEditDeletedAttendance.splice(idx, 1);
+  renderDayEditContent(currentDayEditData);
+}
+function addNewTaskRow() {
+  dayEditNewTask = { project_id: "", name: "", description: "", start_date: currentDayEditDate, start_time: "09:00", end_date: currentDayEditDate, end_time: "17:00" };
+  renderDayEditContent(currentDayEditData);
+}
+function removeNewTask() {
+  dayEditNewTask = null;
+  renderDayEditContent(currentDayEditData);
+}
+function captureDayEditFormState() {
+  // Preserve values already typed into new-attendance rows before a re-render (e.g. when adding another row)
+  document.querySelectorAll(".dayEditNewAttType").forEach(function(sel) {
+    var row = dayEditNewAttendance.find(function(x){ return String(x.tempId) === sel.dataset.tempId; });
+    if (row) row.action = sel.value;
+  });
+  document.querySelectorAll(".dayEditNewAttDate").forEach(function(inp) {
+    var row = dayEditNewAttendance.find(function(x){ return String(x.tempId) === inp.dataset.tempId; });
+    if (row) row.date = inp.value;
+  });
+  document.querySelectorAll(".dayEditNewAttTime").forEach(function(inp) {
+    var row = dayEditNewAttendance.find(function(x){ return String(x.tempId) === inp.dataset.tempId; });
+    if (row) row.time = inp.value;
+  });
 }
 
 function submitDayEdit() {
   var edits = [];
+
   document.querySelectorAll(".dayEditAttInput").forEach(function(inp) {
-    if (!inp.value) return;
+    var recId = Number(inp.dataset.recordId);
+    if (dayEditDeletedAttendance.indexOf(recId) !== -1) return; // handled separately below
+    var dateInp = document.querySelector(".dayEditAttDate[data-record-id='" + recId + "']");
+    if (!inp.value || !dateInp.value) return;
     var parts = inp.value.split(":");
-    edits.push({ type: "attendance", record_id: Number(inp.dataset.recordId), hour: Number(parts[0]), minute: Number(parts[1]) });
+    edits.push({ type: "attendance", action: "edit", record_id: recId, date: dateInp.value, hour: Number(parts[0]), minute: Number(parts[1]) });
   });
+  dayEditDeletedAttendance.forEach(function(recId) {
+    edits.push({ type: "attendance", action: "delete", record_id: recId });
+  });
+  document.querySelectorAll(".dayEditNewAttType").forEach(function(sel) {
+    var tempId = sel.dataset.tempId;
+    var dateInp = document.querySelector(".dayEditNewAttDate[data-temp-id='" + tempId + "']");
+    var timeInp = document.querySelector(".dayEditNewAttTime[data-temp-id='" + tempId + "']");
+    if (!dateInp.value || !timeInp.value) return;
+    var parts = timeInp.value.split(":");
+    edits.push({ type: "attendance", action: "add", attendance_action: sel.value, date: dateInp.value, hour: Number(parts[0]), minute: Number(parts[1]) });
+  });
+
   document.querySelectorAll(".dayEditSegStartInput").forEach(function(inp) {
-    if (!inp.value) return;
+    var recId = Number(inp.dataset.recordId);
+    var dateInp = document.querySelector(".dayEditSegStartDate[data-record-id='" + recId + "']");
+    if (!inp.value || !dateInp.value) return;
     var parts = inp.value.split(":");
-    edits.push({ type: "task_segment", field: "start", record_id: Number(inp.dataset.recordId), hour: Number(parts[0]), minute: Number(parts[1]) });
+    edits.push({ type: "task_segment", field: "start", record_id: recId, date: dateInp.value, hour: Number(parts[0]), minute: Number(parts[1]) });
   });
   document.querySelectorAll(".dayEditSegEndInput").forEach(function(inp) {
-    if (!inp.value) return;
+    var recId = Number(inp.dataset.recordId);
+    var dateInp = document.querySelector(".dayEditSegEndDate[data-record-id='" + recId + "']");
+    if (!inp.value || !dateInp.value) return;
     var parts = inp.value.split(":");
-    edits.push({ type: "task_segment", field: "end", record_id: Number(inp.dataset.recordId), hour: Number(parts[0]), minute: Number(parts[1]) });
+    edits.push({ type: "task_segment", field: "end", record_id: recId, date: dateInp.value, hour: Number(parts[0]), minute: Number(parts[1]) });
   });
+
+  if (dayEditNewTask) {
+    var pid = document.getElementById("dayEditNewTaskProject").value;
+    var tname = document.getElementById("dayEditNewTaskName").value.trim();
+    var tdesc = document.getElementById("dayEditNewTaskDesc").value.trim();
+    var sd = document.getElementById("dayEditNewTaskStartDate").value;
+    var st = document.getElementById("dayEditNewTaskStartTime").value;
+    var ed2 = document.getElementById("dayEditNewTaskEndDate").value;
+    var et = document.getElementById("dayEditNewTaskEndTime").value;
+    if (!pid || !tname || !sd || !st || !ed2 || !et) { showToast("!", "كمّل بيانات التاسك الجديد أو ألغيه"); return; }
+    var sParts = st.split(":"), eParts = et.split(":");
+    edits.push({
+      type: "new_task", project_id: Number(pid), name: tname, description: tdesc,
+      start_date: sd, start_hour: Number(sParts[0]), start_minute: Number(sParts[1]),
+      end_date: ed2, end_hour: Number(eParts[0]), end_minute: Number(eParts[1]),
+    });
+  }
+
   if (!edits.length) { showToast("!", "مفيش حاجة للتعديل"); return; }
   var note = document.getElementById("dayEditNote").value.trim();
   document.getElementById("dayEditModalOverlay").classList.remove("active"); // hide first, keep currentDayEdit* vars
-  openPinModal("CONFIRM DAY EDIT · تأكيد تعديل اليوم", "هيتعدّل " + edits.length + " قيمة/قيم لليوم ده، وهيتسجل التعديل باسمك. ادخل كود الأمان:", function(pin) {
+  openPinModal("CONFIRM DAY EDIT · تأكيد تعديل اليوم", "هيتطبّق " + edits.length + " تغيير على اليوم ده، وهيتسجل باسمك. ادخل كود الأمان:", function(pin) {
     if (!pin) { showToast("!", "لازم تدخل كود الأمان"); document.getElementById("dayEditModalOverlay").classList.add("active"); return; }
     executeDayEdit(edits, note, pin);
   });
@@ -5224,9 +5355,23 @@ async function executeDayEdit(edits, note, pin) {
     await apiRequest("/api/admin/employees/" + currentDayEditEmployeeId + "/day-detail", "POST", { date: currentDayEditDate, edits: edits, note: note, pin: pin });
     showToast("v", "تم تعديل اليوم — كل الحسابات المرتبطة اتحدثت فوراً");
     currentDayEditData = null;
-    await fetchAdminReport();
+    dayEditNewAttendance = []; dayEditDeletedAttendance = []; dayEditNewTask = null;
+    var refreshJobs = [fetchAdminReport()];
+    if (typeof fetchProjectCostReport === "function") refreshJobs.push(fetchProjectCostReport());
+    if (typeof loadDailyTasksBrowser === "function") refreshJobs.push(loadDailyTasksBrowser());
+    if (typeof fetchDeliveryStatusReport === "function") refreshJobs.push(fetchDeliveryStatusReport());
+    await Promise.all(refreshJobs.map(function(p){ return p && p.catch ? p.catch(function(){}) : p; }));
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
+}
+
+function formatEditLogValue(raw) {
+  if (!raw) return "—";
+  // "add_task" stores a plain description string, not a datetime — pass through.
+  if (!/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw;
+  var d = new Date(raw + "Z");
+  var display = d.toLocaleString("en-US", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", hour12: true });
+  return ltrSpan(display);
 }
 
 async function openDayHistoryPanel(employeeId, date) {
@@ -5237,13 +5382,25 @@ async function openDayHistoryPanel(employeeId, date) {
     var res = await apiRequest("/api/admin/employees/" + employeeId + "/day-detail?date=" + date, "GET");
     var log = res.edit_log || [];
     if (!log.length) { document.getElementById("dayHistoryContent").innerHTML = "<div class='empty-log'>مفيش تعديلات على اليوم ده لسه</div>"; return; }
-    var fieldLabels = { sign_in: "وقت الدخول", sign_out: "وقت الخروج", segment_start: "بداية جزء الشغل", segment_end: "نهاية جزء الشغل" };
+    var fieldLabels = {
+      sign_in: "تعديل وقت الدخول", sign_out: "تعديل وقت الخروج",
+      add_sign_in: "إضافة تسجيل دخول جديد", add_sign_out: "إضافة تسجيل انصراف جديد",
+      delete_sign_in: "حذف تسجيل دخول", delete_sign_out: "حذف تسجيل انصراف",
+      segment_start: "تعديل بداية جزء شغل", segment_end: "تعديل نهاية جزء شغل",
+      add_task: "إضافة تاسك جديد",
+    };
     var html = "<div class='log-wrap'>";
     for (var i = 0; i < log.length; i++) {
       var l = log[i];
+      var actionLabel = fieldLabels[l.field_name] || l.field_name;
+      var isAdd = l.field_name.indexOf("add_") === 0;
+      var isDelete = l.field_name.indexOf("delete_") === 0;
       html += "<div class='log-entry'><div class='log-type'>" + ltrSpan(l.edited_at.slice(0,16)) + "</div>";
-      html += "<div class='log-note'>" + (fieldLabels[l.field_name] || l.field_name) + " — من " + ltrSpan(l.old_value||"—") + " إلى " + ltrSpan(l.new_value||"—") +
-        "<br/>بواسطة: " + (l.edited_by_name || "-") + (l.note ? "<br/>ملاحظة: " + l.note : "") + "</div></div>";
+      html += "<div class='log-note'><b>" + actionLabel + "</b><br/>";
+      if (isAdd) html += "القيمة: " + formatEditLogValue(l.new_value);
+      else if (isDelete) html += "كان: " + formatEditLogValue(l.old_value);
+      else html += "من " + formatEditLogValue(l.old_value) + " إلى " + formatEditLogValue(l.new_value);
+      html += "<br/>بواسطة: " + (l.edited_by_name || "-") + (l.note ? "<br/>ملاحظة: " + l.note : "") + "</div></div>";
     }
     html += "</div>";
     document.getElementById("dayHistoryContent").innerHTML = html;
@@ -5269,6 +5426,10 @@ async function openDayAnomalyPanel(employeeId, date) {
       html += "<div class='log-wrap' style='margin-bottom:12px'>";
       html += "<div class='log-header' style='color:var(--warn);border-color:var(--warn)'><span>⚠️ " + typeLabel + " — " + ltrSpan(hours + " ساعة") + "</span></div>";
       html += "<div style='padding:14px'>";
+      if (a.task_name) html += "<div style='color:#fff;margin-bottom:6px'>تاسك: " + a.task_name + "</div>";
+      if (a.detail_from && a.detail_to) {
+        html += "<div style='color:#fff;margin-bottom:8px'>من " + ltrSpan(a.detail_from) + " — لحد " + ltrSpan(a.detail_to) + "</div>";
+      }
       html += "<div class='fl-hint' style='margin-bottom:10px'>غالباً السبب إن الموظف نسي يقفل ده في وقته الطبيعي. راجع وحدد الوقت الصح من زرار \"تعديل اليوم\"، أو لو متأكد إن الرقم ده صح فعلاً، سيبه زي ما هو.</div>";
       if (a.acknowledged) {
         html += "<div style='color:var(--ok)'>✓ تمت المراجعة — القرار: سيبها زي ما هي</div>";
