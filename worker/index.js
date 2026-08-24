@@ -407,13 +407,40 @@ function publicEmployee(e) {
   };
 }
 
-function adminEmployeeView(e) {
+// The employee's "current" salary is never read directly off the employees
+// row — it's always resolved fresh from salary_history for TODAY's actual
+// calendar month. This is what makes a scheduled future raise apply itself
+// automatically the instant its month starts: there's no stored value that
+// needs updating, so there's nothing that can go stale or be forgotten.
+async function getCurrentSalaryMap(db, employeeIds) {
+  const nowMonth = cairoDateStr().slice(0, 7);
+  if (!employeeIds.length) return {};
+  const placeholders = employeeIds.map(() => "?").join(",");
+  const res = await db.execute({
+    sql: `SELECT * FROM salary_history WHERE employee_id IN (${placeholders}) ORDER BY employee_id ASC, effective_month ASC`,
+    args: employeeIds,
+  });
+  const byEmployee = {};
+  for (const r of res.rows) { (byEmployee[r.employee_id] = byEmployee[r.employee_id] || []).push(r); }
+  const map = {};
+  for (const id of employeeIds) {
+    const history = byEmployee[id];
+    if (!history || !history.length) { map[id] = null; continue; }
+    let best = history[0];
+    for (const h of history) { if (h.effective_month <= nowMonth) best = h; else break; }
+    map[id] = { monthly_salary: best.monthly_salary, work_days_per_month: best.work_days_per_month, daily_work_hours: best.daily_work_hours };
+  }
+  return map;
+}
+
+function adminEmployeeView(e, currentSalary) {
+  const salaryInfo = currentSalary || { monthly_salary: e.monthly_salary, work_days_per_month: e.work_days_per_month, daily_work_hours: e.daily_work_hours };
   return {
     ...publicEmployee(e),
-    monthly_salary: Number(e.monthly_salary) || 0,
-    work_days_per_month: Number(e.work_days_per_month) || 0,
-    daily_work_hours: Number(e.daily_work_hours) || 8,
-    hourly_rate: +hourlyRate(e).toFixed(2),
+    monthly_salary: Number(salaryInfo.monthly_salary) || 0,
+    work_days_per_month: Number(salaryInfo.work_days_per_month) || 0,
+    daily_work_hours: Number(salaryInfo.daily_work_hours) || 8,
+    hourly_rate: +hourlyRate(salaryInfo).toFixed(2),
     is_active: !!e.is_active,
     deactivated_at: e.deactivated_at || null,
     deactivated_by_name: e.deactivated_by_name || null,
@@ -1634,7 +1661,13 @@ async function monthlyReport(db, employeeId, monthStr) {
   }
 
   // ---- extra hour-equivalent components (مستحقات مالية / ساعات خارج بصمة / إذن انصراف) ----
-  const rate = hourlyRate(emp);
+  // Use the salary that was ACTUALLY in effect for the reported month, not
+  // whatever the employee's current rate is today — a March report always
+  // reflects March's rate even after later raises. "All months" reports
+  // span many months at once, so there's no single correct historical rate
+  // to apply — current rate is used there as the only sensible fallback.
+  const reportRateLookup = await buildSalaryRateLookup(db, [employeeId]);
+  const rate = isAllMonths ? hourlyRate(emp) : reportRateLookup(employeeId, `${year}-${String(month).padStart(2, "0")}`);
   const financialTotalEGP = finRows.rows.reduce((s, r) => s + Number(r.amount_egp), 0);
   const financialHours = rate > 0 ? financialTotalEGP / rate : 0;
 
@@ -1834,18 +1867,45 @@ async function profitLossReport(db, monthStr) {
   });
 }
 
+// Pre-fetches every salary_history row for the given employees, then hands
+// back a fast rateForEmployeeMonth(employeeId, 'YYYY-MM') lookup — the
+// LATEST history entry with effective_month <= that month, i.e. whatever
+// rate was actually in effect during that specific calendar month.
+async function buildSalaryRateLookup(db, employeeIds) {
+  if (!employeeIds.length) return () => 0;
+  const placeholders = employeeIds.map(() => "?").join(",");
+  const res = await db.execute({
+    sql: `SELECT * FROM salary_history WHERE employee_id IN (${placeholders}) ORDER BY employee_id ASC, effective_month ASC`,
+    args: employeeIds,
+  });
+  const byEmployee = {};
+  for (const r of res.rows) {
+    if (!byEmployee[r.employee_id]) byEmployee[r.employee_id] = [];
+    byEmployee[r.employee_id].push(r);
+  }
+  return function rateForEmployeeMonth(employeeId, monthStr) {
+    const history = byEmployee[employeeId];
+    if (!history || !history.length) return 0;
+    let best = history[0];
+    for (const h of history) {
+      if (h.effective_month <= monthStr) best = h; else break;
+    }
+    return hourlyRate({ monthly_salary: best.monthly_salary, work_days_per_month: best.work_days_per_month, daily_work_hours: best.daily_work_hours });
+  };
+}
+
 async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
-  let taskSql = `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
-                        t.employee_id, e.name as employee_name, e.emp_code,
-                        e.monthly_salary, e.work_days_per_month, e.daily_work_hours,
-                        SUM(COALESCE(t.duration,0)) as total_seconds
-                 FROM tasks t
-                 JOIN employees e ON e.id = t.employee_id
-                 JOIN projects p ON p.id = t.project_id`;
-  const taskArgs = [];
-  if (isMonthly) { taskSql += " WHERE t.date BETWEEN ? AND ?"; taskArgs.push(firstDay, lastDay); }
-  taskSql += " GROUP BY p.code, p.name, p.category, p.type, p.sub_code, t.employee_id";
-  const taskRows = await db.execute({ sql: taskSql, args: taskArgs });
+  let segSql = `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
+                       t.employee_id, e.name as employee_name, e.emp_code,
+                       ts.date as seg_date, ts.created_at as seg_start, ts.ended_at as seg_end
+                FROM task_segments ts
+                JOIN tasks t ON t.id = ts.task_id
+                JOIN employees e ON e.id = t.employee_id
+                JOIN projects p ON p.id = t.project_id
+                WHERE ts.ended_at IS NOT NULL`;
+  const segArgs = [];
+  if (isMonthly) { segSql += " AND ts.date BETWEEN ? AND ?"; segArgs.push(firstDay, lastDay); }
+  const segRows = await db.execute({ sql: segSql, args: segArgs });
 
   let expSql = "SELECT * FROM project_expenses";
   const expArgs = [];
@@ -1855,13 +1915,16 @@ async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
     db.execute("SELECT * FROM project_costs"),
   ]);
 
+  const employeeIds = [...new Set(segRows.rows.map((r) => r.employee_id))];
+  const rateForMonth = await buildSalaryRateLookup(db, employeeIds);
+
   const byProject = {};
   const key = (code, name) => code + "||" + name.trim().toLowerCase();
   const ensure = (code, name) => {
     const k = key(code, name);
     if (!byProject[k]) byProject[k] = {
       project_code: code, project_name: name,
-      labor_cost_egp: 0, employees: [],
+      labor_cost_egp: 0, employees: {}, // keyed by employee_id, one row per employee (merged across months)
       external_expenses_egp: 0, expenses: [],
       price_egp: 0, price_breakdown: [],
       types: {},
@@ -1869,24 +1932,33 @@ async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
     return byProject[k];
   };
   const ensureType = (g, typeLabel) => {
-    if (!g.types[typeLabel]) g.types[typeLabel] = { type: typeLabel, labor_cost_egp: 0, employees: [], external_expenses_egp: 0, expenses: [], price_egp: 0 };
+    if (!g.types[typeLabel]) g.types[typeLabel] = { type: typeLabel, labor_cost_egp: 0, employees: {}, external_expenses_egp: 0, expenses: [], price_egp: 0 };
     return g.types[typeLabel];
   };
+  const ensureEmployee = (bucket, r) => {
+    if (!bucket.employees[r.employee_id]) bucket.employees[r.employee_id] = { employee_id: r.employee_id, emp_code: r.emp_code, name: r.employee_name, hours: 0, cost_egp: 0 };
+    return bucket.employees[r.employee_id];
+  };
 
-  for (const r of taskRows.rows) {
+  for (const r of segRows.rows) {
     const g = ensure(r.code, r.name);
-    const rate = hourlyRate({ monthly_salary: r.monthly_salary, work_days_per_month: r.work_days_per_month, daily_work_hours: r.daily_work_hours });
-    const hours = +((Number(r.total_seconds) || 0) / 3600).toFixed(2);
-    const cost = +(hours * rate).toFixed(2);
+    const segMonth = r.seg_date.slice(0, 7); // 'YYYY-MM' — the exact month this segment happened
+    const rate = rateForMonth(r.employee_id, segMonth); // the rate ACTUALLY in effect that month, not today's rate
+    const durationSeconds = Math.max(0, Math.floor((new Date(r.seg_end + "Z").getTime() - new Date(r.seg_start + "Z").getTime()) / 1000));
+    const hours = durationSeconds / 3600;
+    const cost = hours * rate;
     g.labor_cost_egp += cost;
-    const empEntry = { employee_id: r.employee_id, emp_code: r.emp_code, name: r.employee_name, hours, hourly_rate: +rate.toFixed(2), cost_egp: cost };
-    g.employees.push(empEntry);
+    const empEntry = ensureEmployee(g, r);
+    empEntry.hours += hours;
+    empEntry.cost_egp += cost;
 
     // Same figures, broken down by this specific variant (category/type/sub_code).
     const typeLabel = r.category + " / " + r.type + (r.sub_code ? " " + r.sub_code : "") + (r.simple_label ? " (" + r.simple_label + ")" : "");
     const ty = ensureType(g, typeLabel);
     ty.labor_cost_egp += cost;
-    ty.employees.push(empEntry);
+    const tyEmpEntry = ensureEmployee(ty, r);
+    tyEmpEntry.hours += hours;
+    tyEmpEntry.cost_egp += cost;
   }
   for (const r of expRows.rows) {
     const g = ensure(r.project_code, r.project_name);
@@ -1910,6 +1982,16 @@ async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
     }
   }
 
+  const finalizeEmployees = (employeesObj) => Object.values(employeesObj).map((e) => {
+    const hours = +e.hours.toFixed(2);
+    const cost = +e.cost_egp.toFixed(2);
+    // Display rate = cost/hours — an exact weighted average across whatever
+    // months this employee worked at, in the rare case a raise landed
+    // mid-task. The underlying cost total is always exact either way.
+    const rate = hours > 0 ? +(cost / hours).toFixed(2) : 0;
+    return { employee_id: e.employee_id, emp_code: e.emp_code, name: e.name, hours, hourly_rate: rate, cost_egp: cost };
+  }).sort((a, b) => b.cost_egp - a.cost_egp);
+
   return Object.values(byProject).map((g) => {
     const laborCost = +g.labor_cost_egp.toFixed(2);
     const externalExp = +g.external_expenses_egp.toFixed(2);
@@ -1931,7 +2013,7 @@ async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
         actual_cost_egp: tyActualCost,
         price_egp: tyPrice,
         profit_loss_egp: +(tyPrice - tyActualCost).toFixed(2),
-        employees: ty.employees.sort((a, b) => b.cost_egp - a.cost_egp),
+        employees: finalizeEmployees(ty.employees),
         expenses: ty.expenses.sort((a, b) => (a.date < b.date ? 1 : -1)),
       };
     }).sort((a, b) => b.labor_cost_egp - a.labor_cost_egp);
@@ -1943,7 +2025,7 @@ async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
       external_expenses_egp: externalExp,
       actual_cost_egp: actualCost,
       profit_loss_egp: profitLoss,
-      employees: g.employees.sort((a, b) => b.cost_egp - a.cost_egp),
+      employees: finalizeEmployees(g.employees),
       expenses: g.expenses.sort((a, b) => (a.date < b.date ? 1 : -1)),
       types,
     };
@@ -2103,7 +2185,8 @@ function pinOkShared(env, body) {
 async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/employees" && method === "GET") {
     const res = await db.execute("SELECT * FROM employees WHERE is_active = 1 ORDER BY emp_code ASC");
-    return json({ employees: res.rows.map(adminEmployeeView) });
+    const salaryMap = await getCurrentSalaryMap(db, res.rows.map((e) => e.id));
+    return json({ employees: res.rows.map((e) => adminEmployeeView(e, salaryMap[e.id])) });
   }
 
   if (path === "/api/admin/employees/status" && method === "GET") {
@@ -2280,6 +2363,81 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
 
   // ---------- per-employee salary config ----------
   const salaryMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/salary$/);
+  // ---------- salary history: scheduled raises/changes, one entry per
+  // effective month. A future month just sits here until the calendar
+  // reaches it — nothing needs to "activate" it, since every rate lookup
+  // (adminEmployeeView, project cost reports, the employee's own payroll
+  // calculation) always resolves live from this table for whatever month
+  // it's actually asking about. ----------
+  const salaryHistoryListMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/salary-history$/);
+  if (salaryHistoryListMatch && method === "GET") {
+    const empId = Number(salaryHistoryListMatch[1]);
+    const res = await db.execute({ sql: "SELECT * FROM salary_history WHERE employee_id = ? ORDER BY effective_month ASC", args: [empId] });
+    const nowMonth = cairoDateStr().slice(0, 7);
+    const rows = res.rows.map((r) => ({ ...r, status: r.effective_month > nowMonth ? "scheduled" : (r.effective_month === nowMonth ? "current" : "past") }));
+    // Mark exactly one row "current": the latest one with effective_month <= now.
+    let currentIdx = -1;
+    rows.forEach((r, i) => { if (r.effective_month <= nowMonth) currentIdx = i; });
+    rows.forEach((r, i) => { if (r.status !== "scheduled") r.status = i === currentIdx ? "current" : "past"; });
+    return json({ history: rows });
+  }
+  if (salaryHistoryListMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const empId = Number(salaryHistoryListMatch[1]);
+    const missing = requireFields(body, ["effective_month", "monthly_salary"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    if (!/^\d{4}-\d{2}$/.test(body.effective_month)) return err("الشهر لازم يكون بصيغة YYYY-MM");
+    const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [empId] });
+    const emp = empRes.rows[0];
+    if (!emp) return err("Employee not found", 404);
+    const workDays = body.work_days_per_month !== undefined ? Number(body.work_days_per_month) : Number(emp.work_days_per_month);
+    const dayHours = body.daily_work_hours !== undefined ? Number(body.daily_work_hours) : Number(emp.daily_work_hours);
+    const salary = Number(body.monthly_salary);
+    if (!(salary >= 0)) return err("الراتب لازم يكون رقم موجب أو صفر");
+    await db.execute({
+      sql: `INSERT INTO salary_history (employee_id, effective_month, monthly_salary, work_days_per_month, daily_work_hours, created_by)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(employee_id, effective_month) DO UPDATE SET monthly_salary = excluded.monthly_salary, work_days_per_month = excluded.work_days_per_month, daily_work_hours = excluded.daily_work_hours, created_by = excluded.created_by`,
+      args: [empId, body.effective_month, salary, workDays, dayHours, admin.id],
+    });
+    const res = await db.execute({ sql: "SELECT * FROM salary_history WHERE employee_id = ? AND effective_month = ?", args: [empId, body.effective_month] });
+    return json({ entry: res.rows[0] }, 201);
+  }
+  const salaryHistoryEditMatch = path.match(/^\/api\/admin\/salary-history\/(\d+)$/);
+  if (salaryHistoryEditMatch && method === "PATCH") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const histId = Number(salaryHistoryEditMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM salary_history WHERE id = ?", args: [histId] });
+    const entry = cur.rows[0];
+    if (!entry) return err("Entry not found", 404);
+    const newMonth = body.effective_month !== undefined ? body.effective_month : entry.effective_month;
+    if (!/^\d{4}-\d{2}$/.test(newMonth)) return err("الشهر لازم يكون بصيغة YYYY-MM");
+    if (newMonth !== entry.effective_month) {
+      const clash = await db.execute({ sql: "SELECT id FROM salary_history WHERE employee_id = ? AND effective_month = ? AND id != ?", args: [entry.employee_id, newMonth, histId] });
+      if (clash.rows[0]) return err("فيه قيمة متسجلة بالفعل للشهر ده — احذفها الأول أو اختار شهر تاني", 409);
+    }
+    const salary = body.monthly_salary !== undefined ? Number(body.monthly_salary) : Number(entry.monthly_salary);
+    const workDays = body.work_days_per_month !== undefined ? Number(body.work_days_per_month) : Number(entry.work_days_per_month);
+    const dayHours = body.daily_work_hours !== undefined ? Number(body.daily_work_hours) : Number(entry.daily_work_hours);
+    if (!(salary >= 0)) return err("الراتب لازم يكون رقم موجب أو صفر");
+    await db.execute({
+      sql: "UPDATE salary_history SET effective_month = ?, monthly_salary = ?, work_days_per_month = ?, daily_work_hours = ? WHERE id = ?",
+      args: [newMonth, salary, workDays, dayHours, histId],
+    });
+    return json({ ok: true });
+  }
+  if (salaryHistoryEditMatch && method === "DELETE") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const histId = Number(salaryHistoryEditMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM salary_history WHERE id = ?", args: [histId] });
+    const entry = cur.rows[0];
+    if (!entry) return err("Entry not found", 404);
+    const countRes = await db.execute({ sql: "SELECT COUNT(*) as c FROM salary_history WHERE employee_id = ?", args: [entry.employee_id] });
+    if (Number(countRes.rows[0].c) <= 1) return err("مينفعش تمسح آخر سجل راتب للموظف — لازم يفضل سجل واحد على الأقل", 409);
+    await db.execute({ sql: "DELETE FROM salary_history WHERE id = ?", args: [histId] });
+    return json({ ok: true });
+  }
+
   if (salaryMatch && method === "POST") {
     const empId = Number(salaryMatch[1]);
     const fields = [];
@@ -2294,8 +2452,25 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (!fields.length) return err("مفيش بيانات للتحديث");
     args.push(empId);
     await db.execute({ sql: `UPDATE employees SET ${fields.join(", ")} WHERE id = ?`, args });
+    // If salary/work-hours actually changed, record it in salary_history for
+    // THIS calendar month, so labor cost for work done from now on uses this
+    // rate, while everything already worked keeps costing at whatever rate
+    // was on record for its own month.
+    const salaryTouched = body.monthly_salary !== undefined || body.work_days_per_month !== undefined || body.daily_work_hours !== undefined;
+    if (salaryTouched) {
+      const updated = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [empId] });
+      const e = updated.rows[0];
+      const nowMonth = cairoDateStr().slice(0, 7);
+      await db.execute({
+        sql: `INSERT INTO salary_history (employee_id, effective_month, monthly_salary, work_days_per_month, daily_work_hours, created_by)
+              VALUES (?,?,?,?,?,?)
+              ON CONFLICT(employee_id, effective_month) DO UPDATE SET monthly_salary = excluded.monthly_salary, work_days_per_month = excluded.work_days_per_month, daily_work_hours = excluded.daily_work_hours, created_by = excluded.created_by`,
+        args: [empId, nowMonth, e.monthly_salary, e.work_days_per_month, e.daily_work_hours, admin.id],
+      });
+    }
     const res = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [empId] });
-    return json({ employee: adminEmployeeView(res.rows[0]) });
+    const salaryMap2 = await getCurrentSalaryMap(db, [empId]);
+    return json({ employee: adminEmployeeView(res.rows[0], salaryMap2[empId]) });
   }
 
   // ---------- penalties (جزاءات) ----------
@@ -2307,7 +2482,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [body.employee_id] });
     const emp = empRes.rows[0];
     if (!emp) return err("Employee not found", 404);
-    const amountEGP = days * 8 * hourlyRate(emp);
+    const currentSalary = (await getCurrentSalaryMap(db, [body.employee_id]))[body.employee_id];
+    const amountEGP = days * 8 * hourlyRate(currentSalary || emp);
     const res = await db.execute({
       sql: `INSERT INTO penalties (employee_id, amount_egp, days, reason, date, created_by) VALUES (?,?,?,?,?,?) RETURNING *`,
       args: [body.employee_id, amountEGP, days, body.reason || null, body.date, admin.id],
@@ -2445,7 +2621,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (!(days > 0)) return err("عدد الأيام/الساعات لازم يكون رقم موجب");
     const empRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [la.employee_id] });
     const emp = empRes.rows[0];
-    const amountEGP = days * 8 * hourlyRate(emp);
+    const currentSalary2 = (await getCurrentSalaryMap(db, [la.employee_id]))[la.employee_id];
+    const amountEGP = days * 8 * hourlyRate(currentSalary2 || emp);
     const penRes = await db.execute({
       sql: `INSERT INTO penalties (employee_id, amount_egp, days, reason, date, created_by) VALUES (?,?,?,?,?,?) RETURNING *`,
       args: [la.employee_id, amountEGP, days, "تأخير — وصل الساعة " + la.arrival_time, la.date, admin.id],
@@ -3006,7 +3183,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     const activeBonuses = bonRes.rows.filter((b) => !b.deleted_at);
 
     return json({
-      employee: { ...adminEmployeeView(emp), created_at: emp.created_at, secret_q: emp.secret_q },
+      employee: { ...adminEmployeeView(emp, (await getCurrentSalaryMap(db, [empId]))[empId]), created_at: emp.created_at, secret_q: emp.secret_q },
       penalties: penRes.rows,
       penalties_active_count: activePenalties.length,
       notices: notRes.rows,
@@ -3105,7 +3282,8 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
     if (search) { sql += " AND (e.name LIKE ? OR e.emp_code LIKE ?)"; args.push("%" + search + "%", "%" + search + "%"); }
     sql += " ORDER BY e.deactivated_at DESC";
     const res = await db.execute({ sql, args });
-    return json({ employees: res.rows.map(adminEmployeeView) });
+    const salaryMap = await getCurrentSalaryMap(db, res.rows.map((e) => e.id));
+    return json({ employees: res.rows.map((e) => adminEmployeeView(e, salaryMap[e.id])) });
   }
 
   // ---------- reverse an already-decided request: approved<->rejected (PIN required) ----------
