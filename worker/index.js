@@ -1402,87 +1402,176 @@ const LONG_SESSION_SECONDS = 12 * 3600; // flag any single attendance session or
 // of those exceed 12 hours (and whether that's already been acknowledged),
 // and the full edit history for the day.
 async function dayDetail(db, employeeId, date) {
+  const prevDay = addDaysToDateStr(date, -1);
+  const nextDay = addDaysToDateStr(date, 1);
   const [attRes, segRes, logRes, ackRes] = await Promise.all([
-    db.execute({ sql: "SELECT * FROM attendance WHERE employee_id = ? AND date = ? ORDER BY created_at ASC", args: [employeeId, date] }),
+    db.execute({ sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC", args: [employeeId, prevDay, nextDay] }),
     db.execute({
-      sql: `SELECT ts.*, t.name as task_name, t.project as project_display, p.code as p_code, p.name as p_name
+      sql: `SELECT ts.*, t.name as task_name, t.project as project_display, t.project_id, p.code as p_code, p.name as p_name
             FROM task_segments ts JOIN tasks t ON t.id = ts.task_id LEFT JOIN projects p ON p.id = t.project_id
-            WHERE ts.employee_id = ? AND ts.date = ? ORDER BY ts.created_at ASC`,
-      args: [employeeId, date],
+            WHERE ts.employee_id = ? AND ts.date BETWEEN ? AND ? ORDER BY ts.created_at ASC`,
+      args: [employeeId, prevDay, nextDay],
     }),
     db.execute({ sql: "SELECT l.*, e.name as edited_by_name FROM day_edit_log l LEFT JOIN employees e ON e.id = l.edited_by WHERE l.employee_id = ? AND l.date = ? ORDER BY l.edited_at DESC", args: [employeeId, date] }),
-    db.execute({ sql: "SELECT * FROM anomaly_acknowledgment WHERE employee_id = ? AND date = ?", args: [employeeId, date] }),
+    db.execute({ sql: "SELECT * FROM anomaly_acknowledgment WHERE employee_id = ?", args: [employeeId] }),
   ]);
 
   const ackSet = new Set(ackRes.rows.map((a) => a.anomaly_type + "||" + a.record_id));
   const anomalies = [];
 
-  // Pair up sign_in/sign_out to find sessions over 12h.
+  // Pair sign_in/sign_out across the WHOLE 3-day window (a session starting
+  // late on `date` can legitimately close after midnight, dated the next
+  // day) — then keep only pairs actually relevant to `date`: the sign-in
+  // happened on `date`, or the sign-out closing a still-open earlier
+  // session happened on `date`.
+  const relevantAttendanceIds = new Set();
   let pendingIn = null;
   for (const r of attRes.rows) {
-    if (r.action === "sign_in") pendingIn = r;
-    else if (r.action === "sign_out" && pendingIn) {
+    if (r.action === "sign_in") {
+      pendingIn = r;
+    } else if (r.action === "sign_out" && pendingIn) {
+      if (pendingIn.date === date || r.date === date) {
+        relevantAttendanceIds.add(pendingIn.id);
+        relevantAttendanceIds.add(r.id);
+      }
       const secs = Math.floor((new Date(r.created_at + "Z").getTime() - new Date(pendingIn.created_at + "Z").getTime()) / 1000);
-      if (secs > LONG_SESSION_SECONDS) {
+      if (secs > LONG_SESSION_SECONDS && (pendingIn.date === date || r.date === date)) {
         anomalies.push({
           type: "long_attendance", record_id: pendingIn.id, seconds: secs,
           acknowledged: ackSet.has("long_attendance||" + pendingIn.id),
-          detail: `الحضور من ${pendingIn.time} لحد ${r.time} = ${(secs / 3600).toFixed(1)} ساعة`,
+          detail_from: `${pendingIn.time} (${pendingIn.date})`, detail_to: `${r.time} (${r.date})`,
         });
       }
       pendingIn = null;
     }
   }
-  for (const s of segRes.rows) {
+  // An unclosed sign-in that belongs to `date` (still open) is relevant too.
+  if (pendingIn && pendingIn.date === date) relevantAttendanceIds.add(pendingIn.id);
+  const relevantAttendance = attRes.rows.filter((r) => relevantAttendanceIds.has(r.id));
+
+  const relevantSegments = segRes.rows.filter((s) => {
+    const startDate = s.date;
+    const endDate = s.ended_at ? s.ended_at.slice(0, 10) : null;
+    return startDate === date || endDate === date;
+  });
+  for (const s of relevantSegments) {
     if (!s.ended_at) continue;
     const secs = Math.floor((new Date(s.ended_at + "Z").getTime() - new Date(s.created_at + "Z").getTime()) / 1000);
     if (secs > LONG_SESSION_SECONDS) {
       anomalies.push({
         type: "long_task_segment", record_id: s.id, seconds: secs,
         acknowledged: ackSet.has("long_task_segment||" + s.id),
-        detail: `تاسك "${s.task_name}" — جزء شغل من ${s.start_display} لحد ${s.end_display} = ${(secs / 3600).toFixed(1)} ساعة`,
+        task_name: s.task_name,
+        detail_from: `${s.start_display} (${s.date})`, detail_to: `${s.end_display} (${s.ended_at.slice(0,10)})`,
       });
     }
   }
 
   return json({
-    date, attendance: attRes.rows, segments: segRes.rows,
+    date, attendance: relevantAttendance, segments: relevantSegments,
     edit_log: logRes.rows, anomalies,
   });
 }
 
 async function applyDayEdits(db, admin, employeeId, date, edits, note) {
   if (!Array.isArray(edits) || !edits.length) return err("مفيش تعديلات");
-  for (const ed of edits) {
-    if (!/^\d{1,2}$/.test(String(ed.hour)) || Number(ed.hour) > 23) return err("ساعة غير صحيحة");
-    const newUtc = cairoLocalToUtcStringPrecise(date, ed.hour, ed.minute || 0);
-    const displayTime = new Date(newUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const empRow = await db.execute({ sql: "SELECT name FROM employees WHERE id = ?", args: [employeeId] });
+  const empFirstName = (empRow.rows[0] ? empRow.rows[0].name : "").split(" ")[0];
 
-    if (ed.type === "attendance") {
+  for (const ed of edits) {
+    const action = ed.action || "edit";
+
+    if (ed.type === "attendance" && action === "delete") {
       const cur = await db.execute({ sql: "SELECT * FROM attendance WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
       const row = cur.rows[0];
       if (!row) return err("سجل حضور غير موجود");
-      await db.execute({ sql: "UPDATE attendance SET created_at = ?, time = ? WHERE id = ?", args: [newUtc, displayTime, ed.record_id] });
+      await db.execute({ sql: "DELETE FROM attendance WHERE id = ?", args: [ed.record_id] });
       await db.execute({
         sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-        args: [employeeId, date, "attendance", ed.record_id, row.action, row.created_at, newUtc, note || null, admin.id],
+        args: [employeeId, date, "attendance", ed.record_id, "delete_" + row.action, row.created_at, null, note || null, admin.id],
       });
+      continue;
+    }
+
+    if (ed.type === "attendance") {
+      const targetDate = ed.date || date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return err("تاريخ غير صحيح");
+      if (!(Number(ed.hour) >= 0 && Number(ed.hour) <= 23)) return err("ساعة غير صحيحة");
+      const newUtc = cairoLocalToUtcStringPrecise(targetDate, ed.hour, ed.minute || 0);
+      const displayTime = new Date(newUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+
+      if (action === "add") {
+        const actionType = ed.attendance_action === "sign_out" ? "sign_out" : "sign_in";
+        const res = await db.execute({
+          sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?) RETURNING *",
+          args: [employeeId, targetDate, actionType, displayTime, empFirstName, newUtc],
+        });
+        await db.execute({
+          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+          args: [employeeId, date, "attendance", res.rows[0].id, "add_" + actionType, null, newUtc, note || null, admin.id],
+        });
+      } else {
+        const cur = await db.execute({ sql: "SELECT * FROM attendance WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
+        const row = cur.rows[0];
+        if (!row) return err("سجل حضور غير موجود");
+        await db.execute({ sql: "UPDATE attendance SET date = ?, created_at = ?, time = ? WHERE id = ?", args: [targetDate, newUtc, displayTime, ed.record_id] });
+        await db.execute({
+          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+          args: [employeeId, date, "attendance", ed.record_id, row.action, row.created_at, newUtc, note || null, admin.id],
+        });
+      }
     } else if (ed.type === "task_segment") {
+      const targetDate = ed.date || date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return err("تاريخ غير صحيح");
+      if (!(Number(ed.hour) >= 0 && Number(ed.hour) <= 23)) return err("ساعة غير صحيحة");
+      const newUtc = cairoLocalToUtcStringPrecise(targetDate, ed.hour, ed.minute || 0);
+      const displayTime = new Date(newUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+
       const cur = await db.execute({ sql: "SELECT * FROM task_segments WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
       const row = cur.rows[0];
       if (!row) return err("جزء شغل غير موجود");
       const field = ed.field === "end" ? "ended_at" : "created_at";
       const displayField = ed.field === "end" ? "end_display" : "start_display";
-      await db.execute({ sql: `UPDATE task_segments SET ${field} = ?, ${displayField} = ? WHERE id = ?`, args: [newUtc, displayTime, ed.record_id] });
+      let sql = `UPDATE task_segments SET ${field} = ?, ${displayField} = ?`;
+      const args = [newUtc, displayTime];
+      if (ed.field !== "end") { sql += ", date = ?"; args.push(targetDate); } // segment's own "date" tracks its START day
+      sql += " WHERE id = ?";
+      args.push(ed.record_id);
+      await db.execute({ sql, args });
       await db.execute({
         sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
         args: [employeeId, date, "task_segment", ed.record_id, ed.field === "end" ? "segment_end" : "segment_start", row[field], newUtc, note || null, admin.id],
       });
-      // Recompute the parent task's total duration from all its segments.
       const segs = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ?", args: [row.task_id] });
       let total = 0;
       for (const s of segs.rows) { if (s.ended_at) total += Math.max(0, Math.floor((new Date(s.ended_at + "Z").getTime() - new Date(s.created_at + "Z").getTime()) / 1000)); }
       await db.execute({ sql: "UPDATE tasks SET duration = ? WHERE id = ?", args: [total, row.task_id] });
+    } else if (ed.type === "new_task") {
+      const missing = requireFields(ed, ["project_id", "name", "start_date", "start_hour", "end_date", "end_hour"]);
+      if (missing) return err(`Missing field for new task: ${missing}`);
+      const projRes = await db.execute({ sql: "SELECT * FROM projects WHERE id = ?", args: [ed.project_id] });
+      const proj = projRes.rows[0];
+      if (!proj) return err("مشروع غير موجود");
+      const startUtc = cairoLocalToUtcStringPrecise(ed.start_date, ed.start_hour, ed.start_minute || 0);
+      const endUtc = cairoLocalToUtcStringPrecise(ed.end_date, ed.end_hour, ed.end_minute || 0);
+      if (new Date(endUtc + "Z").getTime() <= new Date(startUtc + "Z").getTime()) return err("معاد النهاية لازم يكون بعد البداية");
+      const startDisplay = new Date(startUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+      const endDisplay = new Date(endUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+      const durationSecs = Math.floor((new Date(endUtc + "Z").getTime() - new Date(startUtc + "Z").getTime()) / 1000);
+      const displayName = taskProjectDisplay(proj);
+      const taskRes = await db.execute({
+        sql: `INSERT INTO tasks (employee_id, project, project_id, name, description, date, time, start_time, end_time, duration, first_name)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+        args: [employeeId, displayName, proj.id, ed.name, ed.description || "", ed.start_date, startDisplay, startDisplay, endDisplay, durationSecs, empFirstName],
+      });
+      await db.execute({
+        sql: "INSERT INTO task_segments (task_id, employee_id, date, start_display, created_at, end_display, ended_at) VALUES (?,?,?,?,?,?,?)",
+        args: [taskRes.rows[0].id, employeeId, ed.start_date, startDisplay, startUtc, endDisplay, endUtc],
+      });
+      await db.execute({
+        sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+        args: [employeeId, date, "task_segment", taskRes.rows[0].id, "add_task", null, ed.name + " (" + startDisplay + " → " + endDisplay + ")", note || null, admin.id],
+      });
     } else {
       return err("نوع تعديل غير معروف");
     }
