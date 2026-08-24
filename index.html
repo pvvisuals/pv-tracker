@@ -626,11 +626,11 @@ textarea{resize:vertical;min-height:76px;}
 <div id="leaveBalanceAndForm">
 <div class="info-grid">
 <div class="info-card">
-<div class="info-card-label">Casual Leave — Remaining <span class="fla">عارضة — المتبقي</span></div>
+<div class="info-card-label">Casual Leave — Total / Used <span class="fla">عارضة — الإجمالي / المستخدم</span></div>
 <div class="info-card-value" id="casualBalance">-</div>
 </div>
 <div class="info-card">
-<div class="info-card-label">Annual Leave — Remaining <span class="fla">اعتيادية — المتبقي</span></div>
+<div class="info-card-label">Annual Leave — Total / Used <span class="fla">اعتيادية — الإجمالي / المستخدم</span></div>
 <div class="info-card-value" id="annualBalance">-</div>
 </div>
 <div class="info-card">
@@ -2702,9 +2702,11 @@ function renderLeaveBalance() {
   var casualRemaining = Math.max(0, 6 - casualUsed);
   var annualRemaining = Math.max(0, 15 - annualUsed);
   document.getElementById("casualBalance").innerHTML =
-    "<div style='font-size:30px;font-weight:700;color:var(--ok)'>" + casualRemaining + "</div><div style='font-size:13px;color:var(--muted);margin-top:2px'>متبقي من 6 — أخد " + casualUsed + "</div>";
+    "<div style='font-size:34px;font-weight:700;color:#fff'>" + ltrSpan("6 / " + casualUsed) + "</div>" +
+    "<div style='font-size:14px;color:var(--muted);margin-top:4px'>متبقي: " + casualRemaining + "</div>";
   document.getElementById("annualBalance").innerHTML =
-    "<div style='font-size:30px;font-weight:700;color:var(--ok)'>" + annualRemaining + "</div><div style='font-size:13px;color:var(--muted);margin-top:2px'>متبقي من 15 — أخد " + annualUsed + "</div>";
+    "<div style='font-size:34px;font-weight:700;color:#fff'>" + ltrSpan("15 / " + annualUsed) + "</div>" +
+    "<div style='font-size:14px;color:var(--muted);margin-top:4px'>متبقي: " + annualRemaining + "</div>";
   document.getElementById("sickBalanceUsed").textContent = sickUsed + " يوم";
 }
 
@@ -3971,7 +3973,7 @@ async function fetchDeliveryStatusReport() {
 
 function deliveryStatusMeta(d) {
   if (!d || d.status === "no_deadline") return { label: "NO DEADLINE · مفيش ميعاد", color: "var(--muted)" };
-  if (d.status === "on_time") return { label: "ON TIME · في الميعاد", color: "var(--ok)" };
+  if (d.status === "on_time") return { label: "ON TIME · سلّم قبل الميعاد بـ " + ltrSpan(formatCountdown(Math.abs(d.delta_seconds || 0))), color: "var(--ok)" };
   if (d.status === "on_time_buffer") return { label: "DELIVERED · حوالين الميعاد", color: "var(--warn)" };
   if (d.status === "late") return { label: "LATE · متأخر " + ltrSpan(formatCountdown(d.delay_seconds || 0)), color: "var(--danger)" };
   if (d.status === "in_progress") return { label: "IN PROGRESS · شغال، الميعاد لسه", color: "var(--warn)" };
@@ -6116,7 +6118,7 @@ function renderAdminReport(res) {
       for (var dI = 0; dI < dv.list.length; dI++) {
         var dItem = dv.list[dI];
         var dColor = dItem.status === "on_time" ? "var(--ok)" : (dItem.status === "on_time_buffer" ? "var(--warn)" : "var(--danger)");
-        var dLabel = dItem.status === "on_time" ? "ON TIME · في الميعاد"
+        var dLabel = dItem.status === "on_time" ? "ON TIME · سلّم قبل الميعاد بـ " + ltrSpan(formatCountdown(Math.abs(dItem.delta_seconds || 0)))
           : dItem.status === "on_time_buffer" ? "ON TIME (±6h) · قريب من الميعاد"
           : "LATE · اتأخر بـ " + ltrSpan(formatCountdown(dItem.delay_seconds || 0));
         html += "<div class='log-entry'><div class='log-type'>" + ltrSpan(dItem.date) + "</div><div class='log-note'>" +
