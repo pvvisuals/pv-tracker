@@ -4401,8 +4401,9 @@ function submitEditSalaryHistory() {
   var month = document.getElementById("eshMonth").value;
   var salary = document.getElementById("eshSalary").value;
   if (!month || salary === "" || !(Number(salary) >= 0)) { showToast("!", "اختار الشهر واكتب راتب صحيح"); return; }
+  document.getElementById("editSalaryHistoryModalOverlay").classList.remove("active"); // hide first, keep currentEditSalaryHistoryId
   openPinModal("CONFIRM EDIT · تأكيد التعديل", "من شهر " + month + "، الراتب هيبقى " + salary + " جنيه. ادخل كود الأمان:", function(pin) {
-    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); document.getElementById("editSalaryHistoryModalOverlay").classList.add("active"); return; }
     executeEditSalaryHistory(currentEditSalaryHistoryId, month, salary, pin);
   });
 }
