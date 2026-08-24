@@ -1300,7 +1300,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="fg" style="margin:0">
 <div class="fl">Filter by City/Area <span class="fla">فلتر بالمدينة أو المنطقة</span></div>
-<input type="text" id="clFilterCityArea" oninput="renderClientsList()"/>
+<select id="clFilterCityArea" onchange="renderClientsList()"><option value="">-- All Cities/Areas · كل المدن والمناطق --</option></select>
 </div>
 </div>
 <div id="clientsListResult" style="margin-top:14px"></div>
@@ -4057,9 +4057,9 @@ function renderDeliveryStatusReport(tasks) {
       html += "</div>";
       html += "<div style='text-align:left;flex-shrink:0'>";
       html += "<span class='proj-badge' style='color:" + meta.color + ";border-color:" + meta.color + "'>" + meta.label + "</span>";
-      html += "<div style='margin-top:6px;font-size:15px;color:#fff'>بدأ: " + tk.start_time + " (" + tk.date + ")</div>";
-      if (tk.delivery && tk.delivery.deadline_display) html += "<div style='margin-top:2px;font-size:15px;color:#fff'>الميعاد المحدد: " + tk.delivery.deadline_display + "</div>";
-      if (tk.delivery && tk.delivery.actual_delivery_display) html += "<div style='margin-top:2px;font-size:15px;color:#fff'>معاد التسليم الفعلي: " + tk.delivery.actual_delivery_display + "</div>";
+      html += "<div style='margin-top:6px;font-size:15px;color:#fff'>بدأ: " + ltrSpan(tk.start_time + " (" + tk.date + ")") + "</div>";
+      if (tk.delivery && tk.delivery.deadline_display) html += "<div style='margin-top:2px;font-size:15px;color:#fff'>الميعاد المحدد: " + ltrSpan(tk.delivery.deadline_display) + "</div>";
+      if (tk.delivery && tk.delivery.actual_delivery_display) html += "<div style='margin-top:2px;font-size:15px;color:#fff'>معاد التسليم الفعلي: " + ltrSpan(tk.delivery.actual_delivery_display) + "</div>";
       html += "</div>";
       html += "</div>";
     }
@@ -4097,11 +4097,11 @@ function dailyTaskDeadlineLine(t) {
   if (!d || d.status === "no_deadline") {
     return "<div class='fl-hint' style='margin-top:6px'>" + startedNote + " — مفيش ميعاد تسليم محدد</div>";
   }
-  var deadlineNote = "الميعاد المحدد: " + (d.deadline_display || "");
+  var deadlineNote = "الميعاد المحدد: " + ltrSpan(d.deadline_display || "");
   var color, deliveredNote = "";
-  if (d.status === "on_time") { color = "var(--ok)"; deliveredNote = " — سلّم في الميعاد — معاد التسليم الفعلي: " + (d.actual_delivery_display || ""); }
-  else if (d.status === "on_time_buffer") { color = "var(--warn)"; deliveredNote = " — سلّم حوالين الميعاد (±6h) — معاد التسليم الفعلي: " + (d.actual_delivery_display || ""); }
-  else if (d.status === "late") { color = "var(--danger)"; deliveredNote = " — سلّم متأخر بـ" + formatCountdown(d.delay_seconds || 0) + " — معاد التسليم الفعلي: " + (d.actual_delivery_display || ""); }
+  if (d.status === "on_time") { color = "var(--ok)"; deliveredNote = " — سلّم في الميعاد — معاد التسليم الفعلي: " + ltrSpan(d.actual_delivery_display || ""); }
+  else if (d.status === "on_time_buffer") { color = "var(--warn)"; deliveredNote = " — سلّم حوالين الميعاد (±6h) — معاد التسليم الفعلي: " + ltrSpan(d.actual_delivery_display || ""); }
+  else if (d.status === "late") { color = "var(--danger)"; deliveredNote = " — سلّم متأخر بـ " + ltrSpan(formatCountdown(d.delay_seconds || 0)) + " — معاد التسليم الفعلي: " + ltrSpan(d.actual_delivery_display || ""); }
   else if (d.status === "in_progress") { color = "var(--warn)"; }
   else { color = "var(--danger)"; }
   return "<div class='fl-hint' style='margin-top:6px;color:" + color + "'>" + startedNote + " — " + deadlineNote + deliveredNote + "</div>";
@@ -5068,17 +5068,28 @@ async function loadClientTypes() {
 async function loadClientGovernorates() {
   var dl = document.getElementById("cmGovernorateDatalist");
   var filterSel = document.getElementById("clFilterGovernorate");
-  if (!dl && !filterSel) return;
-  try {
-    var res = await apiRequest("/api/admin/client-governorates", "GET");
-    var govs = res.governorates || [];
-    if (dl) dl.innerHTML = govs.map(function(g){ return "<option value='" + g.replace(/'/g,"") + "'></option>"; }).join("");
-    if (filterSel) {
-      var cur = filterSel.value;
-      filterSel.innerHTML = "<option value=''>-- All Governorates · كل المحافظات --</option>" + govs.map(function(g){ return "<option value='" + g.replace(/'/g,"") + "'>" + g + "</option>"; }).join("");
-      if (cur) filterSel.value = cur;
-    }
-  } catch(e) { /* non-fatal */ }
+  if (dl || filterSel) {
+    try {
+      var res = await apiRequest("/api/admin/client-governorates", "GET");
+      var govs = res.governorates || [];
+      if (dl) dl.innerHTML = govs.map(function(g){ return "<option value='" + g.replace(/'/g,"") + "'></option>"; }).join("");
+      if (filterSel) {
+        var cur = filterSel.value;
+        filterSel.innerHTML = "<option value=''>-- All Governorates · كل المحافظات --</option>" + govs.map(function(g){ return "<option value='" + g.replace(/'/g,"") + "'>" + g + "</option>"; }).join("");
+        if (cur) filterSel.value = cur;
+      }
+    } catch(e) { /* non-fatal */ }
+  }
+  var citySel = document.getElementById("clFilterCityArea");
+  if (citySel) {
+    try {
+      var res2 = await apiRequest("/api/admin/client-cities", "GET");
+      var cities = res2.cities || [];
+      var cur2 = citySel.value;
+      citySel.innerHTML = "<option value=''>-- All Cities/Areas · كل المدن والمناطق --</option>" + cities.map(function(ct){ return "<option value='" + ct.replace(/'/g,"") + "'>" + ct + "</option>"; }).join("");
+      if (cur2) citySel.value = cur2;
+    } catch(e) { /* non-fatal */ }
+  }
 }
 
 function onCmTypeChange() {
@@ -5128,13 +5139,13 @@ function renderClientsList() {
   var typeFilter = document.getElementById("clFilterType").value;
   var ratingFilter = Number(document.getElementById("clFilterRating").value) || 0;
   var govFilter = document.getElementById("clFilterGovernorate").value;
-  var cityFilter = (document.getElementById("clFilterCityArea").value || "").trim().toLowerCase();
+  var cityFilter = document.getElementById("clFilterCityArea").value;
   var filtered = adminClients.filter(function(c) {
     if (codeFilter && c.client_code.indexOf(codeFilter) === -1) return false;
     if (typeFilter && c.client_type !== typeFilter) return false;
     if (ratingFilter && (Number(c.rating) || 0) < ratingFilter) return false;
     if (govFilter && c.governorate !== govFilter) return false;
-    if (cityFilter && !(c.city_area || "").toLowerCase().includes(cityFilter)) return false;
+    if (cityFilter && c.city_area !== cityFilter) return false;
     return true;
   });
   if (!filtered.length) { el.innerHTML = "<div class='empty-log'>مفيش عملاء يطابقوا الفلتر ده</div>"; return; }
@@ -6075,9 +6086,16 @@ function renderAdminReport(res) {
     if (dv.list && dv.list.length) {
       for (var dI = 0; dI < dv.list.length; dI++) {
         var dItem = dv.list[dI];
-        var dColor = dItem.status === "on_time" ? "var(--ok)" : "var(--danger)";
-        var dLabel = dItem.status === "on_time" ? "ON TIME · في الميعاد" : ("LATE · متأخر " + formatCountdown(dItem.delay_seconds || 0));
-        html += "<div class='log-entry'><div class='log-type' style='color:" + dColor + "'>" + dItem.date + "</div><div class='log-note'>" + dItem.project + " — " + dItem.task_name + "<br/><span style='color:" + dColor + "'>" + dLabel + "</span> — الميعاد: " + (dItem.deadline_display||"") + "</div></div>";
+        var dColor = dItem.status === "on_time" ? "var(--ok)" : (dItem.status === "on_time_buffer" ? "var(--warn)" : "var(--danger)");
+        var dLabel = dItem.status === "on_time" ? "ON TIME · في الميعاد"
+          : dItem.status === "on_time_buffer" ? "ON TIME (±6h) · قريب من الميعاد"
+          : "LATE · اتأخر بـ " + ltrSpan(formatCountdown(dItem.delay_seconds || 0));
+        html += "<div class='log-entry'><div class='log-type'>" + ltrSpan(dItem.date) + "</div><div class='log-note'>" +
+          dItem.project + " — " + dItem.task_name + "<br/>" +
+          "<span style='color:" + dColor + "'>" + dLabel + "</span><br/>" +
+          "الميعاد المحدد: " + ltrSpan(dItem.deadline_display||"") +
+          (dItem.actual_delivery_display ? "<br/>معاد التسليم الفعلي: " + ltrSpan(dItem.actual_delivery_display) : "") +
+          "</div></div>";
       }
     }
     html += "</div>";
@@ -6087,9 +6105,9 @@ function renderAdminReport(res) {
   var actualDaysList = res.days.filter(function(d){ return d.actual_seconds > 0; });
   var actualDetailHtml = actualDaysList.length
     ? actualDaysList.map(function(d){
-        return "<div class='fl-hint'>" + d.date + " — " + dayLabelAr(d) + " — " +
-          (d.sign_in_time ? ("In: " + d.sign_in_time + (d.sign_out_time ? " Out: " + d.sign_out_time : "")) : "") +
-          " — فعلي: " + formatDuration(d.actual_seconds) + "</div>";
+        return "<div class='fl-hint'>" + ltrSpan(d.date) + " — " + dayLabelAr(d) + " — " +
+          (d.sign_in_time ? ("بدأ الحضور: " + ltrSpan(d.sign_in_time) + (d.sign_out_time ? " — الانصراف: " + ltrSpan(d.sign_out_time) : "")) : "") +
+          " — فعلي: " + ltrSpan(formatDuration(d.actual_seconds)) + "</div>";
       }).join("")
     : "<div class='fl-hint'>لا توجد ساعات فعلية</div>";
   html += "<div class='log-wrap' style='margin-top:14px'>" + expandableRow("actual", "Actual Hours Worked <span class='fla'>الساعات الفعلية (اضغط للتفاصيل)</span>", t.actual_hours + " h",
@@ -6111,10 +6129,10 @@ function renderAdminReport(res) {
     else if (d.status === "worked") { statusLabel = "يوم عمل · Worked Day"; statusColor = "var(--text)"; }
 
     var badges = [];
-    if (d.sign_in_time) badges.push("<span class='proj-badge'>In: " + d.sign_in_time + (d.sign_out_time ? " — Out: " + d.sign_out_time : " — لسه مسجلش انصراف") + "</span>");
+    if (d.sign_in_time) badges.push("<span class='proj-badge'>" + (d.sign_out_time ? ("In: " + ltrSpan(d.sign_in_time) + " — Out: " + ltrSpan(d.sign_out_time)) : ("In: " + ltrSpan(d.sign_in_time) + " — لسه مسجلش انصراف")) + "</span>");
 
     if (d.actual_seconds != null && (d.status === "worked" || d.status === "weekend_worked" || d.status === "official_holiday_worked")) {
-      badges.push("<span class='proj-badge'>Actual: " + formatDuration(d.actual_seconds) + " → Counted: " + formatDuration(d.counted_seconds) + "</span>");
+      badges.push("<span class='proj-badge'>Actual: " + ltrSpan(formatDuration(d.actual_seconds)) + " → Counted: " + ltrSpan(formatDuration(d.counted_seconds)) + "</span>");
     }
 
     if (d.status === "worked") {
@@ -6150,7 +6168,7 @@ function renderAdminReport(res) {
     html += "<div class='proj-row' style='display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;padding:18px'>";
     html += "<div style='flex:1;min-width:260px'>";
     html += "<div class='proj-row-top'>";
-    html += "<div class='proj-id'>" + d.date + " <span style='color:" + statusColor + "'>— " + statusLabel + "</span></div>";
+    html += "<div class='proj-id'>" + ltrSpan(d.date) + " <span style='color:" + statusColor + "'>— " + statusLabel + "</span></div>";
     html += "</div>";
     if (badges.length) html += "<div class='proj-badges' style='margin-top:8px'>" + badges.join("") + "</div>";
     html += "</div>";
@@ -6572,6 +6590,15 @@ function taskSegmentsTimeline(task) {
   return html;
 }
 
+// Wraps a date/time/number string so it renders left-to-right and stays
+// intact even when embedded inside Arabic (RTL) text — without this, the
+// browser's bidi algorithm can visually reorder things like "08/23/2026,
+// 05:00 PM" when Arabic words sit right before or after it.
+function ltrSpan(text) {
+  if (text === null || text === undefined || text === "") return "";
+  return "<span dir='ltr' style='unicode-bidi:isolate;display:inline-block'>" + text + "</span>";
+}
+
 function formatCountdown(seconds, workingDays) {
   if (seconds < 0) seconds = 0;
   if (workingDays !== undefined && workingDays !== null && workingDays >= 1) {
@@ -6608,9 +6635,9 @@ function taskDeadlineBoxHtml(t) {
   var html = "<div class='task-deadline-box' style='border-color:" + color + "'>";
   html += "<div class='task-deadline-status' style='color:" + color + "'>" + statusLabel + "</div>";
   html += "<div class='task-deadline-countdown' style='color:" + color + "'>" + countdownText + "</div>";
-  html += "<div class='task-deadline-date'>الميعاد المحدد: " + (d.deadline_display || "") + "</div>";
+  html += "<div class='task-deadline-date'>الميعاد المحدد: " + ltrSpan(d.deadline_display || "") + "</div>";
   if (d.actual_delivery_display) {
-    html += "<div class='task-deadline-date' style='color:#fff'>معاد التسليم الفعلي: " + d.actual_delivery_display + "</div>";
+    html += "<div class='task-deadline-date' style='color:#fff'>معاد التسليم الفعلي: " + ltrSpan(d.actual_delivery_display) + "</div>";
   }
   if (d.deadline_on_non_working_day) {
     html += "<div class='task-deadline-date' style='color:var(--warn);margin-top:2px'>⚠️ الميعاد في يوم إجازة</div>";
