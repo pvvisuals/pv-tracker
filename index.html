@@ -1799,6 +1799,23 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </div>
+<div class="modal-overlay" id="editSalaryHistoryModalOverlay">
+<div class="modal">
+<h3>EDIT SALARY ENTRY · تعديل سجل الراتب</h3>
+<div class="fg">
+<div class="fl">Effective Month <span class="fla">يبدأ من شهر</span></div>
+<input type="month" id="eshMonth"/>
+</div>
+<div class="fg">
+<div class="fl">Monthly Salary (EGP) <span class="fla">الراتب</span></div>
+<input type="number" id="eshSalary" min="0" step="0.01"/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeEditSalaryHistoryModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitEditSalaryHistory()">Save · حفظ</button>
+</div>
+</div>
+</div>
 <div class="modal-overlay" id="editRequestModalOverlay">
 <div class="modal">
 <h3>EDIT REQUEST · تعديل الطلب</h3>
@@ -4369,20 +4386,32 @@ async function executeScheduleSalaryChange(empId, month, salary, pin) {
   showLoading(false);
 }
 
+var currentEditSalaryHistoryId = null;
 function editSalaryHistoryPrompt(id, curMonth, curSalary, curWorkDays, curDayHours) {
-  var newSalary = prompt("الراتب الجديد لشهر " + curMonth + ":", curSalary);
-  if (newSalary === null) return;
-  if (!(Number(newSalary) >= 0)) { showToast("!", "ادخل رقم صحيح"); return; }
-  openPinModal("EDIT SALARY ENTRY · تعديل سجل الراتب", "ادخل كود الأمان للتأكيد:", function(pin) {
+  currentEditSalaryHistoryId = id;
+  document.getElementById("eshMonth").value = curMonth;
+  document.getElementById("eshSalary").value = curSalary;
+  document.getElementById("editSalaryHistoryModalOverlay").classList.add("active");
+}
+function closeEditSalaryHistoryModal() {
+  document.getElementById("editSalaryHistoryModalOverlay").classList.remove("active");
+  currentEditSalaryHistoryId = null;
+}
+function submitEditSalaryHistory() {
+  var month = document.getElementById("eshMonth").value;
+  var salary = document.getElementById("eshSalary").value;
+  if (!month || salary === "" || !(Number(salary) >= 0)) { showToast("!", "اختار الشهر واكتب راتب صحيح"); return; }
+  openPinModal("CONFIRM EDIT · تأكيد التعديل", "من شهر " + month + "، الراتب هيبقى " + salary + " جنيه. ادخل كود الأمان:", function(pin) {
     if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
-    executeEditSalaryHistory(id, newSalary, pin);
+    executeEditSalaryHistory(currentEditSalaryHistoryId, month, salary, pin);
   });
 }
-async function executeEditSalaryHistory(id, newSalary, pin) {
+async function executeEditSalaryHistory(id, month, newSalary, pin) {
   showLoading(true);
   try {
-    await apiRequest("/api/admin/salary-history/" + id, "PATCH", { monthly_salary: Number(newSalary), pin: pin });
+    await apiRequest("/api/admin/salary-history/" + id, "PATCH", { effective_month: month, monthly_salary: Number(newSalary), pin: pin });
     showToast("v", "تم التعديل");
+    closeEditSalaryHistoryModal();
     await loadSalaryHistory();
     await loadAdminData();
   } catch(e) { showToast("!", e.message); }
