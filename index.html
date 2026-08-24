@@ -4338,7 +4338,7 @@ function renderSalaryHistory(history) {
     html += "<div class='proj-badges'><span class='proj-badge' style='color:" + m.color + ";border-color:" + m.color + "'>" + m.label + "</span></div>";
     html += "</div>";
     html += "<div class='fl-hint' style='margin-top:6px'>قيمة الساعة: " + rate + " EGP — أيام العمل: " + h.work_days_per_month + " — ساعات اليوم: " + h.daily_work_hours + "</div>";
-    html += "<button class='btn-end-task' style='margin-top:8px' onclick=\"editSalaryHistoryPrompt(" + h.id + "," + JSON.stringify(h.effective_month) + "," + h.monthly_salary + "," + h.work_days_per_month + "," + h.daily_work_hours + ")\">✎ EDIT · تعديل</button> ";
+    html += "<button class='btn-end-task' style='margin-top:8px' onclick=\"editSalaryHistoryPrompt(" + h.id + ",'" + h.effective_month + "'," + h.monthly_salary + "," + h.work_days_per_month + "," + h.daily_work_hours + ")\">✎ EDIT · تعديل</button> ";
     html += "<button class='btn-end-task' onclick=\"deleteSalaryHistoryPrompt(" + h.id + ")\">DELETE · حذف</button>";
     html += "</div>";
   }
