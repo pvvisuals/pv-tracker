@@ -2702,9 +2702,9 @@ function renderLeaveBalance() {
   var casualRemaining = Math.max(0, 6 - casualUsed);
   var annualRemaining = Math.max(0, 15 - annualUsed);
   document.getElementById("casualBalance").innerHTML =
-    "أخد " + casualUsed + " من 6<div style='font-size:13px;color:var(--ok);margin-top:4px'>متبقي: " + casualRemaining + "</div>";
+    "<div style='font-size:30px;font-weight:700;color:var(--ok)'>" + casualRemaining + "</div><div style='font-size:13px;color:var(--muted);margin-top:2px'>متبقي من 6 — أخد " + casualUsed + "</div>";
   document.getElementById("annualBalance").innerHTML =
-    "أخد " + annualUsed + " من 15<div style='font-size:13px;color:var(--ok);margin-top:4px'>متبقي: " + annualRemaining + "</div>";
+    "<div style='font-size:30px;font-weight:700;color:var(--ok)'>" + annualRemaining + "</div><div style='font-size:13px;color:var(--muted);margin-top:2px'>متبقي من 15 — أخد " + annualUsed + "</div>";
   document.getElementById("sickBalanceUsed").textContent = sickUsed + " يوم";
 }
 
@@ -3488,7 +3488,10 @@ function renderAdminProjects() {
 
     html += "<div class='log-wrap' style='margin-top:10px;border-right:3px solid " + statusColor + "'>";
     html += "<div class='log-header'><span>" + p.code + " - " + p.name + "</span>" +
-      "<span style='font-size:13px;color:" + statusColor + "'>" + statusLabel + (cName ? " — العميل: " + cName : "") + "</span></div>";
+      "<span style='font-size:13px;color:" + statusColor + "'>" + statusLabel + "</span></div>";
+    if (cName) {
+      html += "<div style='padding:10px 18px 0;font-size:14px;color:#fff'>العميل · Client: " + cName + "</div>";
+    }
     html += "<div class='proj-row'>";
     html += "<div class='proj-row-top'>";
     html += "<div class='proj-badges'>";
@@ -3970,9 +3973,9 @@ function deliveryStatusMeta(d) {
   if (!d || d.status === "no_deadline") return { label: "NO DEADLINE · مفيش ميعاد", color: "var(--muted)" };
   if (d.status === "on_time") return { label: "ON TIME · في الميعاد", color: "var(--ok)" };
   if (d.status === "on_time_buffer") return { label: "DELIVERED · حوالين الميعاد", color: "var(--warn)" };
-  if (d.status === "late") return { label: "LATE · متأخر", color: "var(--danger)" };
+  if (d.status === "late") return { label: "LATE · متأخر " + ltrSpan(formatCountdown(d.delay_seconds || 0)), color: "var(--danger)" };
   if (d.status === "in_progress") return { label: "IN PROGRESS · شغال، الميعاد لسه", color: "var(--warn)" };
-  return { label: "OVERDUE · فات الميعاد", color: "var(--danger)" };
+  return { label: "OVERDUE · فات الميعاد بـ " + ltrSpan(formatCountdown(d.overdue_seconds || 0, d.overdue_working_days)), color: "var(--danger)" };
 }
 
 var deliveryStatusCardFilter = "all";
@@ -6077,14 +6080,16 @@ function renderAdminReport(res) {
   html += expandableRow("absence", "Absence <span class='fla' style='color:var(--danger)'>غياب بدون إجازة (" + t.absent_days + " يوم)</span>",
     "<span style='color:var(--danger)'>" + t.absent_days + " يوم · = " + t.absent_hours_deducted + " h لو كانت هتتحسب</span>",
     "<div style='padding:10px 18px'>" + absentDetailHtml + "</div>");
+  // ---- Leave balances (clear card layout: used this month / total used / remaining) ----
+  html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>LEAVE BALANCES · أرصدة الإجازات</span></div>";
+  html += leaveBalanceCardRow("Casual · عارضة", t.leave_days_casual, res.leave_balance.casual, 6);
+  html += leaveBalanceCardRow("Annual · اعتيادية", t.leave_days_annual, res.leave_balance.annual, 15);
+  html += leaveBalanceCardRow("Sick · مرضي", t.leave_days_sick || 0, res.leave_balance.sick, null);
   html += "</div>";
 
   // ---- Attendance summary ----
   html += "<div class='log-wrap' style='margin-top:14px'><div class='log-header'><span>ATTENDANCE SUMMARY · ملخص الحضور</span></div>";
   html += logRow("Absent Days <span class='fla'>أيام غياب بدون إجازة</span>", "<span style='color:" + (t.absent_days>0?"var(--danger)":"var(--text)") + "'>" + t.absent_days + " يوم</span>");
-  html += logRow("Casual Leave Taken <span class='fla'>عارضة مستخدمة</span>", t.leave_days_casual + " هذا الشهر — إجمالي مستخدم: " + res.leave_balance.casual + "/6 — متبقي: " + (6 - res.leave_balance.casual));
-  html += logRow("Annual Leave Taken <span class='fla'>اعتيادية مستخدمة</span>", t.leave_days_annual + " هذا الشهر — إجمالي مستخدم: " + res.leave_balance.annual + "/15 — متبقي: " + (15 - res.leave_balance.annual));
-  html += logRow("Sick Leave Taken <span class='fla'>مرضي مستخدمة</span>", (t.leave_days_sick||0) + " هذا الشهر — إجمالي مستخدم: " + res.leave_balance.sick + " (بلا حد أقصى)");
   if (res.late_arrivals) {
     var laNote = "<span style='color:" + (res.late_arrivals.count>0?"var(--danger)":"var(--text)") + "'>" + res.late_arrivals.count + "</span>";
     if (res.late_arrivals.count > 0) {
@@ -6228,6 +6233,21 @@ function filterCard(label, value, onclickAttr, isActive) {
 }
 function logRow(label, value) {
   return "<div class='log-entry'><div class='log-type'>" + label + "</div><div class='log-note'>" + value + "</div></div>";
+}
+
+function leaveBalanceCardRow(label, thisMonthUsed, totalUsed, quota) {
+  var html = "<div class='log-entry'><div class='log-type'>" + label + "</div>";
+  html += "<div style='display:flex;gap:24px;flex-wrap:wrap;margin-top:4px'>";
+  html += "<div><div style='font-size:12px;color:var(--muted)'>استخدم الشهر ده</div><div style='font-size:22px;font-weight:700;color:#fff'>" + thisMonthUsed + "</div></div>";
+  html += "<div><div style='font-size:12px;color:var(--muted)'>إجمالي المستخدم" + (quota !== null ? " من " + quota : "") + "</div><div style='font-size:22px;font-weight:700;color:#fff'>" + totalUsed + "</div></div>";
+  if (quota !== null) {
+    var remaining = Math.max(0, quota - totalUsed);
+    html += "<div><div style='font-size:12px;color:var(--muted)'>المتبقي</div><div style='font-size:22px;font-weight:700;color:var(--ok)'>" + remaining + "</div></div>";
+  } else {
+    html += "<div><div style='font-size:12px;color:var(--muted)'>الحد الأقصى</div><div style='font-size:22px;font-weight:700;color:var(--warn)'>بلا حد</div></div>";
+  }
+  html += "</div></div>";
+  return html;
 }
 
 async function doSignIn() {
