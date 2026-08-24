@@ -175,6 +175,12 @@ function cairoLocalToUtcString(dateStr, hour) {
   const utcMs = Date.UTC(y, m - 1, d, Number(hour), 0, 0) - 2 * 3600 * 1000;
   return new Date(utcMs).toISOString().slice(0, 19).replace("T", " ");
 }
+// Same idea but with minute precision, for editing exact attendance/task times.
+function cairoLocalToUtcStringPrecise(dateStr, hour, minute) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const utcMs = Date.UTC(y, m - 1, d, Number(hour), Number(minute) || 0, 0) - 2 * 3600 * 1000;
+  return new Date(utcMs).toISOString().slice(0, 19).replace("T", " ");
+}
 function cairoDeadlineDisplay(deadlineAt) {
   if (!deadlineAt) return null;
   const d = new Date(deadlineAt + "Z");
@@ -1389,6 +1395,101 @@ async function myBonuses(db, me, monthStr) {
 
 // ---------------------------------------------------------------- monthly report (core hours logic)
 
+const LONG_SESSION_SECONDS = 12 * 3600; // flag any single attendance session or task segment over 12h
+
+// Everything needed to build the "edit this day" admin UI: every raw
+// attendance action, every task segment (with task/project context), which
+// of those exceed 12 hours (and whether that's already been acknowledged),
+// and the full edit history for the day.
+async function dayDetail(db, employeeId, date) {
+  const [attRes, segRes, logRes, ackRes] = await Promise.all([
+    db.execute({ sql: "SELECT * FROM attendance WHERE employee_id = ? AND date = ? ORDER BY created_at ASC", args: [employeeId, date] }),
+    db.execute({
+      sql: `SELECT ts.*, t.name as task_name, t.project as project_display, p.code as p_code, p.name as p_name
+            FROM task_segments ts JOIN tasks t ON t.id = ts.task_id LEFT JOIN projects p ON p.id = t.project_id
+            WHERE ts.employee_id = ? AND ts.date = ? ORDER BY ts.created_at ASC`,
+      args: [employeeId, date],
+    }),
+    db.execute({ sql: "SELECT l.*, e.name as edited_by_name FROM day_edit_log l LEFT JOIN employees e ON e.id = l.edited_by WHERE l.employee_id = ? AND l.date = ? ORDER BY l.edited_at DESC", args: [employeeId, date] }),
+    db.execute({ sql: "SELECT * FROM anomaly_acknowledgment WHERE employee_id = ? AND date = ?", args: [employeeId, date] }),
+  ]);
+
+  const ackSet = new Set(ackRes.rows.map((a) => a.anomaly_type + "||" + a.record_id));
+  const anomalies = [];
+
+  // Pair up sign_in/sign_out to find sessions over 12h.
+  let pendingIn = null;
+  for (const r of attRes.rows) {
+    if (r.action === "sign_in") pendingIn = r;
+    else if (r.action === "sign_out" && pendingIn) {
+      const secs = Math.floor((new Date(r.created_at + "Z").getTime() - new Date(pendingIn.created_at + "Z").getTime()) / 1000);
+      if (secs > LONG_SESSION_SECONDS) {
+        anomalies.push({
+          type: "long_attendance", record_id: pendingIn.id, seconds: secs,
+          acknowledged: ackSet.has("long_attendance||" + pendingIn.id),
+          detail: `الحضور من ${pendingIn.time} لحد ${r.time} = ${(secs / 3600).toFixed(1)} ساعة`,
+        });
+      }
+      pendingIn = null;
+    }
+  }
+  for (const s of segRes.rows) {
+    if (!s.ended_at) continue;
+    const secs = Math.floor((new Date(s.ended_at + "Z").getTime() - new Date(s.created_at + "Z").getTime()) / 1000);
+    if (secs > LONG_SESSION_SECONDS) {
+      anomalies.push({
+        type: "long_task_segment", record_id: s.id, seconds: secs,
+        acknowledged: ackSet.has("long_task_segment||" + s.id),
+        detail: `تاسك "${s.task_name}" — جزء شغل من ${s.start_display} لحد ${s.end_display} = ${(secs / 3600).toFixed(1)} ساعة`,
+      });
+    }
+  }
+
+  return json({
+    date, attendance: attRes.rows, segments: segRes.rows,
+    edit_log: logRes.rows, anomalies,
+  });
+}
+
+async function applyDayEdits(db, admin, employeeId, date, edits, note) {
+  if (!Array.isArray(edits) || !edits.length) return err("مفيش تعديلات");
+  for (const ed of edits) {
+    if (!/^\d{1,2}$/.test(String(ed.hour)) || Number(ed.hour) > 23) return err("ساعة غير صحيحة");
+    const newUtc = cairoLocalToUtcStringPrecise(date, ed.hour, ed.minute || 0);
+    const displayTime = new Date(newUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+
+    if (ed.type === "attendance") {
+      const cur = await db.execute({ sql: "SELECT * FROM attendance WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
+      const row = cur.rows[0];
+      if (!row) return err("سجل حضور غير موجود");
+      await db.execute({ sql: "UPDATE attendance SET created_at = ?, time = ? WHERE id = ?", args: [newUtc, displayTime, ed.record_id] });
+      await db.execute({
+        sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+        args: [employeeId, date, "attendance", ed.record_id, row.action, row.created_at, newUtc, note || null, admin.id],
+      });
+    } else if (ed.type === "task_segment") {
+      const cur = await db.execute({ sql: "SELECT * FROM task_segments WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
+      const row = cur.rows[0];
+      if (!row) return err("جزء شغل غير موجود");
+      const field = ed.field === "end" ? "ended_at" : "created_at";
+      const displayField = ed.field === "end" ? "end_display" : "start_display";
+      await db.execute({ sql: `UPDATE task_segments SET ${field} = ?, ${displayField} = ? WHERE id = ?`, args: [newUtc, displayTime, ed.record_id] });
+      await db.execute({
+        sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+        args: [employeeId, date, "task_segment", ed.record_id, ed.field === "end" ? "segment_end" : "segment_start", row[field], newUtc, note || null, admin.id],
+      });
+      // Recompute the parent task's total duration from all its segments.
+      const segs = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ?", args: [row.task_id] });
+      let total = 0;
+      for (const s of segs.rows) { if (s.ended_at) total += Math.max(0, Math.floor((new Date(s.ended_at + "Z").getTime() - new Date(s.created_at + "Z").getTime()) / 1000)); }
+      await db.execute({ sql: "UPDATE tasks SET duration = ? WHERE id = ?", args: [total, row.task_id] });
+    } else {
+      return err("نوع تعديل غير معروف");
+    }
+  }
+  return json({ ok: true });
+}
+
 async function monthlyReport(db, employeeId, monthStr) {
   const isAllMonths = monthStr === "all";
   const now = new Date();
@@ -1729,6 +1830,39 @@ async function monthlyReport(db, employeeId, monthStr) {
   }
   for (const d of days) {
     d.tasks = tasksByDate[d.date] || [];
+  }
+
+  // Flag any single attendance session or task segment over 12 hours —
+  // almost always means a forgotten sign-out/pause, not real work. Shown
+  // as a ⚠️ on that day in the report; admin can review and fix or dismiss.
+  const ackRows = await db.execute({ sql: "SELECT * FROM anomaly_acknowledgment WHERE employee_id = ?", args: [employeeId] });
+  const ackSet = new Set(ackRows.rows.map((a) => a.anomaly_type + "||" + a.record_id));
+  const anomaliesByDate = {};
+  const pushAnomaly = (dateKey, obj) => { (anomaliesByDate[dateKey] = anomaliesByDate[dateKey] || []).push(obj); };
+  {
+    let pendingIn = null;
+    for (const e of attRows.rows) {
+      if (e.action === "sign_in") pendingIn = e;
+      else if (e.action === "sign_out" && pendingIn) {
+        const secs = Math.floor((new Date(e.created_at + "Z").getTime() - new Date(pendingIn.created_at + "Z").getTime()) / 1000);
+        if (secs > LONG_SESSION_SECONDS) {
+          pushAnomaly(pendingIn.date, { type: "long_attendance", record_id: pendingIn.id, seconds: secs, acknowledged: ackSet.has("long_attendance||" + pendingIn.id) });
+        }
+        pendingIn = null;
+      }
+    }
+  }
+  for (const t of dayTasksWithSegments) {
+    for (const s of (t.segments || [])) {
+      if (!s.ended_at) continue;
+      const secs = Math.floor((new Date(s.ended_at + "Z").getTime() - new Date(s.created_at + "Z").getTime()) / 1000);
+      if (secs > LONG_SESSION_SECONDS) {
+        pushAnomaly(s.date, { type: "long_task_segment", record_id: s.id, seconds: secs, acknowledged: ackSet.has("long_task_segment||" + s.id) });
+      }
+    }
+  }
+  for (const d of days) {
+    d.anomalies = anomaliesByDate[d.date] || [];
   }
 
   return json({
@@ -2369,6 +2503,30 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   // (adminEmployeeView, project cost reports, the employee's own payroll
   // calculation) always resolves live from this table for whatever month
   // it's actually asking about. ----------
+  const dayDetailMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/day-detail$/);
+  if (dayDetailMatch && method === "GET") {
+    const date = url.searchParams.get("date");
+    if (!date) return err("date required");
+    return await dayDetail(db, Number(dayDetailMatch[1]), date);
+  }
+  if (dayDetailMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const missing = requireFields(body, ["date", "edits"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    return await applyDayEdits(db, admin, Number(dayDetailMatch[1]), body.date, body.edits, body.note);
+  }
+  if (path === "/api/admin/anomaly-ack" && method === "POST") {
+    const missing = requireFields(body, ["employee_id", "date", "anomaly_type", "record_id"]);
+    if (missing) return err(`Missing field: ${missing}`);
+    await db.execute({
+      sql: `INSERT INTO anomaly_acknowledgment (employee_id, date, anomaly_type, record_id, acknowledged_by, note)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(employee_id, date, anomaly_type, record_id) DO UPDATE SET acknowledged_by = excluded.acknowledged_by, acknowledged_at = datetime('now'), note = excluded.note`,
+      args: [body.employee_id, body.date, body.anomaly_type, body.record_id, admin.id, body.note || null],
+    });
+    return json({ ok: true });
+  }
+
   const salaryHistoryListMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/salary-history$/);
   if (salaryHistoryListMatch && method === "GET") {
     const empId = Number(salaryHistoryListMatch[1]);
