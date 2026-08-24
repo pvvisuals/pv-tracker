@@ -1443,6 +1443,19 @@ async function dayDetail(db, employeeId, date) {
   let pendingIn = null;
   for (const r of attRes.rows) {
     if (r.action === "sign_in") {
+      if (pendingIn) {
+        // Orphaned sign-in (never closed before this new one) — make it
+        // visible in the edit list (so it can be fixed or deleted) and
+        // flag it, instead of letting it silently vanish from the totals.
+        if (pendingIn.date === date) {
+          relevantAttendanceIds.add(pendingIn.id);
+          anomalies.push({
+            type: "unpaired_sign_in", record_id: pendingIn.id,
+            acknowledged: ackSet.has("unpaired_sign_in||" + pendingIn.id),
+            detail_from: `${pendingIn.time} (${pendingIn.date})`, detail_to: null,
+          });
+        }
+      }
       pendingIn = r;
     } else if (r.action === "sign_out" && pendingIn) {
       if (pendingIn.date === date || r.date === date) {
@@ -1946,8 +1959,15 @@ async function monthlyReport(db, employeeId, monthStr) {
   {
     let pendingIn = null;
     for (const e of attRows.rows) {
-      if (e.action === "sign_in") pendingIn = e;
-      else if (e.action === "sign_out" && pendingIn) {
+      if (e.action === "sign_in") {
+        if (pendingIn) {
+          // Two sign-ins with no sign-out between them — the earlier one's
+          // time would otherwise silently vanish from the total instead of
+          // being counted. Flag it clearly so it gets fixed, not lost.
+          pushAnomaly(pendingIn.date, { type: "unpaired_sign_in", record_id: pendingIn.id, acknowledged: ackSet.has("unpaired_sign_in||" + pendingIn.id) });
+        }
+        pendingIn = e;
+      } else if (e.action === "sign_out" && pendingIn) {
         const secs = Math.floor((new Date(e.created_at + "Z").getTime() - new Date(pendingIn.created_at + "Z").getTime()) / 1000);
         if (secs > LONG_SESSION_SECONDS) {
           pushAnomaly(pendingIn.date, { type: "long_attendance", record_id: pendingIn.id, seconds: secs, acknowledged: ackSet.has("long_attendance||" + pendingIn.id) });
