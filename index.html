@@ -927,6 +927,22 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 <div class="fl-hint" style="margin-top:6px">العارضة والاعتيادية بعدد أيام ثابت لكل الموظفين (6 و15). خانة "إضافي" دي بتتجمع فوق رقم النظام، مش بتمسحه — استخدمها بس للموظفين القدام اللي أخدوا إجازات قبل ما نبدأ نتتبعها هنا. المرضية مفيهاش حد أقصى خالص.</div>
 <div id="leaveRemainingPreview" class="fl-hint" style="margin-top:6px;color:var(--ok)"></div>
+
+<div class="settings-label" style="font-size:15px;margin-top:24px">Schedule Salary Change <span class="fla">جدولة زيادة أو تعديل الراتب</span></div>
+<div class="sec-sub" style="margin-bottom:10px">حدد راتب جديد يبدأ من شهر معين (سابق، حالي، أو مستقبلي) — لما الشهر ده يوصل، الراتب وقيمة الساعة يتغيروا تلقائياً في كل حسابات النظام (تكلفة المشاريع، التقارير، الجزاءات) من غير أي خطوة إضافية</div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Effective Month <span class="fla">يبدأ من شهر</span></div>
+<input type="month" id="shMonth"/>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">New Monthly Salary (EGP) <span class="fla">الراتب الجديد</span></div>
+<input type="number" id="shSalary" min="0" step="0.01"/>
+</div>
+</div>
+<button class="btn-add" onclick="scheduleSalaryChangePrompt()">+ SCHEDULE CHANGE · جدولة التغيير</button>
+<div id="salaryHistoryList" style="margin-top:14px"></div>
+
 <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
 <div class="fl-hint">لو رقم "متتبّع تلقائياً" مش متطابق مع الواقع لأي سبب، اضغط الزرار ده — هيعيد حسابه لكل الموظفين من طلبات الإجازة المعتمدة فعلياً</div>
 <div class="fg" style="margin:10px 0">
@@ -4290,6 +4306,104 @@ function fillSalaryForm() {
   document.getElementById("salarySickBalance").value = emp.sick_balance != null ? emp.sick_balance : 0;
   updateHourlyRatePreview();
   updateLeaveRemainingPreview();
+  var d = new Date(); d.setMonth(d.getMonth() + 1);
+  document.getElementById("shMonth").value = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  document.getElementById("shSalary").value = "";
+  loadSalaryHistory();
+}
+
+async function loadSalaryHistory() {
+  var empId = document.getElementById("salaryEmployee").value;
+  var el = document.getElementById("salaryHistoryList");
+  if (!empId) { el.innerHTML = ""; return; }
+  try {
+    var res = await apiRequest("/api/admin/employees/" + empId + "/salary-history", "GET");
+    renderSalaryHistory(res.history || []);
+  } catch(e) { el.innerHTML = "<div class='empty-log'>فشل تحميل سجل الراتب</div>"; }
+}
+
+function renderSalaryHistory(history) {
+  var el = document.getElementById("salaryHistoryList");
+  if (!history.length) { el.innerHTML = "<div class='empty-log'>مفيش سجل راتب لسه</div>"; return; }
+  var sorted = history.slice().sort(function(a,b){ return b.effective_month.localeCompare(a.effective_month); });
+  var statusMeta = { current: { label: "CURRENT · حالي", color: "var(--ok)" }, scheduled: { label: "SCHEDULED · مجدول", color: "var(--warn)" }, past: { label: "PAST · سابق", color: "var(--muted)" } };
+  var html = "<div class='log-wrap'>";
+  for (var i = 0; i < sorted.length; i++) {
+    var h = sorted[i];
+    var m = statusMeta[h.status] || statusMeta.past;
+    var rate = h.work_days_per_month > 0 && h.daily_work_hours > 0 ? (h.monthly_salary / (h.work_days_per_month * h.daily_work_hours)).toFixed(2) : "0";
+    html += "<div class='proj-row'>";
+    html += "<div class='proj-row-top'>";
+    html += "<div class='proj-id'>" + ltrSpan(h.effective_month) + " — " + h.monthly_salary + " EGP</div>";
+    html += "<div class='proj-badges'><span class='proj-badge' style='color:" + m.color + ";border-color:" + m.color + "'>" + m.label + "</span></div>";
+    html += "</div>";
+    html += "<div class='fl-hint' style='margin-top:6px'>قيمة الساعة: " + rate + " EGP — أيام العمل: " + h.work_days_per_month + " — ساعات اليوم: " + h.daily_work_hours + "</div>";
+    html += "<button class='btn-end-task' style='margin-top:8px' onclick=\"editSalaryHistoryPrompt(" + h.id + "," + JSON.stringify(h.effective_month) + "," + h.monthly_salary + "," + h.work_days_per_month + "," + h.daily_work_hours + ")\">✎ EDIT · تعديل</button> ";
+    html += "<button class='btn-end-task' onclick=\"deleteSalaryHistoryPrompt(" + h.id + ")\">DELETE · حذف</button>";
+    html += "</div>";
+  }
+  html += "</div>";
+  el.innerHTML = html;
+}
+
+function scheduleSalaryChangePrompt() {
+  var empId = document.getElementById("salaryEmployee").value;
+  var month = document.getElementById("shMonth").value;
+  var salary = document.getElementById("shSalary").value;
+  if (!empId) { showToast("!", "اختار موظف الأول"); return; }
+  if (!month || salary === "") { showToast("!", "اختار الشهر واكتب الراتب الجديد"); return; }
+  openPinModal("SCHEDULE SALARY CHANGE · جدولة تغيير الراتب", "من شهر " + month + "، الراتب هيبقى " + salary + " جنيه. ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeScheduleSalaryChange(empId, month, salary, pin);
+  });
+}
+async function executeScheduleSalaryChange(empId, month, salary, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/employees/" + empId + "/salary-history", "POST", { effective_month: month, monthly_salary: Number(salary), pin: pin });
+    showToast("v", "تم جدولة التغيير");
+    document.getElementById("shSalary").value = "";
+    await loadSalaryHistory();
+    await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function editSalaryHistoryPrompt(id, curMonth, curSalary, curWorkDays, curDayHours) {
+  var newSalary = prompt("الراتب الجديد لشهر " + curMonth + ":", curSalary);
+  if (newSalary === null) return;
+  if (!(Number(newSalary) >= 0)) { showToast("!", "ادخل رقم صحيح"); return; }
+  openPinModal("EDIT SALARY ENTRY · تعديل سجل الراتب", "ادخل كود الأمان للتأكيد:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeEditSalaryHistory(id, newSalary, pin);
+  });
+}
+async function executeEditSalaryHistory(id, newSalary, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/salary-history/" + id, "PATCH", { monthly_salary: Number(newSalary), pin: pin });
+    showToast("v", "تم التعديل");
+    await loadSalaryHistory();
+    await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function deleteSalaryHistoryPrompt(id) {
+  openPinModal("DELETE SALARY ENTRY · حذف سجل الراتب", "متأكد؟ الإجراء ده لا رجعة فيه. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); return; }
+    executeDeleteSalaryHistory(id, pin);
+  });
+}
+async function executeDeleteSalaryHistory(id, pin) {
+  showLoading(true);
+  try {
+    await apiRequest("/api/admin/salary-history/" + id, "DELETE", { pin: pin });
+    showToast("v", "تم الحذف");
+    await loadSalaryHistory();
+    await loadAdminData();
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
 }
 
 function updateLeaveRemainingPreview() {
