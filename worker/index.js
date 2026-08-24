@@ -268,6 +268,7 @@ function computeDeliveryStatus(task, actualEndMs, nowMs, isNonWorkingDay) {
     return {
       status, deadline_at: task.deadline_at, deadline_display: cairoDeadlineDisplay(task.deadline_at),
       delta_seconds: deltaSeconds, delay_seconds: Math.max(0, deltaSeconds), deadline_on_non_working_day: deadlineOnNonWorkingDay,
+      actual_delivery_display: cairoDeadlineDisplay(new Date(actualEndMs).toISOString().slice(0, 19)),
     };
   }
 
@@ -644,7 +645,7 @@ async function updateProfile(db, me, body) {
 async function signIn(db, me) {
   const today = cairoDateStr();
   const now = new Date();
-  const t = now.toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const t = now.toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
   const res = await db.execute({
     sql: `INSERT INTO attendance (employee_id, date, action, time, first_name) VALUES (?,?,?,?,?) RETURNING *`,
@@ -689,7 +690,7 @@ async function signOut(db, me) {
   }
 
   const today = cairoDateStr();
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
 
   // figure out "worked" for this session, informational only
@@ -782,7 +783,7 @@ async function startBreak(db, me) {
     return json({ entry: openRes.rows[0] }, 200);
   }
 
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
   const res = await db.execute({
     sql: `INSERT INTO breaks (employee_id, date, start_time, first_name) VALUES (?,?,?,?) RETURNING *`,
@@ -796,7 +797,7 @@ async function endBreak(db, me, breakId) {
   const brk = rows.rows[0];
   if (!brk) return err("Break not found", 404);
   if (brk.end_time) return err("Break already ended", 409);
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
   const dur = Math.max(0, Math.floor((Date.now() - new Date(brk.created_at + "Z").getTime()) / 1000));
   await db.execute({ sql: "UPDATE breaks SET end_time = ?, duration = ? WHERE id = ?", args: [t, dur, breakId] });
   return json({ ok: true, entry: { ...brk, end_time: t, duration: dur } });
@@ -813,15 +814,24 @@ async function breaksToday(db, me) {
 
 // ---------------------------------------------------------------- tasks
 
+async function isEmployeeSignedIn(db, employeeId) {
+  const res = await db.execute({
+    sql: "SELECT action FROM attendance WHERE employee_id = ? ORDER BY created_at DESC LIMIT 1",
+    args: [employeeId],
+  });
+  return !!(res.rows[0] && res.rows[0].action === "sign_in");
+}
+
 async function addTask(db, me, body) {
   const missing = requireFields(body, ["project_id", "name"]);
   if (missing) return err(`Missing field: ${missing}`);
+  if (!(await isEmployeeSignedIn(db, me.id))) return err("لازم تسجل حضور الأول قبل ما تبدأ أي تاسك", 409);
   const projRes = await db.execute({ sql: "SELECT * FROM projects WHERE id = ? AND active = 1", args: [body.project_id] });
   const proj = projRes.rows[0];
   if (!proj) return err("المشروع ده مش موجود أو مش متاح حالياً", 400);
 
   const today = cairoDateStr();
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
   const fn = me.name.split(" ")[0];
   const displayName = taskProjectDisplay(proj);
   const res = await db.execute({
@@ -869,7 +879,7 @@ async function pauseTask(db, me, taskId) {
   if (task.end_time) return err("التاسك ده خلص بالفعل", 400);
   if (task.paused) return err("التاسك ده متوقف بالفعل", 400);
 
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
   const segRes = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1", args: [taskId] });
   if (segRes.rows[0]) {
     await db.execute({ sql: "UPDATE task_segments SET end_display = ?, ended_at = datetime('now') WHERE id = ?", args: [t, segRes.rows[0].id] });
@@ -1046,9 +1056,10 @@ async function resumeTask(db, me, taskId) {
   if (!task) return err("Task not found", 404);
   if (task.end_time) return err("التاسك ده خلص بالفعل", 400);
   if (!task.paused) return err("التاسك ده مش متوقف", 400);
+  if (!(await isEmployeeSignedIn(db, me.id))) return err("لازم تسجل حضور الأول قبل ما تكمل أي تاسك", 409);
 
   const today = cairoDateStr();
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
   await db.execute({
     sql: `INSERT INTO task_segments (task_id, employee_id, date, start_display) VALUES (?,?,?,?)`,
     args: [taskId, me.id, today, t],
@@ -1062,7 +1073,7 @@ async function endTask(db, me, taskId, body) {
   const rows = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ? AND employee_id = ?", args: [taskId, me.id] });
   const task = rows.rows[0];
   if (!task) return err("Task not found", 404);
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
+  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
 
   const openSegRes = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1", args: [taskId] });
   if (openSegRes.rows[0]) {
