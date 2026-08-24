@@ -1743,7 +1743,7 @@ async function monthlyReport(db, employeeId, monthStr) {
         return {
           task_name: t.name, project: t.project, date: t.date,
           status: t.delivery.status, deadline_display: t.delivery.deadline_display,
-          delay_seconds: t.delivery.delay_seconds || 0,
+          delay_seconds: t.delivery.delay_seconds || 0, actual_delivery_display: t.delivery.actual_delivery_display || null,
         };
       });
       return { total: withStatus.length, on_time: onTime, on_time_buffer: onTimeBuffer, late, list };
@@ -2621,6 +2621,10 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   if (path === "/api/admin/client-governorates" && method === "GET") {
     const res = await db.execute("SELECT DISTINCT governorate FROM clients WHERE governorate IS NOT NULL AND governorate != '' ORDER BY governorate ASC");
     return json({ governorates: res.rows.map((r) => r.governorate) });
+  }
+  if (path === "/api/admin/client-cities" && method === "GET") {
+    const res = await db.execute("SELECT DISTINCT city_area FROM clients WHERE city_area IS NOT NULL AND city_area != '' ORDER BY city_area ASC");
+    return json({ cities: res.rows.map((r) => r.city_area) });
   }
   if (path === "/api/admin/clients" && method === "POST") {
     if (!pinOk(body)) return err("كود الأمان غلط", 403);
