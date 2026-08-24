@@ -1293,6 +1293,16 @@ textarea{resize:vertical;min-height:76px;}
 <option value="1">⭐ 1+</option>
 </select>
 </div>
+<div class="form-row">
+<div class="fg" style="margin:0">
+<div class="fl">Filter by Governorate <span class="fla">فلتر بالمحافظة</span></div>
+<select id="clFilterGovernorate" onchange="renderClientsList()"><option value="">-- All Governorates · كل المحافظات --</option></select>
+</div>
+<div class="fg" style="margin:0">
+<div class="fl">Filter by City/Area <span class="fla">فلتر بالمدينة أو المنطقة</span></div>
+<input type="text" id="clFilterCityArea" oninput="renderClientsList()"/>
+</div>
+</div>
 <div id="clientsListResult" style="margin-top:14px"></div>
 </div>
 
@@ -3437,12 +3447,29 @@ function renderAdminProjects() {
   }
 
   var clientFilter = document.getElementById("projectsListClientFilter") ? document.getElementById("projectsListClientFilter").value : "";
-  var filtered = adminProjectsFull.filter(function(p) {
+  var clientFiltered = adminProjectsFull.filter(function(p) {
     return !clientFilter || p.code.slice(0, 2) === clientFilter;
+  });
+
+  var deliveredCount = clientFiltered.filter(function(p){ return !!p.delivered_at; }).length;
+  var activeCount = clientFiltered.filter(function(p){ return !p.delivered_at && p.active; }).length;
+  var pausedCount = clientFiltered.filter(function(p){ return !p.delivered_at && !p.active; }).length;
+  var cardsHtml = "<div class='info-grid' style='margin-bottom:12px'>";
+  cardsHtml += filterCard("All <span class='fla'>الكل</span>", clientFiltered.length, "filterAdminProjectsStatus('all')", adminProjectsStatusFilter === "all");
+  cardsHtml += filterCard("Active <span class='fla'>شغال</span>", "<span style='color:var(--warn)'>" + activeCount + "</span>", "filterAdminProjectsStatus('active')", adminProjectsStatusFilter === "active");
+  cardsHtml += filterCard("Delivered <span class='fla'>اتسلم</span>", "<span style='color:var(--ok)'>" + deliveredCount + "</span>", "filterAdminProjectsStatus('delivered')", adminProjectsStatusFilter === "delivered");
+  cardsHtml += filterCard("Paused <span class='fla'>متوقف</span>", "<span style='color:var(--muted)'>" + pausedCount + "</span>", "filterAdminProjectsStatus('paused')", adminProjectsStatusFilter === "paused");
+  cardsHtml += "</div>";
+
+  var filtered = clientFiltered.filter(function(p) {
+    if (adminProjectsStatusFilter === "delivered") return !!p.delivered_at;
+    if (adminProjectsStatusFilter === "active") return !p.delivered_at && p.active;
+    if (adminProjectsStatusFilter === "paused") return !p.delivered_at && !p.active;
+    return true;
   });
   var sorted = filtered.slice().sort(function(a, b) { return a.code.localeCompare(b.code); });
 
-  if (!sorted.length) { el.innerHTML = "<div class='empty-log'>مفيش مشاريع تطابق الفلتر ده</div>"; return; }
+  if (!sorted.length) { el.innerHTML = cardsHtml + "<div class='empty-log'>مفيش مشاريع تطابق الفلتر ده</div>"; return; }
 
   var html = "";
   for (var i = 0; i < sorted.length; i++) {
@@ -3481,7 +3508,13 @@ function renderAdminProjects() {
     html += "<button class='btn-end-task' onclick=\"deleteProjectPrompt(" + p.id + ")\">DELETE PERMANENTLY · حذف نهائي</button>";
     html += "</div></div></div>";
   }
-  el.innerHTML = html;
+  el.innerHTML = cardsHtml + html;
+}
+
+var adminProjectsStatusFilter = "all";
+function filterAdminProjectsStatus(val) {
+  adminProjectsStatusFilter = val;
+  renderAdminProjects();
 }
 
 function markDeliveredPrompt(id) {
@@ -3983,7 +4016,8 @@ function renderDeliveryStatusReport(tasks) {
       "<th style='text-align:right;padding:8px'>Project · المشروع</th>" +
       "<th style='text-align:right;padding:8px'>Task · التاسك</th>" +
       "<th style='text-align:right;padding:8px'>Started · بدأ</th>" +
-      "<th style='text-align:right;padding:8px'>Deadline · الميعاد</th>" +
+      "<th style='text-align:right;padding:8px'>Deadline · الميعاد المحدد</th>" +
+      "<th style='text-align:right;padding:8px'>Actual Delivery · معاد التسليم الفعلي</th>" +
       "<th style='text-align:right;padding:8px'>Status · الحالة</th></tr>";
     for (var k = 0; k < filtered.length; k++) {
       var tr = filtered[k];
@@ -3994,6 +4028,7 @@ function renderDeliveryStatusReport(tasks) {
         "<td style='padding:8px'>" + tr.name + "</td>" +
         "<td style='padding:8px'>" + tr.start_time + " (" + tr.date + ")</td>" +
         "<td style='padding:8px'>" + (tr.delivery && tr.delivery.deadline_display ? tr.delivery.deadline_display : "—") + "</td>" +
+        "<td style='padding:8px'>" + (tr.delivery && tr.delivery.actual_delivery_display ? tr.delivery.actual_delivery_display : "—") + "</td>" +
         "<td style='padding:8px;color:" + m.color + ";font-weight:700'>" + m.label + "</td></tr>";
     }
     html += "</table></div>";
@@ -4023,7 +4058,8 @@ function renderDeliveryStatusReport(tasks) {
       html += "<div style='text-align:left;flex-shrink:0'>";
       html += "<span class='proj-badge' style='color:" + meta.color + ";border-color:" + meta.color + "'>" + meta.label + "</span>";
       html += "<div style='margin-top:6px;font-size:15px;color:#fff'>بدأ: " + tk.start_time + " (" + tk.date + ")</div>";
-      if (tk.delivery && tk.delivery.deadline_display) html += "<div style='margin-top:2px;font-size:15px;color:#fff'>الميعاد: " + tk.delivery.deadline_display + "</div>";
+      if (tk.delivery && tk.delivery.deadline_display) html += "<div style='margin-top:2px;font-size:15px;color:#fff'>الميعاد المحدد: " + tk.delivery.deadline_display + "</div>";
+      if (tk.delivery && tk.delivery.actual_delivery_display) html += "<div style='margin-top:2px;font-size:15px;color:#fff'>معاد التسليم الفعلي: " + tk.delivery.actual_delivery_display + "</div>";
       html += "</div>";
       html += "</div>";
     }
@@ -4061,11 +4097,11 @@ function dailyTaskDeadlineLine(t) {
   if (!d || d.status === "no_deadline") {
     return "<div class='fl-hint' style='margin-top:6px'>" + startedNote + " — مفيش ميعاد تسليم محدد</div>";
   }
-  var deadlineNote = "الميعاد: " + (d.deadline_display || "");
+  var deadlineNote = "الميعاد المحدد: " + (d.deadline_display || "");
   var color, deliveredNote = "";
-  if (d.status === "on_time") { color = "var(--ok)"; deliveredNote = " — سلّم: في الميعاد"; }
-  else if (d.status === "on_time_buffer") { color = "var(--warn)"; deliveredNote = " — سلّم: حوالين الميعاد (±6h)"; }
-  else if (d.status === "late") { color = "var(--danger)"; deliveredNote = " — سلّم متأخر بـ" + formatCountdown(d.delay_seconds || 0); }
+  if (d.status === "on_time") { color = "var(--ok)"; deliveredNote = " — سلّم في الميعاد — معاد التسليم الفعلي: " + (d.actual_delivery_display || ""); }
+  else if (d.status === "on_time_buffer") { color = "var(--warn)"; deliveredNote = " — سلّم حوالين الميعاد (±6h) — معاد التسليم الفعلي: " + (d.actual_delivery_display || ""); }
+  else if (d.status === "late") { color = "var(--danger)"; deliveredNote = " — سلّم متأخر بـ" + formatCountdown(d.delay_seconds || 0) + " — معاد التسليم الفعلي: " + (d.actual_delivery_display || ""); }
   else if (d.status === "in_progress") { color = "var(--warn)"; }
   else { color = "var(--danger)"; }
   return "<div class='fl-hint' style='margin-top:6px;color:" + color + "'>" + startedNote + " — " + deadlineNote + deliveredNote + "</div>";
@@ -5031,11 +5067,17 @@ async function loadClientTypes() {
 
 async function loadClientGovernorates() {
   var dl = document.getElementById("cmGovernorateDatalist");
-  if (!dl) return;
+  var filterSel = document.getElementById("clFilterGovernorate");
+  if (!dl && !filterSel) return;
   try {
     var res = await apiRequest("/api/admin/client-governorates", "GET");
     var govs = res.governorates || [];
-    dl.innerHTML = govs.map(function(g){ return "<option value='" + g.replace(/'/g,"") + "'></option>"; }).join("");
+    if (dl) dl.innerHTML = govs.map(function(g){ return "<option value='" + g.replace(/'/g,"") + "'></option>"; }).join("");
+    if (filterSel) {
+      var cur = filterSel.value;
+      filterSel.innerHTML = "<option value=''>-- All Governorates · كل المحافظات --</option>" + govs.map(function(g){ return "<option value='" + g.replace(/'/g,"") + "'>" + g + "</option>"; }).join("");
+      if (cur) filterSel.value = cur;
+    }
   } catch(e) { /* non-fatal */ }
 }
 
@@ -5085,10 +5127,14 @@ function renderClientsList() {
   var codeFilter = (document.getElementById("clFilterCode").value || "").trim();
   var typeFilter = document.getElementById("clFilterType").value;
   var ratingFilter = Number(document.getElementById("clFilterRating").value) || 0;
+  var govFilter = document.getElementById("clFilterGovernorate").value;
+  var cityFilter = (document.getElementById("clFilterCityArea").value || "").trim().toLowerCase();
   var filtered = adminClients.filter(function(c) {
     if (codeFilter && c.client_code.indexOf(codeFilter) === -1) return false;
     if (typeFilter && c.client_type !== typeFilter) return false;
     if (ratingFilter && (Number(c.rating) || 0) < ratingFilter) return false;
+    if (govFilter && c.governorate !== govFilter) return false;
+    if (cityFilter && !(c.city_area || "").toLowerCase().includes(cityFilter)) return false;
     return true;
   });
   if (!filtered.length) { el.innerHTML = "<div class='empty-log'>مفيش عملاء يطابقوا الفلتر ده</div>"; return; }
@@ -6562,7 +6608,10 @@ function taskDeadlineBoxHtml(t) {
   var html = "<div class='task-deadline-box' style='border-color:" + color + "'>";
   html += "<div class='task-deadline-status' style='color:" + color + "'>" + statusLabel + "</div>";
   html += "<div class='task-deadline-countdown' style='color:" + color + "'>" + countdownText + "</div>";
-  html += "<div class='task-deadline-date'>" + (d.deadline_display || "") + "</div>";
+  html += "<div class='task-deadline-date'>الميعاد المحدد: " + (d.deadline_display || "") + "</div>";
+  if (d.actual_delivery_display) {
+    html += "<div class='task-deadline-date' style='color:#fff'>معاد التسليم الفعلي: " + d.actual_delivery_display + "</div>";
+  }
   if (d.deadline_on_non_working_day) {
     html += "<div class='task-deadline-date' style='color:var(--warn);margin-top:2px'>⚠️ الميعاد في يوم إجازة</div>";
   }
@@ -6892,7 +6941,7 @@ function setSyncStatus(type, msg) {
   document.getElementById("syncStatus").textContent = msg;
 }
 function triggerAvatarUpload() { document.getElementById("avatarInput").click(); }
-function timeStr() { return new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true}); }
+function timeStr() { return new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true}); }
 function todayStr() { return new Date().toLocaleDateString("en-GB"); }
 function formatDuration(s) {
   return [Math.floor(s/3600),Math.floor((s%3600)/60),s%60].map(function(v){return String(v).padStart(2,"0");}).join(":");
