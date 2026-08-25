@@ -82,15 +82,9 @@ select option{background:#111;}
 .notif-item-del:hover{color:var(--danger);}
 .notif-panel-footer{padding:10px 16px;border-top:1px solid var(--border);text-align:center;font-size:13px;color:var(--muted2);cursor:pointer;}
 .notif-panel-footer:hover{color:var(--danger);}
-.admin-notif-bar{position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);}
-.admin-notif-bar-head{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;}
-.admin-notif-bar-head .notif-bell svg{stroke:var(--muted2);}
-.admin-notif-bar-head .notif-bell.has-unread svg{stroke:var(--warn);}
-.admin-notif-bar-label{font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);}
-.admin-notif-bar-label .fla{text-transform:none;letter-spacing:0;}
-.admin-notif-panel{max-height:0;overflow:hidden;transition:max-height .25s ease;}
-.admin-notif-panel.open{max-height:420px;overflow-y:auto;}
-.admin-notif-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;padding:0 20px 16px;}
+.admin-sticky-header{position:sticky;top:0;z-index:50;background:var(--bg);padding-top:4px;margin-bottom:22px;}
+.notif-panel.wide{width:600px;}
+.admin-notif-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 16px 16px;max-height:420px;overflow-y:auto;}
 .live-time{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;}
 .user-badge{display:flex;align-items:center;gap:8px;}
 .user-avatar{width:32px;height:32px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#000;overflow:hidden;cursor:pointer;}
@@ -833,9 +827,25 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div class="tab-content" id="content-admin">
-<div class="sec-head">
+<div class="admin-sticky-header">
+<div class="sec-head" style="display:flex;justify-content:space-between;align-items:flex-start;">
+<div>
 <div class="sec-title">MANAGEMENT</div>
 <div class="sec-sub">لوحة الإدارة الكاملة · Full Management Panel</div>
+</div>
+<div class="notif-bell-wrap">
+<div class="notif-bell" id="adminNotifBell" onclick="toggleAdminNotifBar()">
+<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+<span class="notif-badge" id="adminNotifBadge" style="display:none">0</span>
+</div>
+<div class="notif-panel wide" id="adminNotifPanel">
+<div class="notif-panel-header">
+<span>ADMIN ALERTS · تنبيهات الإدارة</span>
+</div>
+<div class="admin-notif-grid" id="adminNotifGrid"><div class="empty-log">بيحمّل...</div></div>
+<div class="notif-panel-footer" onclick="clearAllAdminNotifications()">🗑 مسح كل تنبيهات الإدارة · CLEAR ALL</div>
+</div>
+</div>
 </div>
 <div class="admin-subtabs">
 <div class="admin-subtab" id="subtab-overview" onclick="switchAdminPage('overview')">📊 OVERVIEW <span class="fla">نظرة عامة</span></div>
@@ -845,18 +855,6 @@ textarea{resize:vertical;min-height:76px;}
 <div class="admin-subtab" id="subtab-financial-reports" onclick="switchAdminPage('financial-reports')">📈 PROJECT &amp; CLIENT FINANCE <span class="fla">التقارير المالية للمشاريع والعملاء</span></div>
 <div class="admin-subtab" id="subtab-finance" onclick="switchAdminPage('finance')">💰 FINANCE <span class="fla">الحسابات</span></div>
 <div class="admin-subtab" id="subtab-reports" onclick="switchAdminPage('reports')">📈 REPORTS <span class="fla">تقارير</span></div>
-</div>
-<div class="admin-notif-bar">
-<div class="admin-notif-bar-head" onclick="toggleAdminNotifBar()">
-<div class="notif-bell" id="adminNotifBell">
-<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-<span class="notif-badge" id="adminNotifBadge" style="display:none">0</span>
-</div>
-<span class="admin-notif-bar-label">ADMIN ALERTS <span class="fla">تنبيهات الإدارة</span></span>
-</div>
-<div class="admin-notif-panel" id="adminNotifPanel">
-<div class="admin-notif-grid" id="adminNotifGrid"><div class="empty-log">بيحمّل...</div></div>
-<div class="notif-panel-footer" onclick="clearAllAdminNotifications()">🗑 مسح كل تنبيهات الإدارة · CLEAR ALL</div>
 </div>
 </div>
 <div class="admin-page" id="admin-page-overview">
@@ -2440,7 +2438,7 @@ function initNotifications() {
   apiRequest("/api/notifications/check", "POST", {}).catch(function(){});
   fetchNotifications();
   clearInterval(notifPollInterval);
-  notifPollInterval = setInterval(fetchNotifications, 15000);
+  notifPollInterval = setInterval(fetchNotifications, 8000);
   document.addEventListener("click", function(e) {
     var panel = document.getElementById("notifPanel");
     var bell = document.getElementById("notifBell");
@@ -2448,8 +2446,8 @@ function initNotifications() {
       panel.classList.remove("open");
     }
     var adminPanel = document.getElementById("adminNotifPanel");
-    var adminBar = document.querySelector(".admin-notif-bar-head");
-    if (adminPanel && adminPanel.classList.contains("open") && !adminPanel.contains(e.target) && adminBar && !adminBar.contains(e.target)) {
+    var adminBell = document.getElementById("adminNotifBell");
+    if (adminPanel && adminPanel.classList.contains("open") && !adminPanel.contains(e.target) && adminBell && !adminBell.contains(e.target)) {
       adminPanel.classList.remove("open");
     }
   });
@@ -7756,18 +7754,25 @@ function renderAdminNotifPanel() {
 function navigateNotification(n) {
   var rt = n.related_type;
   if (n.audience === "admin") {
-    switchTab("admin");
-    setTimeout(function() {
-      if (rt === "leave_request" || rt === "financial_request" || rt === "offclock_request" || rt === "permission_request" || rt === "task_deadline_request") {
-        jumpTo("section-requests");
-      } else if (n.type === "deadline_overdue" || n.type === "deadline_approaching") {
-        jumpTo("section-delivery-status");
-      } else if (n.type === "activity_task_start" || n.type === "activity_task_end") {
-        jumpTo("section-daily-tasks");
-      } else if (rt === "attendance" || rt === "break") {
-        jumpTo("section-emp-status");
-      }
-    }, 30);
+    document.querySelectorAll(".tab").forEach(function(t) { t.classList.remove("active"); });
+    document.querySelectorAll(".tab-content").forEach(function(c) { c.classList.remove("active"); });
+    document.getElementById("tab-admin").classList.add("active");
+    document.getElementById("content-admin").classList.add("active");
+    if (user && user.role === "admin") {
+      loadAdminData();
+      ensureCollapsibleObserver("content-admin");
+    }
+    var targetSection = null;
+    if (rt === "leave_request" || rt === "financial_request" || rt === "offclock_request" || rt === "permission_request" || rt === "task_deadline_request") {
+      targetSection = "section-requests";
+    } else if (n.type === "deadline_overdue" || n.type === "deadline_approaching") {
+      targetSection = "section-delivery-status";
+    } else if (n.type === "activity_task_start" || n.type === "activity_task_end") {
+      targetSection = "section-daily-tasks";
+    } else if (rt === "attendance" || rt === "break") {
+      targetSection = "section-emp-status";
+    }
+    if (targetSection) setTimeout(function() { jumpTo(targetSection); }, 120);
   } else {
     if (rt === "leave_request") { switchTab("requests"); setTimeout(function(){ scrollToId("myLeaveList"); }, 100); }
     else if (rt === "financial_request") { switchTab("requests"); setTimeout(function(){ scrollToId("myFinList"); }, 100); }
