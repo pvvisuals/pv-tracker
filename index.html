@@ -58,18 +58,39 @@ select option{background:#111;}
 .hd{width:1px;height:18px;background:var(--border);}
 .ht{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:4px;color:var(--muted);}
 .header-right{display:flex;align-items:center;gap:16px;}
-.notif-bell{position:relative;cursor:pointer;font-size:22px;line-height:1;user-select:none;}
-.notif-badge{position:absolute;top:-6px;right:-8px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;}
-.notif-panel{position:fixed;top:64px;left:16px;width:360px;max-width:90vw;max-height:70vh;background:var(--bg);border:1px solid var(--border);z-index:500;display:none;flex-direction:column;box-shadow:0 8px 24px rgba(0,0,0,.4);}
-.notif-panel.open{display:flex;}
+.notif-bell-wrap{position:relative;}
+.notif-bell{cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;user-select:none;transition:transform .15s ease;}
+.notif-bell svg{width:22px;height:22px;fill:none;stroke:var(--muted2);stroke-width:2;transition:stroke .2s ease;}
+.notif-bell.has-unread svg{stroke:#fff;}
+.notif-bell.ringing{animation:notifRing .5s ease;}
+@keyframes notifRing{0%,100%{transform:rotate(0);}15%{transform:rotate(14deg);}30%{transform:rotate(-12deg);}45%{transform:rotate(9deg);}60%{transform:rotate(-6deg);}75%{transform:rotate(3deg);}}
+.notif-badge{position:absolute;top:-4px;right:-6px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;}
+.notif-panel{position:absolute;top:calc(100% + 14px);right:0;width:360px;max-width:90vw;max-height:70vh;background:var(--bg);border:1px solid var(--border);z-index:500;display:flex;flex-direction:column;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  opacity:0;transform:translateY(-8px) scale(.98);pointer-events:none;visibility:hidden;transition:opacity .18s ease,transform .18s ease,visibility .18s;}
+.notif-panel.open{opacity:1;transform:translateY(0) scale(1);pointer-events:auto;visibility:visible;}
 .notif-panel-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);}
-.notif-mark-all{cursor:pointer;text-transform:none;letter-spacing:0;color:var(--accent, #6ea8fe);font-size:13px;}
+.notif-mark-all{cursor:pointer;text-transform:none;letter-spacing:0;color:#6ea8fe;font-size:13px;}
 .notif-panel-list{overflow-y:auto;flex:1;}
-.notif-item{padding:12px 16px;border-bottom:1px solid var(--border2);cursor:pointer;}
+.notif-item{padding:12px 16px;border-bottom:1px solid var(--border2);cursor:pointer;display:flex;gap:10px;align-items:flex-start;}
 .notif-item.unread{background:rgba(110,168,254,.06);border-right:3px solid var(--warn);}
-.notif-item-title{font-weight:700;font-size:14px;color:#fff;}
+.notif-item-main{flex:1;min-width:0;}
+.notif-item-title{font-weight:700;font-size:14px;color:#fff;display:flex;align-items:center;gap:6px;}
+.notif-new-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);flex-shrink:0;}
 .notif-item-body{font-size:13px;color:var(--muted);margin-top:4px;}
 .notif-item-time{font-size:11px;color:var(--muted2);margin-top:6px;}
+.notif-item-del{flex-shrink:0;color:var(--muted2);cursor:pointer;font-size:16px;line-height:1;padding:2px 4px;}
+.notif-item-del:hover{color:var(--danger);}
+.notif-panel-footer{padding:10px 16px;border-top:1px solid var(--border);text-align:center;font-size:13px;color:var(--muted2);cursor:pointer;}
+.notif-panel-footer:hover{color:var(--danger);}
+.admin-notif-bar{position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);}
+.admin-notif-bar-head{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;}
+.admin-notif-bar-head .notif-bell svg{stroke:var(--muted2);}
+.admin-notif-bar-head .notif-bell.has-unread svg{stroke:var(--warn);}
+.admin-notif-bar-label{font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);}
+.admin-notif-bar-label .fla{text-transform:none;letter-spacing:0;}
+.admin-notif-panel{max-height:0;overflow:hidden;transition:max-height .25s ease;}
+.admin-notif-panel.open{max-height:420px;overflow-y:auto;}
+.admin-notif-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;padding:0 20px 16px;}
 .live-time{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;}
 .user-badge{display:flex;align-items:center;gap:8px;}
 .user-avatar{width:32px;height:32px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#000;overflow:hidden;cursor:pointer;}
@@ -466,8 +487,19 @@ textarea{resize:vertical;min-height:76px;}
 <div class="ht">TRACKER</div>
 </div>
 <div class="header-right">
+<div class="notif-bell-wrap">
 <div class="notif-bell" id="notifBell" onclick="toggleNotifPanel()">
-🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span>
+<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+<span class="notif-badge" id="notifBadge" style="display:none">0</span>
+</div>
+<div class="notif-panel" id="notifPanel">
+<div class="notif-panel-header">
+<span>NOTIFICATIONS · الإشعارات</span>
+<span class="notif-mark-all" onclick="markAllNotificationsRead()">تعليم الكل كمقروء</span>
+</div>
+<div id="notifPanelList" class="notif-panel-list"><div class="empty-log">بيحمّل...</div></div>
+<div class="notif-panel-footer" onclick="clearAllNotifications()">🗑 مسح كل الإشعارات · CLEAR ALL</div>
+</div>
 </div>
 <div class="live-time" id="liveTime">12:00:00 AM</div>
 <div class="user-badge">
@@ -476,13 +508,6 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 </header>
-<div class="notif-panel" id="notifPanel">
-<div class="notif-panel-header">
-<span>NOTIFICATIONS · الإشعارات</span>
-<span class="notif-mark-all" onclick="markAllNotificationsRead()">تعليم الكل كمقروء</span>
-</div>
-<div id="notifPanelList" class="notif-panel-list"><div class="empty-log">بيحمّل...</div></div>
-</div>
 <nav class="tabs">
 <div class="tab active" onclick="switchTab('signin')" id="tab-signin">ATTENDANCE · الحضور</div>
 <div class="tab" onclick="switchTab('break')" id="tab-break">BREAK · الاستراحة</div>
@@ -820,6 +845,19 @@ textarea{resize:vertical;min-height:76px;}
 <div class="admin-subtab" id="subtab-financial-reports" onclick="switchAdminPage('financial-reports')">📈 PROJECT &amp; CLIENT FINANCE <span class="fla">التقارير المالية للمشاريع والعملاء</span></div>
 <div class="admin-subtab" id="subtab-finance" onclick="switchAdminPage('finance')">💰 FINANCE <span class="fla">الحسابات</span></div>
 <div class="admin-subtab" id="subtab-reports" onclick="switchAdminPage('reports')">📈 REPORTS <span class="fla">تقارير</span></div>
+</div>
+<div class="admin-notif-bar">
+<div class="admin-notif-bar-head" onclick="toggleAdminNotifBar()">
+<div class="notif-bell" id="adminNotifBell">
+<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+<span class="notif-badge" id="adminNotifBadge" style="display:none">0</span>
+</div>
+<span class="admin-notif-bar-label">ADMIN ALERTS <span class="fla">تنبيهات الإدارة</span></span>
+</div>
+<div class="admin-notif-panel" id="adminNotifPanel">
+<div class="admin-notif-grid" id="adminNotifGrid"><div class="empty-log">بيحمّل...</div></div>
+<div class="notif-panel-footer" onclick="clearAllAdminNotifications()">🗑 مسح كل تنبيهات الإدارة · CLEAR ALL</div>
+</div>
 </div>
 <div class="admin-page" id="admin-page-overview">
 <div class="log-wrap" style="margin-bottom:18px;">
@@ -2402,12 +2440,17 @@ function initNotifications() {
   apiRequest("/api/notifications/check", "POST", {}).catch(function(){});
   fetchNotifications();
   clearInterval(notifPollInterval);
-  notifPollInterval = setInterval(fetchNotifications, 60000);
+  notifPollInterval = setInterval(fetchNotifications, 15000);
   document.addEventListener("click", function(e) {
     var panel = document.getElementById("notifPanel");
     var bell = document.getElementById("notifBell");
     if (panel.classList.contains("open") && !panel.contains(e.target) && !bell.contains(e.target)) {
       panel.classList.remove("open");
+    }
+    var adminPanel = document.getElementById("adminNotifPanel");
+    var adminBar = document.querySelector(".admin-notif-bar-head");
+    if (adminPanel && adminPanel.classList.contains("open") && !adminPanel.contains(e.target) && adminBar && !adminBar.contains(e.target)) {
+      adminPanel.classList.remove("open");
     }
   });
 }
@@ -7616,79 +7659,182 @@ function setSyncStatus(type, msg) {
   document.getElementById("syncStatus").textContent = msg;
 }
 function triggerAvatarUpload() { document.getElementById("avatarInput").click(); }
-// ================= Notification bell =================
+// ================= Notification bell (personal + admin) =================
 var notifPollInterval = null;
 var notifCache = [];
+var adminNotifCache = [];
 
 async function fetchNotifications() {
   try {
-    var res = await apiRequest("/api/notifications?limit=30", "GET");
+    var res = await apiRequest("/api/notifications?audience=personal&limit=30", "GET");
     notifCache = res.notifications || [];
-    var badge = document.getElementById("notifBadge");
-    if (res.unread_count > 0) {
-      badge.style.display = "flex";
-      badge.textContent = res.unread_count > 99 ? "99+" : res.unread_count;
-    } else {
-      badge.style.display = "none";
-    }
+    updateBellState("notifBell", "notifBadge", res.unread_count);
     if (document.getElementById("notifPanel").classList.contains("open")) renderNotifPanel();
   } catch(e) { /* non-fatal — silent, don't interrupt the app for a notification fetch failure */ }
+  if (user && user.role === "admin") {
+    try {
+      var res2 = await apiRequest("/api/notifications?audience=admin&limit=60", "GET");
+      adminNotifCache = res2.notifications || [];
+      updateBellState("adminNotifBell", "adminNotifBadge", res2.unread_count);
+      if (document.getElementById("adminNotifPanel").classList.contains("open")) renderAdminNotifPanel();
+    } catch(e) { /* non-fatal */ }
+  }
+}
+
+function updateBellState(bellId, badgeId, unreadCount) {
+  var bell = document.getElementById(bellId);
+  var badge = document.getElementById(badgeId);
+  if (!bell || !badge) return;
+  if (unreadCount > 0) {
+    badge.style.display = "flex";
+    badge.textContent = unreadCount > 99 ? "99+" : unreadCount;
+    bell.classList.add("has-unread");
+  } else {
+    badge.style.display = "none";
+    bell.classList.remove("has-unread");
+  }
+}
+
+function ringBell(bellId) {
+  var bell = document.getElementById(bellId);
+  bell.classList.remove("ringing");
+  void bell.offsetWidth; // restart animation
+  bell.classList.add("ringing");
 }
 
 function toggleNotifPanel() {
   var panel = document.getElementById("notifPanel");
+  var willOpen = !panel.classList.contains("open");
   panel.classList.toggle("open");
-  if (panel.classList.contains("open")) renderNotifPanel();
+  ringBell("notifBell");
+  if (willOpen) renderNotifPanel();
+}
+
+function toggleAdminNotifBar() {
+  var panel = document.getElementById("adminNotifPanel");
+  var willOpen = !panel.classList.contains("open");
+  panel.classList.toggle("open");
+  ringBell("adminNotifBell");
+  if (willOpen) renderAdminNotifPanel();
 }
 
 var NOTIF_TYPE_ICON = {
   request_decided: "📋", new_request: "🆕", deadline_approaching: "⏰", deadline_overdue: "🔴",
-  penalty: "⚠️", notice: "📝", bonus: "💰", salary_change: "💵", day_edited: "✎",
+  penalty: "⚠️", notice: "📝", bonus: "💰", salary_change: "💵",
   unpaired_sign_in: "⚠️", long_session: "⚠️",
+  activity_sign_in: "🟢", activity_sign_out: "🔴", activity_break_start: "☕", activity_break_end: "☕",
+  activity_task_start: "▶️", activity_task_end: "⏹️",
 };
+
+function notifItemHtml(n) {
+  var icon = NOTIF_TYPE_ICON[n.type] || "🔔";
+  var html = "<div class='notif-item" + (n.is_read ? "" : " unread") + "' onclick=\"onNotifClick(" + n.id + ")\">";
+  html += "<div class='notif-item-main'>";
+  html += "<div class='notif-item-title'>" + (n.is_read ? "" : "<span class='notif-new-dot'></span>") + icon + " " + n.title + "</div>";
+  if (n.body) html += "<div class='notif-item-body'>" + n.body + "</div>";
+  html += "<div class='notif-item-time'>" + ltrSpan(n.created_at.slice(0,16)) + "</div>";
+  html += "</div>";
+  html += "<span class='notif-item-del' onclick=\"deleteNotification(event," + n.id + "," + (n.audience === "admin" ? "true" : "false") + ")\">✕</span>";
+  html += "</div>";
+  return html;
+}
 
 function renderNotifPanel() {
   var el = document.getElementById("notifPanelList");
   if (!notifCache.length) { el.innerHTML = "<div class='empty-log'>مفيش إشعارات لسه</div>"; return; }
-  var html = "";
-  for (var i = 0; i < notifCache.length; i++) {
-    var n = notifCache[i];
-    var icon = NOTIF_TYPE_ICON[n.type] || "🔔";
-    html += "<div class='notif-item" + (n.is_read ? "" : " unread") + "' onclick=\"onNotifClick(" + n.id + ",'" + (n.related_type||"") + "'," + (n.related_id||"null") + ")\">";
-    html += "<div class='notif-item-title'>" + icon + " " + n.title + "</div>";
-    if (n.body) html += "<div class='notif-item-body'>" + n.body + "</div>";
-    html += "<div class='notif-item-time'>" + ltrSpan(n.created_at.slice(0,16)) + "</div>";
-    html += "</div>";
-  }
-  el.innerHTML = html;
+  el.innerHTML = notifCache.map(notifItemHtml).join("");
 }
 
-async function onNotifClick(id, relatedType, relatedId) {
-  var n = notifCache.find(function(x){ return x.id === id; });
-  if (n && !n.is_read) {
+function renderAdminNotifPanel() {
+  var el = document.getElementById("adminNotifGrid");
+  if (!adminNotifCache.length) { el.innerHTML = "<div class='empty-log'>مفيش تنبيهات إدارة لسه</div>"; return; }
+  el.innerHTML = adminNotifCache.map(notifItemHtml).join("");
+}
+
+// Precise navigation per notification type — takes the person to the exact
+// section the notification is about, not just a generic tab switch.
+function navigateNotification(n) {
+  var rt = n.related_type;
+  if (n.audience === "admin") {
+    switchTab("admin");
+    setTimeout(function() {
+      if (rt === "leave_request" || rt === "financial_request" || rt === "offclock_request" || rt === "permission_request" || rt === "task_deadline_request") {
+        jumpTo("section-requests");
+      } else if (n.type === "deadline_overdue" || n.type === "deadline_approaching") {
+        jumpTo("section-delivery-status");
+      } else if (n.type === "activity_task_start" || n.type === "activity_task_end") {
+        jumpTo("section-daily-tasks");
+      } else if (rt === "attendance" || rt === "break") {
+        jumpTo("section-emp-status");
+      }
+    }, 30);
+  } else {
+    if (rt === "leave_request") { switchTab("requests"); setTimeout(function(){ scrollToId("myLeaveList"); }, 100); }
+    else if (rt === "financial_request") { switchTab("requests"); setTimeout(function(){ scrollToId("myFinList"); }, 100); }
+    else if (rt === "offclock_request") { switchTab("requests"); setTimeout(function(){ scrollToId("myOffList"); }, 100); }
+    else if (rt === "permission_request") { switchTab("requests"); setTimeout(function(){ scrollToId("myPermList"); }, 100); }
+    else if (rt === "task_deadline_request") { switchTab("tasks"); setTimeout(function(){ scrollToId("myDeadlineReqList"); }, 100); }
+    else if (rt === "task") { switchTab("tasks"); }
+    // penalty / bonus / notice / salary_change — informational only, no dedicated employee page to jump to
+  }
+}
+function scrollToId(id) {
+  var el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function onNotifClick(id) {
+  var n = notifCache.find(function(x){ return x.id === id; }) || adminNotifCache.find(function(x){ return x.id === id; });
+  if (!n) return;
+  if (!n.is_read) {
     n.is_read = true;
     try { await apiRequest("/api/notifications/" + id + "/read", "POST", {}); } catch(e) {}
     fetchNotifications();
   }
-  // Best-effort navigation to the relevant section based on what this notification is about.
-  if (relatedType === "leave_request" || relatedType === "financial_request" || relatedType === "offclock_request" || relatedType === "permission_request" || relatedType === "task_deadline_request") {
-    switchTab(user.role === "admin" ? "admin" : "requests");
-  } else if (relatedType === "task") {
-    switchTab("tasks");
-  }
+  navigateNotification(n);
   document.getElementById("notifPanel").classList.remove("open");
+  document.getElementById("adminNotifPanel").classList.remove("open");
+}
+
+async function deleteNotification(evt, id, isAdmin) {
+  evt.stopPropagation();
+  try {
+    await apiRequest("/api/notifications/" + id, "DELETE", {});
+    if (isAdmin) { adminNotifCache = adminNotifCache.filter(function(n){ return n.id !== id; }); renderAdminNotifPanel(); }
+    else { notifCache = notifCache.filter(function(n){ return n.id !== id; }); renderNotifPanel(); }
+    fetchNotifications();
+  } catch(e) { showToast("!", e.message); }
 }
 
 async function markAllNotificationsRead() {
   try {
-    await apiRequest("/api/notifications/read-all", "POST", {});
+    await apiRequest("/api/notifications/read-all?audience=personal", "POST", {});
     notifCache.forEach(function(n){ n.is_read = true; });
     renderNotifPanel();
     fetchNotifications();
   } catch(e) { showToast("!", e.message); }
 }
 
+async function clearAllNotifications() {
+  try {
+    await apiRequest("/api/notifications/clear-all?audience=personal", "POST", {});
+    notifCache = [];
+    renderNotifPanel();
+    fetchNotifications();
+  } catch(e) { showToast("!", e.message); }
+}
+
+async function clearAllAdminNotifications() {
+  try {
+    await apiRequest("/api/notifications/clear-all?audience=admin", "POST", {});
+    adminNotifCache = [];
+    renderAdminNotifPanel();
+    fetchNotifications();
+  } catch(e) { showToast("!", e.message); }
+}
+
 function timeStr() { return new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true}); }
+
 
 function todayStr() { return new Date().toLocaleDateString("en-GB"); }
 function formatDuration(s) {
