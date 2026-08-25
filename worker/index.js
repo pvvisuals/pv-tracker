@@ -520,19 +520,37 @@ export default {
 
       if (path === "/api/notifications" && method === "GET") {
         const limit = Math.min(Number(url.searchParams.get("limit")) || 30, 100);
-        const [listRes, unreadRes] = await Promise.all([
-          db.execute({ sql: "SELECT * FROM notifications WHERE recipient_id = ? ORDER BY created_at DESC LIMIT ?", args: [me.id, limit] }),
-          db.execute({ sql: "SELECT COUNT(*) as c FROM notifications WHERE recipient_id = ? AND is_read = 0", args: [me.id] }),
+        const audience = url.searchParams.get("audience") === "admin" ? "admin" : "personal";
+        const [listRes, personalUnreadRes, adminUnreadRes] = await Promise.all([
+          db.execute({ sql: "SELECT * FROM notifications WHERE recipient_id = ? AND audience = ? ORDER BY created_at DESC LIMIT ?", args: [me.id, audience, limit] }),
+          db.execute({ sql: "SELECT COUNT(*) as c FROM notifications WHERE recipient_id = ? AND audience = 'personal' AND is_read = 0", args: [me.id] }),
+          db.execute({ sql: "SELECT COUNT(*) as c FROM notifications WHERE recipient_id = ? AND audience = 'admin' AND is_read = 0", args: [me.id] }),
         ]);
-        return json({ notifications: listRes.rows, unread_count: Number(unreadRes.rows[0].c) });
+        return json({
+          notifications: listRes.rows,
+          unread_count: audience === "admin" ? Number(adminUnreadRes.rows[0].c) : Number(personalUnreadRes.rows[0].c),
+          personal_unread_count: Number(personalUnreadRes.rows[0].c),
+          admin_unread_count: Number(adminUnreadRes.rows[0].c),
+        });
       }
       const notifReadMatch = path.match(/^\/api\/notifications\/(\d+)\/read$/);
       if (notifReadMatch && method === "POST") {
         await db.execute({ sql: "UPDATE notifications SET is_read = 1 WHERE id = ? AND recipient_id = ?", args: [Number(notifReadMatch[1]), me.id] });
         return json({ ok: true });
       }
+      const notifDeleteMatch = path.match(/^\/api\/notifications\/(\d+)$/);
+      if (notifDeleteMatch && method === "DELETE") {
+        await db.execute({ sql: "DELETE FROM notifications WHERE id = ? AND recipient_id = ?", args: [Number(notifDeleteMatch[1]), me.id] });
+        return json({ ok: true });
+      }
       if (path === "/api/notifications/read-all" && method === "POST") {
-        await db.execute({ sql: "UPDATE notifications SET is_read = 1 WHERE recipient_id = ? AND is_read = 0", args: [me.id] });
+        const audience = url.searchParams.get("audience") === "admin" ? "admin" : "personal";
+        await db.execute({ sql: "UPDATE notifications SET is_read = 1 WHERE recipient_id = ? AND audience = ? AND is_read = 0", args: [me.id, audience] });
+        return json({ ok: true });
+      }
+      if (path === "/api/notifications/clear-all" && method === "POST") {
+        const audience = url.searchParams.get("audience") === "admin" ? "admin" : "personal";
+        await db.execute({ sql: "DELETE FROM notifications WHERE recipient_id = ? AND audience = ?", args: [me.id, audience] });
         return json({ ok: true });
       }
 
@@ -744,6 +762,7 @@ async function signIn(db, me) {
     }
   }
 
+  await notifyAdmins(db, "activity_sign_in", "تسجيل حضور", fn + " سجّل حضور الساعة " + t, "attendance", res.rows[0].id);
   return json({ entry: res.rows[0], late_arrival: lateArrival }, 201);
 }
 
@@ -781,6 +800,7 @@ async function signOut(db, me) {
     sql: `INSERT INTO attendance (employee_id, date, action, time, worked, first_name) VALUES (?,?,?,?,?,?) RETURNING *`,
     args: [me.id, today, "sign_out", t, worked, fn],
   });
+  await notifyAdmins(db, "activity_sign_out", "تسجيل انصراف", fn + " سجّل انصراف الساعة " + t + (worked ? " — اشتغل " + worked : ""), "attendance", res.rows[0].id);
   return json({ entry: res.rows[0] }, 201);
 }
 
@@ -860,6 +880,7 @@ async function startBreak(db, me) {
     sql: `INSERT INTO breaks (employee_id, date, start_time, first_name) VALUES (?,?,?,?) RETURNING *`,
     args: [me.id, today, t, fn],
   });
+  await notifyAdmins(db, "activity_break_start", "بدأ استراحة", fn + " بدأ استراحة الساعة " + t, "break", res.rows[0].id);
   return json({ entry: res.rows[0] }, 201);
 }
 
@@ -871,6 +892,7 @@ async function endBreak(db, me, breakId) {
   const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
   const dur = Math.max(0, Math.floor((Date.now() - new Date(brk.created_at + "Z").getTime()) / 1000));
   await db.execute({ sql: "UPDATE breaks SET end_time = ?, duration = ? WHERE id = ?", args: [t, dur, breakId] });
+  await notifyAdmins(db, "activity_break_end", "خلّص استراحة", me.name.split(" ")[0] + " خلّص استراحة (" + formatDuration(dur) + ")", "break", breakId);
   return json({ ok: true, entry: { ...brk, end_time: t, duration: dur } });
 }
 
@@ -915,6 +937,7 @@ async function addTask(db, me, body) {
     sql: `INSERT INTO task_segments (task_id, employee_id, date, start_display) VALUES (?,?,?,?)`,
     args: [task.id, me.id, today, t],
   });
+  await notifyAdmins(db, "activity_task_start", "بدأ تاسك", fn + " بدأ تاسك \"" + body.name + "\" — " + displayName, "task", task.id);
   return json({ task }, 201);
 }
 
@@ -1163,6 +1186,7 @@ async function endTask(db, me, taskId, body) {
   }
 
   await db.execute({ sql: "UPDATE tasks SET end_time = ?, duration = ?, paused = 0 WHERE id = ?", args: [t, totalSecs, taskId] });
+  await notifyAdmins(db, "activity_task_end", "خلّص تاسك", me.name.split(" ")[0] + " خلّص تاسك \"" + task.name + "\" (" + formatDuration(totalSecs) + ")", "task", taskId);
   return json({ ok: true, end_time: t, duration: totalSecs });
 }
 
@@ -1449,17 +1473,17 @@ const LONG_SESSION_SECONDS = 12 * 3600; // flag any single attendance session or
 // directly (or notifyAdmins to reach everyone with the admin role). This is
 // the single insertion point — Part 4 (browser push) will hook in here too,
 // so nothing else in the app needs to change when that's added.
-async function createNotification(db, recipientId, type, title, body, relatedType, relatedId) {
+async function createNotification(db, recipientId, type, title, body, relatedType, relatedId, audience) {
   if (!recipientId) return;
   await db.execute({
-    sql: "INSERT INTO notifications (recipient_id, type, title, body, related_type, related_id) VALUES (?,?,?,?,?,?)",
-    args: [recipientId, type, title, body || null, relatedType || null, relatedId || null],
+    sql: "INSERT INTO notifications (recipient_id, type, title, body, related_type, related_id, audience) VALUES (?,?,?,?,?,?,?)",
+    args: [recipientId, type, title, body || null, relatedType || null, relatedId || null, audience || "personal"],
   });
 }
 async function notifyAdmins(db, type, title, body, relatedType, relatedId) {
   const admins = await db.execute({ sql: "SELECT id FROM employees WHERE role = 'admin' AND is_active = 1", args: [] });
   for (const a of admins.rows) {
-    await createNotification(db, a.id, type, title, body, relatedType, relatedId);
+    await createNotification(db, a.id, type, title, body, relatedType, relatedId, "admin");
   }
 }
 
@@ -1786,10 +1810,6 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       sql: `INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES ${valuesSql}`,
       args: logQueue.flat(),
     });
-    await createNotification(
-      db, employeeId, "day_edited", "الأدمن عدّل بيانات يوم " + date,
-      logQueue.length + " تغيير — تقدر تراجع تفاصيله من سجل التعديلات", "day_edit", null
-    );
   }
   return json({ ok: true });
 }
