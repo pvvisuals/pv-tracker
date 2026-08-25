@@ -727,7 +727,7 @@ async function signIn(db, me) {
 async function signOut(db, me) {
   const todayForCheck = cairoDateStr();
   const [openTaskRes, openBreakRes] = await Promise.all([
-    db.execute({ sql: "SELECT name FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0", args: [me.id] }),
+    db.execute({ sql: "SELECT name FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0 AND deleted_at IS NULL", args: [me.id] }),
     db.execute({ sql: "SELECT id FROM breaks WHERE employee_id = ? AND date = ? AND end_time IS NULL", args: [me.id, todayForCheck] }),
   ]);
   const openItems = [];
@@ -1157,7 +1157,7 @@ async function attachSegments(db, tasks) {
 async function tasksToday(db, me) {
   const today = cairoDateStr();
   const res = await db.execute({
-    sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? AND deleted_at IS NULL ORDER BY created_at ASC",
     args: [me.id, today],
   });
   return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
@@ -1165,7 +1165,7 @@ async function tasksToday(db, me) {
 
 async function tasksByDate(db, me, dateStr) {
   const res = await db.execute({
-    sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? ORDER BY created_at ASC",
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND date = ? AND deleted_at IS NULL ORDER BY created_at ASC",
     args: [me.id, dateStr],
   });
   return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
@@ -1173,7 +1173,7 @@ async function tasksByDate(db, me, dateStr) {
 
 async function tasksByMonth(db, me, monthStr) {
   const isAll = monthStr === "all";
-  let sql = "SELECT * FROM tasks WHERE employee_id = ?";
+  let sql = "SELECT * FROM tasks WHERE employee_id = ? AND deleted_at IS NULL";
   const args = [me.id];
   if (!isAll) { sql += " AND date LIKE ?"; args.push(monthLikePattern(monthStr)); }
   sql += " ORDER BY created_at ASC";
@@ -1185,7 +1185,7 @@ async function tasksByMonth(db, me, monthStr) {
 // of which day they started, so a multi-day task never disappears.
 async function activeTasks(db, me) {
   const res = await db.execute({
-    sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0 ORDER BY created_at ASC",
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 0 AND deleted_at IS NULL ORDER BY created_at ASC",
     args: [me.id],
   });
   return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
@@ -1195,7 +1195,7 @@ async function activeTasks(db, me) {
 // employee can resume any of them whenever they get back to it.
 async function pausedTasksList(db, me) {
   const res = await db.execute({
-    sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 1 ORDER BY created_at ASC",
+    sql: "SELECT * FROM tasks WHERE employee_id = ? AND end_time IS NULL AND paused = 1 AND deleted_at IS NULL ORDER BY created_at ASC",
     args: [me.id],
   });
   return json({ tasks: await attachDeliveryStatus(db, await attachSegments(db, res.rows)) });
@@ -1422,7 +1422,7 @@ async function dayDetail(db, employeeId, date) {
   const [attRes, segRes, logRes, ackRes] = await Promise.all([
     db.execute({ sql: "SELECT * FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ? ORDER BY created_at ASC", args: [employeeId, prevDay, nextDay] }),
     db.execute({
-      sql: `SELECT ts.*, t.name as task_name, t.project as project_display, t.project_id, p.code as p_code, p.name as p_name
+      sql: `SELECT ts.*, t.name as task_name, t.project as project_display, t.project_id, t.deleted_at as task_deleted_at, p.code as p_code, p.name as p_name
             FROM task_segments ts JOIN tasks t ON t.id = ts.task_id LEFT JOIN projects p ON p.id = t.project_id
             WHERE ts.employee_id = ? AND ts.date BETWEEN ? AND ? ORDER BY ts.created_at ASC`,
       args: [employeeId, prevDay, nextDay],
@@ -1508,6 +1508,22 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
 
   for (const ed of edits) {
     const action = ed.action || "edit";
+
+    if (ed.type === "task" && (action === "delete" || action === "restore")) {
+      const cur = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
+      const row = cur.rows[0];
+      if (!row) return err("تاسك غير موجود");
+      if (action === "delete") {
+        await db.execute({ sql: "UPDATE tasks SET deleted_at = datetime('now'), deleted_by = ? WHERE id = ?", args: [admin.id, ed.record_id] });
+      } else {
+        await db.execute({ sql: "UPDATE tasks SET deleted_at = NULL, deleted_by = NULL WHERE id = ?", args: [ed.record_id] });
+      }
+      await db.execute({
+        sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+        args: [employeeId, date, "task", ed.record_id, action === "delete" ? "delete_task" : "restore_task", row.name, action === "delete" ? null : row.name, note || null, admin.id],
+      });
+      continue;
+    }
 
     if (ed.type === "attendance" && action === "delete") {
       const cur = await db.execute({ sql: "SELECT * FROM attendance WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
@@ -1596,6 +1612,34 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
         sql: "INSERT INTO task_segments (task_id, employee_id, date, start_display, created_at, end_display, ended_at) VALUES (?,?,?,?,?,?,?)",
         args: [taskRes.rows[0].id, employeeId, ed.start_date, startDisplay, startUtc, endDisplay, endUtc],
       });
+
+      // "Actual hours worked" and overtime are computed from ATTENDANCE
+      // (sign-in/out), not from the task itself — a task with no matching
+      // attendance for its day would otherwise silently NOT count toward
+      // hours or overtime, even though it's now on record. If there's no
+      // attendance at all for this date yet, create a matching sign-in/out
+      // covering the task exactly, so the hours are consistent everywhere
+      // immediately. If attendance already exists, it's left untouched
+      // (editing it blindly could distort real data) — the response flags
+      // this so the admin knows to double-check it covers the task.
+      const existingAtt = await db.execute({ sql: "SELECT COUNT(*) as c FROM attendance WHERE employee_id = ? AND date = ?", args: [employeeId, ed.start_date] });
+      let autoAttendanceAdded = false;
+      if (Number(existingAtt.rows[0].c) === 0) {
+        await db.execute({
+          sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?)",
+          args: [employeeId, ed.start_date, "sign_in", startDisplay, empFirstName, startUtc],
+        });
+        await db.execute({
+          sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?)",
+          args: [employeeId, ed.end_date, "sign_out", endDisplay, empFirstName, endUtc],
+        });
+        autoAttendanceAdded = true;
+        await db.execute({
+          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+          args: [employeeId, date, "attendance", taskRes.rows[0].id, "add_sign_in", null, startUtc, "تلقائي عشان التاسك الجديد يتحسب في الساعات الفعلية", admin.id],
+        });
+      }
+
       await db.execute({
         sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
         args: [employeeId, date, "task_segment", taskRes.rows[0].id, "add_task", null, ed.name + " (" + startDisplay + " → " + endDisplay + ")", note || null, admin.id],
@@ -1653,7 +1697,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       sql: `SELECT DISTINCT ts.date FROM task_segments ts
             JOIN tasks t ON t.id = ts.task_id
             JOIN projects p ON p.id = t.project_id
-            WHERE t.employee_id = ? AND ts.date BETWEEN ? AND ? AND p.overtime_enabled = 1`,
+            WHERE t.employee_id = ? AND ts.date BETWEEN ? AND ? AND p.overtime_enabled = 1 AND t.deleted_at IS NULL`,
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
@@ -1680,7 +1724,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       sql: `SELECT p.code, p.name, p.category, p.type, p.sub_code, p.simple_label,
                    SUM(COALESCE(t.duration,0)) as total_seconds, COUNT(*) as task_count
             FROM tasks t JOIN projects p ON p.id = t.project_id
-            WHERE t.employee_id = ? AND t.date BETWEEN ? AND ?
+            WHERE t.employee_id = ? AND t.date BETWEEN ? AND ? AND t.deleted_at IS NULL
             GROUP BY p.code, p.name, p.category, p.type, p.sub_code ORDER BY total_seconds DESC`,
       args: [employeeId, firstDay, lastDay],
     }),
@@ -1697,7 +1741,7 @@ async function monthlyReport(db, employeeId, monthStr) {
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
-      sql: "SELECT * FROM tasks WHERE employee_id = ? AND date BETWEEN ? AND ? AND deadline_at IS NOT NULL AND end_time IS NOT NULL",
+      sql: "SELECT * FROM tasks WHERE employee_id = ? AND date BETWEEN ? AND ? AND deadline_at IS NOT NULL AND end_time IS NOT NULL AND deleted_at IS NULL",
       args: [employeeId, firstDay, lastDay],
     }),
     db.execute({
@@ -1706,7 +1750,7 @@ async function monthlyReport(db, employeeId, monthStr) {
             FROM tasks t
             JOIN task_segments ts ON ts.task_id = t.id
             LEFT JOIN projects p ON p.id = t.project_id
-            WHERE t.employee_id = ? AND ts.date BETWEEN ? AND ?`,
+            WHERE t.employee_id = ? AND ts.date BETWEEN ? AND ? AND t.deleted_at IS NULL`,
       args: [employeeId, firstDay, lastDay],
     }),
   ]);
@@ -2160,7 +2204,7 @@ async function projectCostReportData(db, isMonthly, firstDay, lastDay) {
                 JOIN tasks t ON t.id = ts.task_id
                 JOIN employees e ON e.id = t.employee_id
                 JOIN projects p ON p.id = t.project_id
-                WHERE ts.ended_at IS NOT NULL`;
+                WHERE ts.ended_at IS NOT NULL AND t.deleted_at IS NULL`;
   const segArgs = [];
   if (isMonthly) { segSql += " AND ts.date BETWEEN ? AND ?"; segArgs.push(firstDay, lastDay); }
   const segRows = await db.execute({ sql: segSql, args: segArgs });
@@ -3672,7 +3716,7 @@ async function adminTasksByDay(db, employeeId, dateStr) {
              JOIN employees e ON e.id = t.employee_id
              JOIN task_segments ts ON ts.task_id = t.id
              LEFT JOIN projects p ON p.id = t.project_id
-             WHERE ts.date = ?`;
+             WHERE ts.date = ? AND t.deleted_at IS NULL`;
   const args = [date];
   if (employeeId && employeeId !== "all") { sql += " AND t.employee_id = ?"; args.push(Number(employeeId)); }
   sql += " ORDER BY e.emp_code ASC, t.created_at ASC";
@@ -3689,7 +3733,7 @@ async function adminTasksByMonth(db, employeeId, monthStr) {
              FROM tasks t
              JOIN employees e ON e.id = t.employee_id
              LEFT JOIN projects p ON p.id = t.project_id
-             WHERE 1=1`;
+             WHERE t.deleted_at IS NULL`;
   const args = [];
   if (!isAll) { sql += " AND t.date LIKE ?"; args.push(monthLikePattern(monthStr)); }
   if (employeeId && employeeId !== "all") { sql += " AND t.employee_id = ?"; args.push(Number(employeeId)); }
