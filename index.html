@@ -5144,6 +5144,7 @@ var currentDayEditEmployeeId = null, currentDayEditDate = null, currentDayEditDa
 async function openDayEditModal(employeeId, date) {
   currentDayEditEmployeeId = employeeId;
   currentDayEditDate = date;
+  dayEditNewAttendance = []; dayEditDeletedAttendance = []; dayEditNewTask = null; dayEditTaskActions = {};
   document.getElementById("dayEditDateLabel").textContent = "— " + date;
   document.getElementById("dayEditContent").innerHTML = "بيحمّل...";
   document.getElementById("dayEditNote").value = "";
@@ -5160,6 +5161,7 @@ function closeDayEditModal() {
 }
 
 var dayEditNewAttendance = []; // rows the admin is adding fresh: {tempId, action, date, time}
+var dayEditTaskActions = {}; // taskId -> 'delete' | 'restore' (pending, not yet saved)
 var dayEditDeletedAttendance = []; // record_ids marked for deletion
 var dayEditNewTask = null; // {project_id, name, description, start_date, start_time, end_date, end_time} or null
 
@@ -5198,18 +5200,29 @@ function renderDayEditContent(res) {
   if (res.segments.length) {
     for (var j = 0; j < res.segments.length; j++) {
       var s = res.segments[j];
-      html += "<div style='margin:10px 0;padding:10px;border:1px solid var(--border2)'>";
-      html += "<div class='fl-hint' style='margin-bottom:6px;color:#fff'>" + (s.p_code ? s.p_code + " - " + s.p_name : (s.project_display||"")) + " — " + s.task_name + "</div>";
+      var pendingAction = dayEditTaskActions[s.task_id];
+      var effectivelyDeleted = pendingAction ? (pendingAction === "delete") : !!s.task_deleted_at;
+      html += "<div style='margin:10px 0;padding:10px;border:1px solid var(--border2)" + (effectivelyDeleted ? ";opacity:.4" : "") + "'>";
+      html += "<div class='fl-hint' style='margin-bottom:6px;color:#fff'>" + (s.p_code ? s.p_code + " - " + s.p_name : (s.project_display||"")) + " — " + s.task_name + (effectivelyDeleted ? " <span style='color:var(--danger)'>(هيتحذف)</span>" : "") + "</div>";
       html += "<div class='form-row'>";
-      html += "<div class='fg' style='margin:0'><div class='fl'>Start Date · تاريخ البداية</div><input type='date' class='dayEditSegStartDate' data-record-id='" + s.id + "' value='" + s.date + "'/></div>";
-      html += "<div class='fg' style='margin:0'><div class='fl'>Start Time · وقت البداية</div><input type='time' class='dayEditSegStartInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.created_at) + "'/></div>";
+      html += "<div class='fg' style='margin:0'><div class='fl'>Start Date · تاريخ البداية</div><input type='date' class='dayEditSegStartDate' data-record-id='" + s.id + "' value='" + s.date + "' " + (effectivelyDeleted?"disabled":"") + "/></div>";
+      html += "<div class='fg' style='margin:0'><div class='fl'>Start Time · وقت البداية</div><input type='time' class='dayEditSegStartInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.created_at) + "' " + (effectivelyDeleted?"disabled":"") + "/></div>";
       html += "</div>";
       if (s.ended_at) {
         html += "<div class='form-row' style='margin-top:8px'>";
-        html += "<div class='fg' style='margin:0'><div class='fl'>End Date · تاريخ النهاية</div><input type='date' class='dayEditSegEndDate' data-record-id='" + s.id + "' value='" + s.ended_at.slice(0,10) + "'/></div>";
-        html += "<div class='fg' style='margin:0'><div class='fl'>End Time · وقت النهاية</div><input type='time' class='dayEditSegEndInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.ended_at) + "'/></div>";
+        html += "<div class='fg' style='margin:0'><div class='fl'>End Date · تاريخ النهاية</div><input type='date' class='dayEditSegEndDate' data-record-id='" + s.id + "' value='" + s.ended_at.slice(0,10) + "' " + (effectivelyDeleted?"disabled":"") + "/></div>";
+        html += "<div class='fg' style='margin:0'><div class='fl'>End Time · وقت النهاية</div><input type='time' class='dayEditSegEndInput' data-record-id='" + s.id + "' value='" + utcToCairo24Time(s.ended_at) + "' " + (effectivelyDeleted?"disabled":"") + "/></div>";
         html += "</div>";
       }
+      html += "<div style='margin-top:8px'>";
+      if (pendingAction) {
+        html += "<button class='btn-end-task' onclick=\"toggleDeleteTask(" + s.task_id + ",'" + pendingAction + "')\">↺ تراجع عن " + (pendingAction === "delete" ? "الحذف" : "الاسترجاع") + "</button>";
+      } else if (s.task_deleted_at) {
+        html += "<button class='btn-end-task' onclick=\"toggleDeleteTask(" + s.task_id + ",'restore')\">↺ استرجاع التاسك · RESTORE</button>";
+      } else {
+        html += "<button class='btn-end-task' onclick=\"toggleDeleteTask(" + s.task_id + ",'delete')\">🗑 حذف التاسك · DELETE</button>";
+      }
+      html += "</div>";
       html += "</div>";
     }
   } else {
@@ -5258,6 +5271,14 @@ function removeNewAttendance(tempId) {
   dayEditNewAttendance = dayEditNewAttendance.filter(function(x){ return x.tempId !== tempId; });
   renderDayEditContent(currentDayEditData);
 }
+function toggleDeleteTask(taskId, action) {
+  if (dayEditTaskActions[taskId] === action) {
+    delete dayEditTaskActions[taskId];
+  } else {
+    dayEditTaskActions[taskId] = action;
+  }
+  renderDayEditContent(currentDayEditData);
+}
 function toggleDeleteAttendance(recordId) {
   var idx = dayEditDeletedAttendance.indexOf(recordId);
   if (idx === -1) dayEditDeletedAttendance.push(recordId); else dayEditDeletedAttendance.splice(idx, 1);
@@ -5289,6 +5310,10 @@ function captureDayEditFormState() {
 
 function submitDayEdit() {
   var edits = [];
+
+  Object.keys(dayEditTaskActions).forEach(function(taskId) {
+    edits.push({ type: "task", action: dayEditTaskActions[taskId], record_id: Number(taskId) });
+  });
 
   document.querySelectorAll(".dayEditAttInput").forEach(function(inp) {
     var recId = Number(inp.dataset.recordId);
@@ -5356,7 +5381,7 @@ async function executeDayEdit(edits, note, pin) {
     await apiRequest("/api/admin/employees/" + currentDayEditEmployeeId + "/day-detail", "POST", { date: currentDayEditDate, edits: edits, note: note, pin: pin });
     showToast("v", "تم تعديل اليوم — كل الحسابات المرتبطة اتحدثت فوراً");
     currentDayEditData = null;
-    dayEditNewAttendance = []; dayEditDeletedAttendance = []; dayEditNewTask = null;
+    dayEditNewAttendance = []; dayEditDeletedAttendance = []; dayEditNewTask = null; dayEditTaskActions = {};
     var refreshJobs = [fetchAdminReport()];
     if (typeof fetchProjectCostReport === "function") refreshJobs.push(fetchProjectCostReport());
     if (typeof loadDailyTasksBrowser === "function") refreshJobs.push(loadDailyTasksBrowser());
