@@ -4031,10 +4031,15 @@ async function decideSimple(db, admin, table, requestId, body) {
   });
   const kindTitles = { financial_requests: "طلب مالي", offclock_requests: "طلب إذن خروج من البصمة", permission_requests: "طلب إذن انصراف" };
   const kindTitle = kindTitles[table] || "طلب";
+  // Notification related_type uses the "_request" suffix (matching every
+  // other request-decision notification below) — NOT the same as
+  // REQUEST_TABLE_TO_TYPE above, which intentionally uses short-form keys
+  // for the unrelated attachment-lookup system and must stay untouched.
+  const NOTIF_RELATED_TYPE = { financial_requests: "financial_request", offclock_requests: "offclock_request", permission_requests: "permission_request" };
   await createNotification(
     db, request.employee_id, "request_decided",
     body.action === "approve" ? "تم قبول " + kindTitle : "تم رفض " + kindTitle,
-    null, REQUEST_TABLE_TO_TYPE[table] || null, requestId
+    null, NOTIF_RELATED_TYPE[table] || null, requestId
   );
   return json({ ok: true });
 }
