@@ -499,6 +499,11 @@ export default {
       if (!me) return err("Unauthorized", 401);
 
       if (path === "/api/me" && method === "GET") return json(publicEmployee(me));
+      if (path === "/api/notifications/check" && method === "POST") {
+        await runDeadlineChecks(db, me.id);
+        if (me.role === "admin") await runAdminWideChecks(db);
+        return json({ ok: true });
+      }
       if (path === "/api/me/avatar" && method === "PATCH") return await updateAvatar(db, me, body);
       if (path === "/api/me/profile" && method === "PATCH") return await updateProfile(db, me, body);
       if (path === "/api/logout" && method === "POST") return await logout(req, db);
@@ -512,6 +517,24 @@ export default {
       const breakEndMatch = path.match(/^\/api\/breaks\/(\d+)\/end$/);
       if (breakEndMatch && method === "PATCH") return await endBreak(db, me, Number(breakEndMatch[1]));
       if (path === "/api/breaks/today" && method === "GET") return await breaksToday(db, me);
+
+      if (path === "/api/notifications" && method === "GET") {
+        const limit = Math.min(Number(url.searchParams.get("limit")) || 30, 100);
+        const [listRes, unreadRes] = await Promise.all([
+          db.execute({ sql: "SELECT * FROM notifications WHERE recipient_id = ? ORDER BY created_at DESC LIMIT ?", args: [me.id, limit] }),
+          db.execute({ sql: "SELECT COUNT(*) as c FROM notifications WHERE recipient_id = ? AND is_read = 0", args: [me.id] }),
+        ]);
+        return json({ notifications: listRes.rows, unread_count: Number(unreadRes.rows[0].c) });
+      }
+      const notifReadMatch = path.match(/^\/api\/notifications\/(\d+)\/read$/);
+      if (notifReadMatch && method === "POST") {
+        await db.execute({ sql: "UPDATE notifications SET is_read = 1 WHERE id = ? AND recipient_id = ?", args: [Number(notifReadMatch[1]), me.id] });
+        return json({ ok: true });
+      }
+      if (path === "/api/notifications/read-all" && method === "POST") {
+        await db.execute({ sql: "UPDATE notifications SET is_read = 1 WHERE recipient_id = ? AND is_read = 0", args: [me.id] });
+        return json({ ok: true });
+      }
 
       if (path === "/api/tasks" && method === "POST") return await addTask(db, me, body);
       if (path === "/api/tasks/today" && method === "GET") return await tasksToday(db, me);
@@ -962,6 +985,7 @@ async function requestDeadlineChange(db, me, taskId, body, source) {
     sql: `INSERT INTO task_deadline_requests (task_id, employee_id, reason, source) VALUES (?,?,?,?) RETURNING *`,
     args: [taskId, me.id, (body && body.reason) || (source === "long_pause" ? "وقوف طويل — محتاج تأجيل المعاد" : null), source],
   });
+  await notifyAdmins(db, "new_request", "طلب تمديد ميعاد جديد", me.name + " طلب تمديد ميعاد تسليم تاسك", "task_deadline_request", res.rows[0].id);
   return json({ request: res.rows[0] }, 201);
 }
 
@@ -1242,6 +1266,7 @@ async function requestLeave(db, me, body) {
     sql: `INSERT INTO leave_requests (employee_id, date, end_date, type, note) VALUES (?,?,?,?,?) RETURNING *`,
     args: [me.id, body.date, body.end_date || null, body.type, body.reason || body.note || null],
   });
+  await notifyAdmins(db, "new_request", "طلب إجازة جديد", me.name + " قدّم طلب إجازة من " + body.date, "leave_request", res.rows[0].id);
   return json({ request: res.rows[0], working_days: workingDays.length }, 201);
 }
 
@@ -1271,6 +1296,7 @@ async function requestFinancial(db, me, body) {
     sql: `INSERT INTO financial_requests (employee_id, amount_egp, reason) VALUES (?,?,?) RETURNING *`,
     args: [me.id, amount, body.reason || null],
   });
+  await notifyAdmins(db, "new_request", "طلب مالي جديد", me.name + " طلب مستحقات مالية بقيمة " + amount + " EGP", "financial_request", res.rows[0].id);
   return json({ request: res.rows[0] }, 201);
 }
 
@@ -1295,6 +1321,7 @@ async function requestOffclock(db, me, body) {
     sql: `INSERT INTO offclock_requests (employee_id, date, hours, reason) VALUES (?,?,?,?) RETURNING *`,
     args: [me.id, body.date, hours, body.reason || null],
   });
+  await notifyAdmins(db, "new_request", "طلب إذن خروج من البصمة جديد", me.name + " طلب " + hours + " ساعة يوم " + body.date, "offclock_request", res.rows[0].id);
   return json({ request: res.rows[0] }, 201);
 }
 
@@ -1333,6 +1360,7 @@ async function requestPermission(db, me, body) {
     sql: `INSERT INTO permission_requests (employee_id, date, hours, reason) VALUES (?,?,?,?) RETURNING *`,
     args: [me.id, body.date, hours, body.reason || null],
   });
+  await notifyAdmins(db, "new_request", "طلب إذن انصراف جديد", me.name + " طلب " + hours + " ساعة يوم " + body.date, "permission_request", res.rows[0].id);
   return json({ request: res.rows[0] }, 201);
 }
 
@@ -1416,6 +1444,116 @@ const LONG_SESSION_SECONDS = 12 * 3600; // flag any single attendance session or
 // attendance action, every task segment (with task/project context), which
 // of those exceed 12 hours (and whether that's already been acknowledged),
 // and the full edit history for the day.
+// ================= Notifications: core helpers =================
+// Every part of the app that wants to notify someone calls createNotification
+// directly (or notifyAdmins to reach everyone with the admin role). This is
+// the single insertion point — Part 4 (browser push) will hook in here too,
+// so nothing else in the app needs to change when that's added.
+async function createNotification(db, recipientId, type, title, body, relatedType, relatedId) {
+  if (!recipientId) return;
+  await db.execute({
+    sql: "INSERT INTO notifications (recipient_id, type, title, body, related_type, related_id) VALUES (?,?,?,?,?,?)",
+    args: [recipientId, type, title, body || null, relatedType || null, relatedId || null],
+  });
+}
+async function notifyAdmins(db, type, title, body, relatedType, relatedId) {
+  const admins = await db.execute({ sql: "SELECT id FROM employees WHERE role = 'admin' AND is_active = 1", args: [] });
+  for (const a of admins.rows) {
+    await createNotification(db, a.id, type, title, body, relatedType, relatedId);
+  }
+}
+
+// Runs whenever someone opens the app — evaluated fresh each time rather
+// than on a schedule (no Cloudflare Cron Trigger needed). Each specific
+// notification instance is deduped via notification_time_checks so the
+// same deadline or session doesn't re-notify on every single visit.
+const DEADLINE_APPROACHING_HOURS = 24;
+async function markIfNew(db, checkKey) {
+  try {
+    await db.execute({ sql: "INSERT INTO notification_time_checks (check_key) VALUES (?)", args: [checkKey] });
+    return true; // first time seeing this — go ahead and notify
+  } catch (e) {
+    return false; // UNIQUE constraint hit — already notified before, skip
+  }
+}
+
+async function runDeadlineChecks(db, employeeId) {
+  const nowMs = Date.now();
+  const res = await db.execute({
+    sql: "SELECT id, name, employee_id, deadline_at FROM tasks WHERE employee_id = ? AND deadline_at IS NOT NULL AND end_time IS NULL AND deleted_at IS NULL",
+    args: [employeeId],
+  });
+  for (const t of res.rows) {
+    const deadlineMs = new Date(t.deadline_at + "Z").getTime();
+    const hoursLeft = (deadlineMs - nowMs) / 3600000;
+    if (hoursLeft < 0) {
+      if (await markIfNew(db, "deadline_overdue||task:" + t.id)) {
+        await createNotification(db, employeeId, "deadline_overdue", "معاد تسليم فات", "تاسك \"" + t.name + "\" فات معاد تسليمه", "task", t.id);
+      }
+    } else if (hoursLeft <= DEADLINE_APPROACHING_HOURS) {
+      if (await markIfNew(db, "deadline_approaching||task:" + t.id)) {
+        await createNotification(db, employeeId, "deadline_approaching", "معاد تسليم قرّب", "تاسك \"" + t.name + "\" باقي عليه أقل من يوم", "task", t.id);
+      }
+    }
+  }
+}
+
+async function runAdminWideChecks(db) {
+  const nowMs = Date.now();
+  // Any employee's task deadline that's approaching/overdue — admins get
+  // their own copy of the same alert the employee gets.
+  const taskRes = await db.execute({
+    sql: `SELECT t.id, t.name, t.employee_id, t.deadline_at, e.name as emp_name FROM tasks t
+          JOIN employees e ON e.id = t.employee_id
+          WHERE t.deadline_at IS NOT NULL AND t.end_time IS NULL AND t.deleted_at IS NULL`,
+    args: [],
+  });
+  for (const t of taskRes.rows) {
+    const hoursLeft = (new Date(t.deadline_at + "Z").getTime() - nowMs) / 3600000;
+    if (hoursLeft < 0) {
+      if (await markIfNew(db, "admin_deadline_overdue||task:" + t.id)) {
+        await notifyAdmins(db, "deadline_overdue", "معاد تسليم فات", t.emp_name + " — تاسك \"" + t.name + "\" فات معاده", "task", t.id);
+      }
+    } else if (hoursLeft <= DEADLINE_APPROACHING_HOURS) {
+      if (await markIfNew(db, "admin_deadline_approaching||task:" + t.id)) {
+        await notifyAdmins(db, "deadline_approaching", "معاد تسليم قرّب", t.emp_name + " — تاسك \"" + t.name + "\" باقي عليه أقل من يوم", "task", t.id);
+      }
+    }
+  }
+
+  // Long sessions / unpaired sign-ins — bounded to a recent window to keep
+  // this fast on every app open, same detection logic used in the report.
+  const sinceDate = addDaysToDateStr(cairoDateStr(), -14);
+  const attRes = await db.execute({
+    sql: `SELECT a.*, e.name as emp_name FROM attendance a JOIN employees e ON e.id = a.employee_id
+          WHERE a.date >= ? ORDER BY a.employee_id ASC, a.created_at ASC`,
+    args: [sinceDate],
+  });
+  const byEmployee = {};
+  for (const r of attRes.rows) { (byEmployee[r.employee_id] = byEmployee[r.employee_id] || []).push(r); }
+  for (const empId in byEmployee) {
+    let pendingIn = null;
+    for (const r of byEmployee[empId]) {
+      if (r.action === "sign_in") {
+        if (pendingIn) {
+          if (await markIfNew(db, "admin_unpaired_sign_in||attendance:" + pendingIn.id)) {
+            await notifyAdmins(db, "unpaired_sign_in", "تسجيل دخول من غير خروج مرتبط", r.emp_name + " — يوم " + pendingIn.date, "attendance", pendingIn.id);
+          }
+        }
+        pendingIn = r;
+      } else if (r.action === "sign_out" && pendingIn) {
+        const secs = Math.floor((new Date(r.created_at + "Z").getTime() - new Date(pendingIn.created_at + "Z").getTime()) / 1000);
+        if (secs > LONG_SESSION_SECONDS) {
+          if (await markIfNew(db, "admin_long_attendance||attendance:" + pendingIn.id)) {
+            await notifyAdmins(db, "long_session", "جلسة حضور طويلة", r.emp_name + " — يوم " + pendingIn.date + " (" + (secs / 3600).toFixed(1) + " ساعة)", "attendance", pendingIn.id);
+          }
+        }
+        pendingIn = null;
+      }
+    }
+  }
+}
+
 async function dayDetail(db, employeeId, date) {
   const prevDay = addDaysToDateStr(date, -1);
   const nextDay = addDaysToDateStr(date, 1);
@@ -1648,6 +1786,10 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       sql: `INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES ${valuesSql}`,
       args: logQueue.flat(),
     });
+    await createNotification(
+      db, employeeId, "day_edited", "الأدمن عدّل بيانات يوم " + date,
+      logQueue.length + " تغيير — تقدر تراجع تفاصيله من سجل التعديلات", "day_edit", null
+    );
   }
   return json({ ok: true });
 }
@@ -2584,6 +2726,11 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       sql: "UPDATE task_deadline_requests SET status = ?, new_deadline_at = ?, decided_by = ?, decided_at = datetime('now') WHERE id = ?",
       args: [body.action === "approve" ? "approved" : "rejected", newDeadlineAt, admin.id, reqId],
     });
+    await createNotification(
+      db, request.employee_id, "request_decided",
+      body.action === "approve" ? "تم قبول طلب تمديد الميعاد" : "تم رفض طلب تمديد الميعاد",
+      null, "task_deadline_request", reqId
+    );
     return json({ ok: true });
   }
 
@@ -2728,6 +2875,13 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       args: [empId, body.effective_month, salary, workDays, dayHours, admin.id],
     });
     const res = await db.execute({ sql: "SELECT * FROM salary_history WHERE employee_id = ? AND effective_month = ?", args: [empId, body.effective_month] });
+    const nowMonthForNotif = cairoDateStr().slice(0, 7);
+    await createNotification(
+      db, empId, "salary_change",
+      body.effective_month <= nowMonthForNotif ? "تم تعديل الراتب" : "راتب جديد مجدول",
+      "من شهر " + body.effective_month + "، الراتب هيبقى " + salary + " EGP",
+      "salary_history", res.rows[0].id
+    );
     return json({ entry: res.rows[0] }, 201);
   }
   const salaryHistoryEditMatch = path.match(/^\/api\/admin\/salary-history\/(\d+)$/);
@@ -2815,6 +2969,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       sql: `INSERT INTO penalties (employee_id, amount_egp, days, reason, date, created_by) VALUES (?,?,?,?,?,?) RETURNING *`,
       args: [body.employee_id, amountEGP, days, body.reason || null, body.date, admin.id],
     });
+    await createNotification(db, body.employee_id, "penalty", "اتسجّل جزاء", body.reason || null, "penalty", res.rows[0].id);
     return json({ penalty: res.rows[0] }, 201);
   }
   if (path === "/api/admin/penalties" && method === "GET") {
@@ -2859,6 +3014,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       sql: `INSERT INTO bonuses (employee_id, amount_egp, reason, date, created_by) VALUES (?,?,?,?,?) RETURNING *`,
       args: [body.employee_id, amount, body.reason || null, body.date, admin.id],
     });
+    await createNotification(db, body.employee_id, "bonus", "اتسجّلت مكافأة", amount + " EGP" + (body.reason ? " — " + body.reason : ""), "bonus", res.rows[0].id);
     return json({ bonus: res.rows[0] }, 201);
   }
   if (path === "/api/admin/bonuses" && method === "GET") {
@@ -2989,6 +3145,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       sql: `INSERT INTO notices (employee_id, reason, date, created_by) VALUES (?,?,?,?) RETURNING *`,
       args: [body.employee_id, body.reason || null, body.date, admin.id],
     });
+    await createNotification(db, body.employee_id, "notice", "اتسجّل لفت نظر", body.reason || null, "notice", res.rows[0].id);
     return json({ notice: res.rows[0] }, 201);
   }
   if (path === "/api/admin/notices" && method === "GET") {
@@ -3650,6 +3807,12 @@ async function decideLeave(db, admin, requestId, body) {
     sql: "UPDATE leave_requests SET status = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?",
     args: [body.action === "approve" ? "approved" : "rejected", admin.id, requestId],
   });
+  await createNotification(
+    db, request.employee_id, "request_decided",
+    body.action === "approve" ? "تم قبول طلب الإجازة" : "تم رفض طلب الإجازة",
+    "طلب الإجازة من " + request.date + (request.end_date ? " لحد " + request.end_date : "") + " — " + (body.action === "approve" ? "اتوافق عليه" : "اترفض"),
+    "leave_request", requestId
+  );
   return json({ ok: true });
 }
 
@@ -3846,6 +4009,13 @@ async function decideSimple(db, admin, table, requestId, body) {
     sql: `UPDATE ${table} SET status = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?`,
     args: [body.action === "approve" ? "approved" : "rejected", admin.id, requestId],
   });
+  const kindTitles = { financial_requests: "طلب مالي", offclock_requests: "طلب إذن خروج من البصمة", permission_requests: "طلب إذن انصراف" };
+  const kindTitle = kindTitles[table] || "طلب";
+  await createNotification(
+    db, request.employee_id, "request_decided",
+    body.action === "approve" ? "تم قبول " + kindTitle : "تم رفض " + kindTitle,
+    null, REQUEST_TABLE_TO_TYPE[table] || null, requestId
+  );
   return json({ ok: true });
 }
 
