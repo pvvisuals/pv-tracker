@@ -1506,6 +1506,16 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
   const empRow = await db.execute({ sql: "SELECT name FROM employees WHERE id = ?", args: [employeeId] });
   const empFirstName = (empRow.rows[0] ? empRow.rows[0].name : "").split(" ")[0];
 
+  // Every change is queued here instead of being INSERTed one at a time —
+  // Cloudflare Workers caps how many database calls a single request can
+  // make, and a batch touching several fields would otherwise burn one
+  // extra call per field just for the audit log. All of them go in with
+  // ONE multi-row INSERT at the very end.
+  const logQueue = [];
+  const queueLog = (editType, recordId, fieldName, oldValue, newValue) => {
+    logQueue.push([employeeId, date, editType, recordId, fieldName, oldValue, newValue, note || null, admin.id]);
+  };
+
   for (const ed of edits) {
     const action = ed.action || "edit";
 
@@ -1518,10 +1528,7 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       } else {
         await db.execute({ sql: "UPDATE tasks SET deleted_at = NULL, deleted_by = NULL WHERE id = ?", args: [ed.record_id] });
       }
-      await db.execute({
-        sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-        args: [employeeId, date, "task", ed.record_id, action === "delete" ? "delete_task" : "restore_task", row.name, action === "delete" ? null : row.name, note || null, admin.id],
-      });
+      queueLog("task", ed.record_id, action === "delete" ? "delete_task" : "restore_task", row.name, action === "delete" ? null : row.name);
       continue;
     }
 
@@ -1530,10 +1537,7 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       const row = cur.rows[0];
       if (!row) return err("سجل حضور غير موجود");
       await db.execute({ sql: "DELETE FROM attendance WHERE id = ?", args: [ed.record_id] });
-      await db.execute({
-        sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-        args: [employeeId, date, "attendance", ed.record_id, "delete_" + row.action, row.created_at, null, note || null, admin.id],
-      });
+      queueLog("attendance", ed.record_id, "delete_" + row.action, row.created_at, null);
       continue;
     }
 
@@ -1550,19 +1554,13 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
           sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?) RETURNING *",
           args: [employeeId, targetDate, actionType, displayTime, empFirstName, newUtc],
         });
-        await db.execute({
-          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-          args: [employeeId, date, "attendance", res.rows[0].id, "add_" + actionType, null, newUtc, note || null, admin.id],
-        });
+        queueLog("attendance", res.rows[0].id, "add_" + actionType, null, newUtc);
       } else {
         const cur = await db.execute({ sql: "SELECT * FROM attendance WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
         const row = cur.rows[0];
         if (!row) return err("سجل حضور غير موجود");
         await db.execute({ sql: "UPDATE attendance SET date = ?, created_at = ?, time = ? WHERE id = ?", args: [targetDate, newUtc, displayTime, ed.record_id] });
-        await db.execute({
-          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-          args: [employeeId, date, "attendance", ed.record_id, row.action, row.created_at, newUtc, note || null, admin.id],
-        });
+        queueLog("attendance", ed.record_id, row.action, row.created_at, newUtc);
       }
     } else if (ed.type === "task_segment") {
       const targetDate = ed.date || date;
@@ -1582,10 +1580,7 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       sql += " WHERE id = ?";
       args.push(ed.record_id);
       await db.execute({ sql, args });
-      await db.execute({
-        sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-        args: [employeeId, date, "task_segment", ed.record_id, ed.field === "end" ? "segment_end" : "segment_start", row[field], newUtc, note || null, admin.id],
-      });
+      queueLog("task_segment", ed.record_id, ed.field === "end" ? "segment_end" : "segment_start", row[field], newUtc);
       const segs = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ?", args: [row.task_id] });
       let total = 0;
       for (const s of segs.rows) { if (s.ended_at) total += Math.max(0, Math.floor((new Date(s.ended_at + "Z").getTime() - new Date(s.created_at + "Z").getTime()) / 1000)); }
@@ -1612,100 +1607,49 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
         sql: "INSERT INTO task_segments (task_id, employee_id, date, start_display, created_at, end_display, ended_at) VALUES (?,?,?,?,?,?,?)",
         args: [taskRes.rows[0].id, employeeId, ed.start_date, startDisplay, startUtc, endDisplay, endUtc],
       });
+      queueLog("task_segment", taskRes.rows[0].id, "add_task", null, ed.name + " (" + startDisplay + " → " + endDisplay + ")");
 
       // "Actual hours worked" and overtime are computed from ATTENDANCE
-      // (sign-in/out), not from the task itself — a task whose time isn't
-      // FULLY COVERED by attendance for its day would silently not count
-      // toward hours or overtime, even though it's now on record. This
-      // extends whatever attendance already exists for the day so it
-      // covers the new task's full span: if the earliest sign-in is later
-      // than the task's start, that sign-in moves earlier (or one is
-      // added if none exists); same for the latest sign-out vs the task's
-      // end. Every change is logged so it's fully transparent.
+      // (sign-in/out), not from the task itself — extend whatever
+      // attendance already exists for the day so it covers the new
+      // task's full span (or add it if there's none at all).
       const taskStartMs = new Date(startUtc + "Z").getTime();
       const taskEndMs = new Date(endUtc + "Z").getTime();
       const attForDay = await db.execute({ sql: "SELECT * FROM attendance WHERE employee_id = ? AND date = ? ORDER BY created_at ASC", args: [employeeId, ed.start_date] });
-      const signIns = attForDay.rows.filter((r) => r.action === "sign_in");
-      const signOuts = attForDay.rows.filter((r) => r.action === "sign_out");
-      let earliestIn = null;
-      for (const r of signIns) { if (!earliestIn || new Date(r.created_at + "Z").getTime() < new Date(earliestIn.created_at + "Z").getTime()) earliestIn = r; }
-      let latestOut = null;
-      for (const r of signOuts) { if (!latestOut || new Date(r.created_at + "Z").getTime() > new Date(latestOut.created_at + "Z").getTime()) latestOut = r; }
+      let earliestIn = null, latestOut = null;
+      for (const r of attForDay.rows) {
+        if (r.action === "sign_in" && (!earliestIn || new Date(r.created_at + "Z").getTime() < new Date(earliestIn.created_at + "Z").getTime())) earliestIn = r;
+        if (r.action === "sign_out" && (!latestOut || new Date(r.created_at + "Z").getTime() > new Date(latestOut.created_at + "Z").getTime())) latestOut = r;
+      }
 
       if (!earliestIn) {
         await db.execute({ sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?)", args: [employeeId, ed.start_date, "sign_in", startDisplay, empFirstName, startUtc] });
-        await db.execute({
-          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-          args: [employeeId, date, "attendance", taskRes.rows[0].id, "add_sign_in", null, startUtc, "تلقائي عشان التاسك الجديد يتحسب في الساعات الفعلية", admin.id],
-        });
+        queueLog("attendance", taskRes.rows[0].id, "add_sign_in", null, startUtc);
       } else if (new Date(earliestIn.created_at + "Z").getTime() > taskStartMs) {
-        const oldVal = earliestIn.created_at;
         await db.execute({ sql: "UPDATE attendance SET created_at = ?, time = ? WHERE id = ?", args: [startUtc, startDisplay, earliestIn.id] });
-        await db.execute({
-          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-          args: [employeeId, date, "attendance", earliestIn.id, "sign_in", oldVal, startUtc, "اتقدّم تلقائياً عشان يغطي بداية التاسك الجديد", admin.id],
-        });
+        queueLog("attendance", earliestIn.id, "sign_in", earliestIn.created_at, startUtc);
       }
 
       if (!latestOut) {
         await db.execute({ sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?)", args: [employeeId, ed.end_date, "sign_out", endDisplay, empFirstName, endUtc] });
-        await db.execute({
-          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-          args: [employeeId, date, "attendance", taskRes.rows[0].id, "add_sign_out", null, endUtc, "تلقائي عشان التاسك الجديد يتحسب في الساعات الفعلية", admin.id],
-        });
+        queueLog("attendance", taskRes.rows[0].id, "add_sign_out", null, endUtc);
       } else if (new Date(latestOut.created_at + "Z").getTime() < taskEndMs) {
-        const oldVal = latestOut.created_at;
         await db.execute({ sql: "UPDATE attendance SET created_at = ?, time = ?, date = ? WHERE id = ?", args: [endUtc, endDisplay, ed.end_date, latestOut.id] });
-        await db.execute({
-          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-          args: [employeeId, date, "attendance", latestOut.id, "sign_out", oldVal, endUtc, "اتأخّر تلقائياً عشان يغطي نهاية التاسك الجديد", admin.id],
-        });
+        queueLog("attendance", latestOut.id, "sign_out", latestOut.created_at, endUtc);
       }
-
-      await db.execute({
-        sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
-        args: [employeeId, date, "task_segment", taskRes.rows[0].id, "add_task", null, ed.name + " (" + startDisplay + " → " + endDisplay + ")", note || null, admin.id],
-      });
     } else {
       return err("نوع تعديل غير معروف");
     }
   }
 
-  // Diagnostic feedback: recompute exactly what this day now looks like
-  // (same logic the monthly report uses), so the save response proves
-  // immediately whether the edit produced the expected actual-hours /
-  // overtime result — no separate trip to the report needed to check.
-  const diagAttRes = await db.execute({ sql: "SELECT * FROM attendance WHERE employee_id = ? AND date = ? ORDER BY created_at ASC", args: [employeeId, date] });
-  let diagPendingIn = null, diagActualSeconds = 0;
-  for (const r of diagAttRes.rows) {
-    if (r.action === "sign_in") diagPendingIn = r;
-    else if (r.action === "sign_out" && diagPendingIn) {
-      const secs = Math.floor((new Date(r.created_at + "Z").getTime() - new Date(diagPendingIn.created_at + "Z").getTime()) / 1000);
-      if (secs > 0) diagActualSeconds += secs;
-      diagPendingIn = null;
-    }
+  if (logQueue.length) {
+    const valuesSql = logQueue.map(() => "(?,?,?,?,?,?,?,?,?)").join(",");
+    await db.execute({
+      sql: `INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES ${valuesSql}`,
+      args: logQueue.flat(),
+    });
   }
-  const diagSalary = (await getCurrentSalaryMap(db, [employeeId]))[employeeId];
-  const diagDayHours = diagSalary ? Number(diagSalary.daily_work_hours) || 8 : 8;
-  const diagDaySeconds = diagDayHours * 3600;
-  const diagOtRes = await db.execute({
-    sql: `SELECT COUNT(*) as c FROM task_segments ts JOIN tasks t ON t.id = ts.task_id JOIN projects p ON p.id = t.project_id
-          WHERE t.employee_id = ? AND ts.date = ? AND p.overtime_enabled = 1 AND t.deleted_at IS NULL`,
-    args: [employeeId, date],
-  });
-  const diagOvertimeEligible = Number(diagOtRes.rows[0].c) > 0;
-  const diagOvertimeSeconds = diagOvertimeEligible ? Math.max(0, diagActualSeconds - diagDaySeconds) : 0;
-
-  return json({
-    ok: true,
-    diagnostic: {
-      date,
-      actual_hours: +(diagActualSeconds / 3600).toFixed(2),
-      standard_day_hours: diagDayHours,
-      overtime_eligible_day: diagOvertimeEligible,
-      overtime_hours: +(diagOvertimeSeconds / 3600).toFixed(2),
-    },
-  });
+  return json({ ok: true });
 }
 
 async function monthlyReport(db, employeeId, monthStr) {
