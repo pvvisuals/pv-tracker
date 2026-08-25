@@ -5378,18 +5378,8 @@ function submitDayEdit() {
 async function executeDayEdit(edits, note, pin) {
   showLoading(true);
   try {
-    var res = await apiRequest("/api/admin/employees/" + currentDayEditEmployeeId + "/day-detail", "POST", { date: currentDayEditDate, edits: edits, note: note, pin: pin });
-    var diag = res.diagnostic;
-    var diagMsg = "تم تعديل اليوم";
-    if (diag) {
-      diagMsg += " — الساعات الفعلية دلوقتي: " + diag.actual_hours + "h";
-      if (diag.overtime_eligible_day) {
-        diagMsg += diag.overtime_hours > 0 ? " — أوفرتايم محسوب: " + diag.overtime_hours + "h" : " — يوم فيه مشروع أوفرتايم بس الساعات لسه ماعدتش الـ" + diag.standard_day_hours + "h العادية";
-      } else {
-        diagMsg += " — اليوم ده مفيهوش مشروع مفعّل عليه أوفرتايم";
-      }
-    }
-    showToast("v", diagMsg, 7000);
+    await apiRequest("/api/admin/employees/" + currentDayEditEmployeeId + "/day-detail", "POST", { date: currentDayEditDate, edits: edits, note: note, pin: pin });
+    showToast("v", "تم تعديل اليوم — كل الحسابات المرتبطة اتحدثت فوراً");
     currentDayEditData = null;
     dayEditNewAttendance = []; dayEditDeletedAttendance = []; dayEditNewTask = null; dayEditTaskActions = {};
     var refreshJobs = [fetchAdminReport()];
@@ -5420,23 +5410,41 @@ async function openDayHistoryPanel(employeeId, date) {
     if (!log.length) { document.getElementById("dayHistoryContent").innerHTML = "<div class='empty-log'>مفيش تعديلات على اليوم ده لسه</div>"; return; }
     var fieldLabels = {
       sign_in: "تعديل وقت الدخول", sign_out: "تعديل وقت الخروج",
-      add_sign_in: "إضافة تسجيل دخول جديد", add_sign_out: "إضافة تسجيل انصراف جديد",
+      add_sign_in: "إضافة تسجيل دخول", add_sign_out: "إضافة تسجيل انصراف",
       delete_sign_in: "حذف تسجيل دخول", delete_sign_out: "حذف تسجيل انصراف",
-      segment_start: "تعديل بداية جزء شغل", segment_end: "تعديل نهاية جزء شغل",
-      add_task: "إضافة تاسك جديد",
+      segment_start: "بداية جزء شغل", segment_end: "نهاية جزء شغل",
+      add_task: "إضافة تاسك جديد", delete_task: "حذف تاسك", restore_task: "استرجاع تاسك",
     };
-    var html = "<div class='log-wrap'>";
+    // Group everything saved in the same action together (same save = same
+    // timestamp + same admin + same note) so it reads as ONE event with a
+    // list of what changed, instead of a flat repeated list.
+    var groups = [];
+    var groupMap = {};
     for (var i = 0; i < log.length; i++) {
       var l = log[i];
-      var actionLabel = fieldLabels[l.field_name] || l.field_name;
-      var isAdd = l.field_name.indexOf("add_") === 0;
-      var isDelete = l.field_name.indexOf("delete_") === 0;
-      html += "<div class='log-entry'><div class='log-type'>" + ltrSpan(l.edited_at.slice(0,16)) + "</div>";
-      html += "<div class='log-note'><b>" + actionLabel + "</b><br/>";
-      if (isAdd) html += "القيمة: " + formatEditLogValue(l.new_value);
-      else if (isDelete) html += "كان: " + formatEditLogValue(l.old_value);
-      else html += "من " + formatEditLogValue(l.old_value) + " إلى " + formatEditLogValue(l.new_value);
-      html += "<br/>بواسطة: " + (l.edited_by_name || "-") + (l.note ? "<br/>ملاحظة: " + l.note : "") + "</div></div>";
+      var key = l.edited_at + "||" + l.edited_by_name + "||" + (l.note || "");
+      if (!groupMap[key]) { groupMap[key] = { edited_at: l.edited_at, edited_by_name: l.edited_by_name, note: l.note, items: [] }; groups.push(groupMap[key]); }
+      groupMap[key].items.push(l);
+    }
+    var html = "<div class='log-wrap'>";
+    for (var g = 0; g < groups.length; g++) {
+      var grp = groups[g];
+      html += "<div class='log-entry'>";
+      html += "<div class='log-type'>" + ltrSpan(grp.edited_at.slice(0,16)) + "</div>";
+      html += "<div class='log-note'><b>بواسطة: " + (grp.edited_by_name || "-") + "</b>" + (grp.note ? " — " + grp.note : "") + "</div>";
+      html += "<div style='margin-top:6px;padding-right:14px;border-right:2px solid var(--border2)'>";
+      for (var j = 0; j < grp.items.length; j++) {
+        var l = grp.items[j];
+        var actionLabel = fieldLabels[l.field_name] || l.field_name;
+        var isAdd = l.field_name.indexOf("add_") === 0;
+        var isDelete = l.field_name.indexOf("delete_") === 0;
+        html += "<div style='margin-bottom:6px;font-size:14px'>• <b>" + actionLabel + "</b>: ";
+        if (isAdd) html += formatEditLogValue(l.new_value);
+        else if (isDelete) html += "كان " + formatEditLogValue(l.old_value);
+        else html += formatEditLogValue(l.old_value) + " ← " + formatEditLogValue(l.new_value);
+        html += "</div>";
+      }
+      html += "</div></div>";
     }
     html += "</div>";
     document.getElementById("dayHistoryContent").innerHTML = html;
