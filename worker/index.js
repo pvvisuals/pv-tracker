@@ -1670,7 +1670,42 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       return err("نوع تعديل غير معروف");
     }
   }
-  return json({ ok: true });
+
+  // Diagnostic feedback: recompute exactly what this day now looks like
+  // (same logic the monthly report uses), so the save response proves
+  // immediately whether the edit produced the expected actual-hours /
+  // overtime result — no separate trip to the report needed to check.
+  const diagAttRes = await db.execute({ sql: "SELECT * FROM attendance WHERE employee_id = ? AND date = ? ORDER BY created_at ASC", args: [employeeId, date] });
+  let diagPendingIn = null, diagActualSeconds = 0;
+  for (const r of diagAttRes.rows) {
+    if (r.action === "sign_in") diagPendingIn = r;
+    else if (r.action === "sign_out" && diagPendingIn) {
+      const secs = Math.floor((new Date(r.created_at + "Z").getTime() - new Date(diagPendingIn.created_at + "Z").getTime()) / 1000);
+      if (secs > 0) diagActualSeconds += secs;
+      diagPendingIn = null;
+    }
+  }
+  const diagSalary = (await getCurrentSalaryMap(db, [employeeId]))[employeeId];
+  const diagDayHours = diagSalary ? Number(diagSalary.daily_work_hours) || 8 : 8;
+  const diagDaySeconds = diagDayHours * 3600;
+  const diagOtRes = await db.execute({
+    sql: `SELECT COUNT(*) as c FROM task_segments ts JOIN tasks t ON t.id = ts.task_id JOIN projects p ON p.id = t.project_id
+          WHERE t.employee_id = ? AND ts.date = ? AND p.overtime_enabled = 1 AND t.deleted_at IS NULL`,
+    args: [employeeId, date],
+  });
+  const diagOvertimeEligible = Number(diagOtRes.rows[0].c) > 0;
+  const diagOvertimeSeconds = diagOvertimeEligible ? Math.max(0, diagActualSeconds - diagDaySeconds) : 0;
+
+  return json({
+    ok: true,
+    diagnostic: {
+      date,
+      actual_hours: +(diagActualSeconds / 3600).toFixed(2),
+      standard_day_hours: diagDayHours,
+      overtime_eligible_day: diagOvertimeEligible,
+      overtime_hours: +(diagOvertimeSeconds / 3600).toFixed(2),
+    },
+  });
 }
 
 async function monthlyReport(db, employeeId, monthStr) {
