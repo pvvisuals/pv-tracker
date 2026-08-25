@@ -1614,29 +1614,51 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       });
 
       // "Actual hours worked" and overtime are computed from ATTENDANCE
-      // (sign-in/out), not from the task itself — a task with no matching
-      // attendance for its day would otherwise silently NOT count toward
-      // hours or overtime, even though it's now on record. If there's no
-      // attendance at all for this date yet, create a matching sign-in/out
-      // covering the task exactly, so the hours are consistent everywhere
-      // immediately. If attendance already exists, it's left untouched
-      // (editing it blindly could distort real data) — the response flags
-      // this so the admin knows to double-check it covers the task.
-      const existingAtt = await db.execute({ sql: "SELECT COUNT(*) as c FROM attendance WHERE employee_id = ? AND date = ?", args: [employeeId, ed.start_date] });
-      let autoAttendanceAdded = false;
-      if (Number(existingAtt.rows[0].c) === 0) {
-        await db.execute({
-          sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?)",
-          args: [employeeId, ed.start_date, "sign_in", startDisplay, empFirstName, startUtc],
-        });
-        await db.execute({
-          sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?)",
-          args: [employeeId, ed.end_date, "sign_out", endDisplay, empFirstName, endUtc],
-        });
-        autoAttendanceAdded = true;
+      // (sign-in/out), not from the task itself — a task whose time isn't
+      // FULLY COVERED by attendance for its day would silently not count
+      // toward hours or overtime, even though it's now on record. This
+      // extends whatever attendance already exists for the day so it
+      // covers the new task's full span: if the earliest sign-in is later
+      // than the task's start, that sign-in moves earlier (or one is
+      // added if none exists); same for the latest sign-out vs the task's
+      // end. Every change is logged so it's fully transparent.
+      const taskStartMs = new Date(startUtc + "Z").getTime();
+      const taskEndMs = new Date(endUtc + "Z").getTime();
+      const attForDay = await db.execute({ sql: "SELECT * FROM attendance WHERE employee_id = ? AND date = ? ORDER BY created_at ASC", args: [employeeId, ed.start_date] });
+      const signIns = attForDay.rows.filter((r) => r.action === "sign_in");
+      const signOuts = attForDay.rows.filter((r) => r.action === "sign_out");
+      let earliestIn = null;
+      for (const r of signIns) { if (!earliestIn || new Date(r.created_at + "Z").getTime() < new Date(earliestIn.created_at + "Z").getTime()) earliestIn = r; }
+      let latestOut = null;
+      for (const r of signOuts) { if (!latestOut || new Date(r.created_at + "Z").getTime() > new Date(latestOut.created_at + "Z").getTime()) latestOut = r; }
+
+      if (!earliestIn) {
+        await db.execute({ sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?)", args: [employeeId, ed.start_date, "sign_in", startDisplay, empFirstName, startUtc] });
         await db.execute({
           sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
           args: [employeeId, date, "attendance", taskRes.rows[0].id, "add_sign_in", null, startUtc, "تلقائي عشان التاسك الجديد يتحسب في الساعات الفعلية", admin.id],
+        });
+      } else if (new Date(earliestIn.created_at + "Z").getTime() > taskStartMs) {
+        const oldVal = earliestIn.created_at;
+        await db.execute({ sql: "UPDATE attendance SET created_at = ?, time = ? WHERE id = ?", args: [startUtc, startDisplay, earliestIn.id] });
+        await db.execute({
+          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+          args: [employeeId, date, "attendance", earliestIn.id, "sign_in", oldVal, startUtc, "اتقدّم تلقائياً عشان يغطي بداية التاسك الجديد", admin.id],
+        });
+      }
+
+      if (!latestOut) {
+        await db.execute({ sql: "INSERT INTO attendance (employee_id, date, action, time, first_name, created_at) VALUES (?,?,?,?,?,?)", args: [employeeId, ed.end_date, "sign_out", endDisplay, empFirstName, endUtc] });
+        await db.execute({
+          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+          args: [employeeId, date, "attendance", taskRes.rows[0].id, "add_sign_out", null, endUtc, "تلقائي عشان التاسك الجديد يتحسب في الساعات الفعلية", admin.id],
+        });
+      } else if (new Date(latestOut.created_at + "Z").getTime() < taskEndMs) {
+        const oldVal = latestOut.created_at;
+        await db.execute({ sql: "UPDATE attendance SET created_at = ?, time = ?, date = ? WHERE id = ?", args: [endUtc, endDisplay, ed.end_date, latestOut.id] });
+        await db.execute({
+          sql: "INSERT INTO day_edit_log (employee_id, date, edit_type, record_id, field_name, old_value, new_value, note, edited_by) VALUES (?,?,?,?,?,?,?,?,?)",
+          args: [employeeId, date, "attendance", latestOut.id, "sign_out", oldVal, endUtc, "اتأخّر تلقائياً عشان يغطي نهاية التاسك الجديد", admin.id],
         });
       }
 
