@@ -5378,8 +5378,18 @@ function submitDayEdit() {
 async function executeDayEdit(edits, note, pin) {
   showLoading(true);
   try {
-    await apiRequest("/api/admin/employees/" + currentDayEditEmployeeId + "/day-detail", "POST", { date: currentDayEditDate, edits: edits, note: note, pin: pin });
-    showToast("v", "تم تعديل اليوم — كل الحسابات المرتبطة اتحدثت فوراً");
+    var res = await apiRequest("/api/admin/employees/" + currentDayEditEmployeeId + "/day-detail", "POST", { date: currentDayEditDate, edits: edits, note: note, pin: pin });
+    var diag = res.diagnostic;
+    var diagMsg = "تم تعديل اليوم";
+    if (diag) {
+      diagMsg += " — الساعات الفعلية دلوقتي: " + diag.actual_hours + "h";
+      if (diag.overtime_eligible_day) {
+        diagMsg += diag.overtime_hours > 0 ? " — أوفرتايم محسوب: " + diag.overtime_hours + "h" : " — يوم فيه مشروع أوفرتايم بس الساعات لسه ماعدتش الـ" + diag.standard_day_hours + "h العادية";
+      } else {
+        diagMsg += " — اليوم ده مفيهوش مشروع مفعّل عليه أوفرتايم";
+      }
+    }
+    showToast("v", diagMsg, 7000);
     currentDayEditData = null;
     dayEditNewAttendance = []; dayEditDeletedAttendance = []; dayEditNewTask = null; dayEditTaskActions = {};
     var refreshJobs = [fetchAdminReport()];
@@ -7544,7 +7554,7 @@ window.addEventListener("scroll", function() {
   if (window.scrollY > 260) btn.classList.add("show"); else btn.classList.remove("show");
 });
 
-function showToast(icon, msg) {
+function showToast(icon, msg, durationMs) {
   clearTimeout(toastTimer);
   var t = document.getElementById("toast");
   t.classList.remove("hide"); t.classList.add("show");
@@ -7553,7 +7563,7 @@ function showToast(icon, msg) {
   toastTimer = setTimeout(function() {
     t.classList.add("hide");
     setTimeout(function() { t.classList.remove("show"); }, 200);
-  }, 3000);
+  }, durationMs || 3000);
 }
 function showLoading(show) { document.getElementById("loadingOverlay").classList.toggle("active", show); }
 function setSyncStatus(type, msg) {
