@@ -2434,9 +2434,18 @@ async function initApp() {
   await loadTodayData();
 }
 
+function fixAdminStickyOffset() {
+  var outer = document.getElementById("stickyTopWrap");
+  var inner = document.querySelector(".admin-sticky-header");
+  if (!outer || !inner) return;
+  inner.style.top = outer.offsetHeight + "px";
+}
+
 function initNotifications() {
   apiRequest("/api/notifications/check", "POST", {}).catch(function(){});
   fetchNotifications();
+  fixAdminStickyOffset();
+  window.addEventListener("resize", fixAdminStickyOffset);
   clearInterval(notifPollInterval);
   notifPollInterval = setInterval(fetchNotifications, 8000);
   document.addEventListener("click", function(e) {
@@ -7529,6 +7538,7 @@ function switchTab(name) {
     loadAdminData();
     switchAdminPage("overview");
     ensureCollapsibleObserver("content-admin");
+    setTimeout(fixAdminStickyOffset, 50);
   }
 }
 
@@ -7724,12 +7734,25 @@ var NOTIF_TYPE_ICON = {
   activity_task_start: "▶️", activity_task_end: "⏹️",
 };
 
+// Notification text comes from the backend as plain strings mixing Arabic
+// with embedded times/dates/amounts (e.g. "سجّل حضور الساعة 7:56 PM") — left
+// as-is, the browser's bidi algorithm can visually reorder the English/
+// numeric chunk relative to the Arabic around it. This finds those chunks
+// and isolates them the same way ltrSpan does elsewhere in the report views.
+function fixNotifBidi(text) {
+  if (!text) return text;
+  return text
+    .replace(/\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?/g, function(m) { return ltrSpan(m); })
+    .replace(/\d{4}-\d{2}-\d{2}/g, function(m) { return ltrSpan(m); })
+    .replace(/EGP\s*[\d,.]+|[\d,.]+\s*EGP/g, function(m) { return ltrSpan(m); });
+}
+
 function notifItemHtml(n) {
   var icon = NOTIF_TYPE_ICON[n.type] || "🔔";
   var html = "<div class='notif-item" + (n.is_read ? "" : " unread") + "' onclick=\"onNotifClick(" + n.id + ")\">";
   html += "<div class='notif-item-main'>";
-  html += "<div class='notif-item-title'>" + (n.is_read ? "" : "<span class='notif-new-dot'></span>") + icon + " " + n.title + "</div>";
-  if (n.body) html += "<div class='notif-item-body'>" + n.body + "</div>";
+  html += "<div class='notif-item-title'>" + (n.is_read ? "" : "<span class='notif-new-dot'></span>") + icon + " " + fixNotifBidi(n.title) + "</div>";
+  if (n.body) html += "<div class='notif-item-body'>" + fixNotifBidi(n.body) + "</div>";
   html += "<div class='notif-item-time'>" + ltrSpan(n.created_at.slice(0,16)) + "</div>";
   html += "</div>";
   html += "<span class='notif-item-del' onclick=\"deleteNotification(event," + n.id + "," + (n.audience === "admin" ? "true" : "false") + ")\">✕</span>";
@@ -7761,6 +7784,7 @@ function navigateNotification(n) {
     if (user && user.role === "admin") {
       loadAdminData();
       ensureCollapsibleObserver("content-admin");
+      setTimeout(fixAdminStickyOffset, 50);
     }
     var targetSection = null;
     if (rt === "leave_request" || rt === "financial_request" || rt === "offclock_request" || rt === "permission_request" || rt === "task_deadline_request") {
