@@ -97,6 +97,14 @@ function cairoDateStr(date = new Date()) {
   const p = cairoParts(date);
   return `${p.y}-${p.m}-${p.d}`;
 }
+// Unified "current time, Cairo-local, for display" — was previously
+// duplicated as this exact expression 8 separate times throughout the
+// file. Accepts an optional Date so call sites that already had one on
+// hand (like signIn's `now`) can pass it through, keeping behavior
+// byte-for-byte identical to before this cleanup.
+function cairoTimeDisplay(date = new Date()) {
+  return date.toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+}
 function cairoHourMinute(date = new Date()) {
   const fmt = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
   const parts = fmt.formatToParts(date);
@@ -734,7 +742,7 @@ async function updateProfile(db, me, body) {
 async function signIn(db, me) {
   const today = cairoDateStr();
   const now = new Date();
-  const t = now.toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const t = cairoTimeDisplay(now);
   const fn = me.name.split(" ")[0];
   const res = await db.execute({
     sql: `INSERT INTO attendance (employee_id, date, action, time, first_name) VALUES (?,?,?,?,?) RETURNING *`,
@@ -780,7 +788,7 @@ async function signOut(db, me) {
   }
 
   const today = cairoDateStr();
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const t = cairoTimeDisplay();
   const fn = me.name.split(" ")[0];
 
   // figure out "worked" for this session, informational only
@@ -874,7 +882,7 @@ async function startBreak(db, me) {
     return json({ entry: openRes.rows[0] }, 200);
   }
 
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const t = cairoTimeDisplay();
   const fn = me.name.split(" ")[0];
   const res = await db.execute({
     sql: `INSERT INTO breaks (employee_id, date, start_time, first_name) VALUES (?,?,?,?) RETURNING *`,
@@ -889,7 +897,7 @@ async function endBreak(db, me, breakId) {
   const brk = rows.rows[0];
   if (!brk) return err("Break not found", 404);
   if (brk.end_time) return err("Break already ended", 409);
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const t = cairoTimeDisplay();
   const dur = Math.max(0, Math.floor((Date.now() - new Date(brk.created_at + "Z").getTime()) / 1000));
   await db.execute({ sql: "UPDATE breaks SET end_time = ?, duration = ? WHERE id = ?", args: [t, dur, breakId] });
   await notifyAdmins(db, "activity_break_end", "خلّص استراحة", me.name.split(" ")[0] + " خلّص استراحة (" + formatDuration(dur) + ")", "break", breakId);
@@ -924,7 +932,7 @@ async function addTask(db, me, body) {
   if (!proj) return err("المشروع ده مش موجود أو مش متاح حالياً", 400);
 
   const today = cairoDateStr();
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const t = cairoTimeDisplay();
   const fn = me.name.split(" ")[0];
   const displayName = taskProjectDisplay(proj);
   const res = await db.execute({
@@ -973,7 +981,7 @@ async function pauseTask(db, me, taskId) {
   if (task.end_time) return err("التاسك ده خلص بالفعل", 400);
   if (task.paused) return err("التاسك ده متوقف بالفعل", 400);
 
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const t = cairoTimeDisplay();
   const segRes = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1", args: [taskId] });
   if (segRes.rows[0]) {
     await db.execute({ sql: "UPDATE task_segments SET end_display = ?, ended_at = datetime('now') WHERE id = ?", args: [t, segRes.rows[0].id] });
@@ -1154,7 +1162,7 @@ async function resumeTask(db, me, taskId) {
   if (!(await isEmployeeSignedIn(db, me.id))) return err("لازم تسجل حضور الأول قبل ما تكمل أي تاسك", 409);
 
   const today = cairoDateStr();
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const t = cairoTimeDisplay();
   await db.execute({
     sql: `INSERT INTO task_segments (task_id, employee_id, date, start_display) VALUES (?,?,?,?)`,
     args: [taskId, me.id, today, t],
@@ -1168,7 +1176,7 @@ async function endTask(db, me, taskId, body) {
   const rows = await db.execute({ sql: "SELECT * FROM tasks WHERE id = ? AND employee_id = ?", args: [taskId, me.id] });
   const task = rows.rows[0];
   if (!task) return err("Task not found", 404);
-  const t = new Date().toLocaleTimeString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  const t = cairoTimeDisplay();
 
   const openSegRes = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1", args: [taskId] });
   if (openSegRes.rows[0]) {
@@ -1524,35 +1532,35 @@ async function runDeadlineChecks(db, employeeId) {
 
 async function runAdminWideChecks(db) {
   const nowMs = Date.now();
-  // Any employee's task deadline that's approaching/overdue — admins get
-  // their own copy of the same alert the employee gets.
-  const taskRes = await db.execute({
-    sql: `SELECT t.id, t.name, t.employee_id, t.deadline_at, e.name as emp_name FROM tasks t
-          JOIN employees e ON e.id = t.employee_id
-          WHERE t.deadline_at IS NOT NULL AND t.end_time IS NULL AND t.deleted_at IS NULL`,
-    args: [],
-  });
+  const [taskRes, attRes, adminsRes] = await Promise.all([
+    db.execute({
+      sql: `SELECT t.id, t.name, t.employee_id, t.deadline_at, e.name as emp_name FROM tasks t
+            JOIN employees e ON e.id = t.employee_id
+            WHERE t.deadline_at IS NOT NULL AND t.end_time IS NULL AND t.deleted_at IS NULL`,
+      args: [],
+    }),
+    db.execute({
+      sql: `SELECT a.*, e.name as emp_name FROM attendance a JOIN employees e ON e.id = a.employee_id
+            WHERE a.date >= ? ORDER BY a.employee_id ASC, a.created_at ASC`,
+      args: [addDaysToDateStr(cairoDateStr(), -14)],
+    }),
+    db.execute({ sql: "SELECT id FROM employees WHERE role = 'admin' AND is_active = 1", args: [] }),
+  ]);
+  const adminIds = adminsRes.rows.map((a) => a.id);
+  if (!adminIds.length) return;
+
+  // Gather every candidate notification in memory first (zero queries so
+  // far beyond the 3 above) — deadline checks, then long-session/unpaired
+  // sign-in checks, exactly the same detection logic as before.
+  const candidates = [];
   for (const t of taskRes.rows) {
     const hoursLeft = (new Date(t.deadline_at + "Z").getTime() - nowMs) / 3600000;
     if (hoursLeft < 0) {
-      if (await markIfNew(db, "admin_deadline_overdue||task:" + t.id)) {
-        await notifyAdmins(db, "deadline_overdue", "معاد تسليم فات", t.emp_name + " — تاسك \"" + t.name + "\" فات معاده", "task", t.id);
-      }
+      candidates.push({ checkKey: "admin_deadline_overdue||task:" + t.id, type: "deadline_overdue", title: "معاد تسليم فات", body: t.emp_name + " — تاسك \"" + t.name + "\" فات معاده", relatedType: "task", relatedId: t.id });
     } else if (hoursLeft <= DEADLINE_APPROACHING_HOURS) {
-      if (await markIfNew(db, "admin_deadline_approaching||task:" + t.id)) {
-        await notifyAdmins(db, "deadline_approaching", "معاد تسليم قرّب", t.emp_name + " — تاسك \"" + t.name + "\" باقي عليه أقل من يوم", "task", t.id);
-      }
+      candidates.push({ checkKey: "admin_deadline_approaching||task:" + t.id, type: "deadline_approaching", title: "معاد تسليم قرّب", body: t.emp_name + " — تاسك \"" + t.name + "\" باقي عليه أقل من يوم", relatedType: "task", relatedId: t.id });
     }
   }
-
-  // Long sessions / unpaired sign-ins — bounded to a recent window to keep
-  // this fast on every app open, same detection logic used in the report.
-  const sinceDate = addDaysToDateStr(cairoDateStr(), -14);
-  const attRes = await db.execute({
-    sql: `SELECT a.*, e.name as emp_name FROM attendance a JOIN employees e ON e.id = a.employee_id
-          WHERE a.date >= ? ORDER BY a.employee_id ASC, a.created_at ASC`,
-    args: [sinceDate],
-  });
   const byEmployee = {};
   for (const r of attRes.rows) { (byEmployee[r.employee_id] = byEmployee[r.employee_id] || []).push(r); }
   for (const empId in byEmployee) {
@@ -1560,22 +1568,48 @@ async function runAdminWideChecks(db) {
     for (const r of byEmployee[empId]) {
       if (r.action === "sign_in") {
         if (pendingIn) {
-          if (await markIfNew(db, "admin_unpaired_sign_in||attendance:" + pendingIn.id)) {
-            await notifyAdmins(db, "unpaired_sign_in", "تسجيل دخول من غير خروج مرتبط", r.emp_name + " — يوم " + pendingIn.date, "attendance", pendingIn.id);
-          }
+          candidates.push({ checkKey: "admin_unpaired_sign_in||attendance:" + pendingIn.id, type: "unpaired_sign_in", title: "تسجيل دخول من غير خروج مرتبط", body: r.emp_name + " — يوم " + pendingIn.date, relatedType: "attendance", relatedId: pendingIn.id });
         }
         pendingIn = r;
       } else if (r.action === "sign_out" && pendingIn) {
         const secs = Math.floor((new Date(r.created_at + "Z").getTime() - new Date(pendingIn.created_at + "Z").getTime()) / 1000);
         if (secs > LONG_SESSION_SECONDS) {
-          if (await markIfNew(db, "admin_long_attendance||attendance:" + pendingIn.id)) {
-            await notifyAdmins(db, "long_session", "جلسة حضور طويلة", r.emp_name + " — يوم " + pendingIn.date + " (" + (secs / 3600).toFixed(1) + " ساعة)", "attendance", pendingIn.id);
-          }
+          candidates.push({ checkKey: "admin_long_attendance||attendance:" + pendingIn.id, type: "long_session", title: "جلسة حضور طويلة", body: r.emp_name + " — يوم " + pendingIn.date + " (" + (secs / 3600).toFixed(1) + " ساعة)", relatedType: "attendance", relatedId: pendingIn.id });
         }
         pendingIn = null;
       }
     }
   }
+  if (!candidates.length) return;
+
+  // ONE query to see which of these were already notified before (instead
+  // of one INSERT-and-catch-duplicate attempt per candidate).
+  const placeholders = candidates.map(() => "?").join(",");
+  const existingRes = await db.execute({
+    sql: `SELECT check_key FROM notification_time_checks WHERE check_key IN (${placeholders})`,
+    args: candidates.map((c) => c.checkKey),
+  });
+  const existingKeys = new Set(existingRes.rows.map((r) => r.check_key));
+  const newOnes = candidates.filter((c) => !existingKeys.has(c.checkKey));
+  if (!newOnes.length) return;
+
+  // ONE batched insert for the check markers, and ONE batched insert for
+  // every (candidate × admin) notification row — total stays at 2 queries
+  // here no matter how many candidates or admins there are.
+  const checkValuesSql = newOnes.map(() => "(?)").join(",");
+  await db.execute({ sql: `INSERT INTO notification_time_checks (check_key) VALUES ${checkValuesSql}`, args: newOnes.map((c) => c.checkKey) });
+
+  const notifRows = [];
+  for (const c of newOnes) {
+    for (const adminId of adminIds) {
+      notifRows.push([adminId, c.type, c.title, c.body, c.relatedType, c.relatedId, "admin"]);
+    }
+  }
+  const notifValuesSql = notifRows.map(() => "(?,?,?,?,?,?,?)").join(",");
+  await db.execute({
+    sql: `INSERT INTO notifications (recipient_id, type, title, body, related_type, related_id, audience) VALUES ${notifValuesSql}`,
+    args: notifRows.flat(),
+  });
 }
 
 async function dayDetail(db, employeeId, date) {
@@ -1663,6 +1697,17 @@ async function dayDetail(db, employeeId, date) {
   });
 }
 
+// Shared by both branches in applyDayEdits below — was duplicated
+// identically in each: validates the date format and hour range, then
+// computes the UTC storage value and Cairo-local display string for it.
+function validateDayEditTime(targetDate, hour, minute) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return { ok: false, error: "تاريخ غير صحيح" };
+  if (!(Number(hour) >= 0 && Number(hour) <= 23)) return { ok: false, error: "ساعة غير صحيحة" };
+  const newUtc = cairoLocalToUtcStringPrecise(targetDate, hour, minute || 0);
+  const displayTime = new Date(newUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+  return { ok: true, newUtc, displayTime };
+}
+
 async function applyDayEdits(db, admin, employeeId, date, edits, note) {
   if (!Array.isArray(edits) || !edits.length) return err("مفيش تعديلات");
   const empRow = await db.execute({ sql: "SELECT name FROM employees WHERE id = ?", args: [employeeId] });
@@ -1677,6 +1722,11 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
   const queueLog = (editType, recordId, fieldName, oldValue, newValue) => {
     logQueue.push([employeeId, date, editType, recordId, fieldName, oldValue, newValue, note || null, admin.id]);
   };
+  // task_segment edits recompute their task's total duration from ALL its
+  // segments — if a batch touches several segments of the same task, doing
+  // that recompute after every single one is wasted work (only the FINAL
+  // state matters). Deferred to run once per unique task after the loop.
+  const touchedTaskIds = new Set();
 
   for (const ed of edits) {
     const action = ed.action || "edit";
@@ -1705,10 +1755,9 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
 
     if (ed.type === "attendance") {
       const targetDate = ed.date || date;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return err("تاريخ غير صحيح");
-      if (!(Number(ed.hour) >= 0 && Number(ed.hour) <= 23)) return err("ساعة غير صحيحة");
-      const newUtc = cairoLocalToUtcStringPrecise(targetDate, ed.hour, ed.minute || 0);
-      const displayTime = new Date(newUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+      const tv = validateDayEditTime(targetDate, ed.hour, ed.minute);
+      if (!tv.ok) return err(tv.error);
+      const { newUtc, displayTime } = tv;
 
       if (action === "add") {
         const actionType = ed.attendance_action === "sign_out" ? "sign_out" : "sign_in";
@@ -1726,10 +1775,9 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       }
     } else if (ed.type === "task_segment") {
       const targetDate = ed.date || date;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return err("تاريخ غير صحيح");
-      if (!(Number(ed.hour) >= 0 && Number(ed.hour) <= 23)) return err("ساعة غير صحيحة");
-      const newUtc = cairoLocalToUtcStringPrecise(targetDate, ed.hour, ed.minute || 0);
-      const displayTime = new Date(newUtc + "Z").toLocaleString("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+      const tv2 = validateDayEditTime(targetDate, ed.hour, ed.minute);
+      if (!tv2.ok) return err(tv2.error);
+      const { newUtc, displayTime } = tv2;
 
       const cur = await db.execute({ sql: "SELECT * FROM task_segments WHERE id = ? AND employee_id = ?", args: [ed.record_id, employeeId] });
       const row = cur.rows[0];
@@ -1743,10 +1791,7 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
       args.push(ed.record_id);
       await db.execute({ sql, args });
       queueLog("task_segment", ed.record_id, ed.field === "end" ? "segment_end" : "segment_start", row[field], newUtc);
-      const segs = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ?", args: [row.task_id] });
-      let total = 0;
-      for (const s of segs.rows) { if (s.ended_at) total += Math.max(0, Math.floor((new Date(s.ended_at + "Z").getTime() - new Date(s.created_at + "Z").getTime()) / 1000)); }
-      await db.execute({ sql: "UPDATE tasks SET duration = ? WHERE id = ?", args: [total, row.task_id] });
+      touchedTaskIds.add(row.task_id);
     } else if (ed.type === "new_task") {
       const missing = requireFields(ed, ["project_id", "name", "start_date", "start_hour", "end_date", "end_hour"]);
       if (missing) return err(`Missing field for new task: ${missing}`);
@@ -1802,6 +1847,13 @@ async function applyDayEdits(db, admin, employeeId, date, edits, note) {
     } else {
       return err("نوع تعديل غير معروف");
     }
+  }
+
+  for (const taskId of touchedTaskIds) {
+    const segs = await db.execute({ sql: "SELECT * FROM task_segments WHERE task_id = ?", args: [taskId] });
+    let total = 0;
+    for (const s of segs.rows) { if (s.ended_at) total += Math.max(0, Math.floor((new Date(s.ended_at + "Z").getTime() - new Date(s.created_at + "Z").getTime()) / 1000)); }
+    await db.execute({ sql: "UPDATE tasks SET duration = ? WHERE id = ?", args: [total, taskId] });
   }
 
   if (logQueue.length) {
