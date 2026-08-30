@@ -2460,6 +2460,32 @@ function initNotifications() {
       adminPanel.classList.remove("open");
     }
   });
+  startLiveAdminRefresh();
+}
+
+// Lightweight, frequent refresh for "live" admin views — separate from the
+// heavier loadAdminData() (which fetches 5 different things and should
+// only run on tab switch, not every few seconds). Only actually fetches
+// while the admin is on the admin tab AND the specific section is the one
+// currently open, so it stays cheap when not being watched.
+var liveAdminRefreshInterval = null;
+function startLiveAdminRefresh() {
+  clearInterval(liveAdminRefreshInterval);
+  liveAdminRefreshInterval = setInterval(function() {
+    if (!user || user.role !== "admin") return;
+    var adminTabActive = document.getElementById("content-admin").classList.contains("active");
+    if (!adminTabActive) return;
+    var overviewPageActive = document.getElementById("admin-page-overview") && document.getElementById("admin-page-overview").classList.contains("active");
+    if (!overviewPageActive) return;
+    refreshEmpStatusOnly();
+  }, 10000);
+}
+async function refreshEmpStatusOnly() {
+  try {
+    var res = await apiRequest("/api/admin/employees/status", "GET");
+    empStatuses = res.statuses || [];
+    renderEmpStatus();
+  } catch (e) { /* non-fatal — silent, next tick will just try again */ }
 }
 
 function startClock() {
