@@ -3683,6 +3683,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   }
 
   if (path === "/api/admin/set-role" && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
     const missing = requireFields(body, ["employee_id", "role"]);
     if (missing) return err(`Missing field: ${missing}`);
     if (!["employee", "admin"].includes(body.role)) return err("invalid role");
