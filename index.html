@@ -5034,7 +5034,7 @@ function showRoleStatus() {
   btnEl.textContent = isAdmin ? "REMOVE ADMIN · إلغاء صلاحية الأدمن" : "MAKE ADMIN · ترقية لأدمن";
 }
 
-async function toggleAdminRole() {
+function toggleAdminRole() {
   var id = document.getElementById("roleEmployee").value;
   var emp = adminEmployees.find(function(e) { return String(e.id) === String(id); });
   if (!emp) { showToast("!", "اختار موظف"); return; }
@@ -5043,9 +5043,15 @@ async function toggleAdminRole() {
     showToast("!", "منقدرش تشيل صلاحية الأدمن بتاعتك انت نفسك");
     return;
   }
+  var confirmMsg = newRole === "admin" ? "هيتترقّى لأدمن وهيقدر يشوف ويعدّل كل حاجة في النظام. ادخل كود الأمان:" : "هتتشال منه صلاحية الأدمن. ادخل كود الأمان:";
+  openPinModal(newRole === "admin" ? "MAKE ADMIN · ترقية لأدمن" : "REMOVE ADMIN · إلغاء صلاحية الأدمن", confirmMsg, function(pin) {
+    executeToggleAdminRole(id, newRole, pin);
+  });
+}
+async function executeToggleAdminRole(id, newRole, pin) {
   showLoading(true);
   try {
-    await apiRequest("/api/admin/set-role", "POST", { employee_id: id, role: newRole });
+    await apiRequest("/api/admin/set-role", "POST", { employee_id: id, role: newRole, pin: pin });
     showToast("v", newRole === "admin" ? "تمت الترقية لأدمن" : "تم إلغاء صلاحية الأدمن");
     await refreshEmployeesOnly();
   } catch(e) { showToast("!", e.message); }
