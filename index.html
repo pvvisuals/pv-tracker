@@ -1055,6 +1055,7 @@ textarea{resize:vertical;min-height:76px;}
 </div>
 </div>
 <div id="employeeFullInfoDisplay" style="margin-top:14px"></div>
+<button class="btn-add" id="editEmployeeInfoBtn" style="margin-top:10px;display:none" onclick="openEditEmployeeInfoModal()">✎ EDIT INFO · تعديل البيانات الأساسية</button>
 
 <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border);">
 <div class="settings-label">Reset Password <span class="fla">إعادة تعيين كلمة المرور</span></div>
@@ -1886,6 +1887,39 @@ textarea{resize:vertical;min-height:76px;}
 <div id="dayAnomalyContent" style="max-height:55vh;overflow-y:auto"></div>
 <div class="modal-actions">
 <button class="btn-mc" onclick="closeDayAnomalyModal()">Close · إغلاق</button>
+</div>
+</div>
+</div>
+<div class="modal-overlay" id="editEmployeeInfoModalOverlay">
+<div class="modal">
+<h3>EDIT EMPLOYEE INFO · تعديل بيانات الموظف</h3>
+<div class="fg">
+<div class="fl">Employee Code <span class="fla">كود الموظف</span></div>
+<input type="text" id="eeiEmpCode"/>
+</div>
+<div class="fg">
+<div class="fl">Name <span class="fla">الاسم</span></div>
+<input type="text" id="eeiName"/>
+</div>
+<div class="fg">
+<div class="fl">Phone <span class="fla">الهاتف</span></div>
+<input type="text" id="eeiPhone"/>
+</div>
+<div class="fg">
+<div class="fl">Title <span class="fla">الوظيفة</span></div>
+<input type="text" id="eeiTitle"/>
+</div>
+<div class="fg">
+<div class="fl">Department <span class="fla">القسم</span></div>
+<input type="text" id="eeiDept"/>
+</div>
+<div class="fg">
+<div class="fl">Birth Date <span class="fla">تاريخ الميلاد</span></div>
+<input type="date" id="eeiBirthDate"/>
+</div>
+<div class="modal-actions">
+<button class="btn-mc" onclick="closeEditEmployeeInfoModal()">Cancel · إلغاء</button>
+<button class="btn-mo" onclick="submitEditEmployeeInfo()">Save · حفظ</button>
 </div>
 </div>
 </div>
@@ -5104,6 +5138,8 @@ async function showEmployeeFullInfo() {
   try {
     var res = await apiRequest("/api/admin/employees/" + id + "/full", "GET");
     var e = res.employee;
+    currentFullInfoEmployee = e;
+    document.getElementById("editEmployeeInfoBtn").style.display = "inline-block";
     var html =
       "<div class='profile-row'><span class='profile-key'>Emp Code</span><span class='profile-val'>#" + e.emp_code + "</span></div>" +
       "<div class='profile-row'><span class='profile-key'>Name</span><span class='profile-val'>" + e.name + "</span></div>" +
@@ -5153,6 +5189,53 @@ async function showEmployeeFullInfo() {
     }
 
     document.getElementById("employeeFullInfoDisplay").innerHTML = html;
+  } catch(e) { showToast("!", e.message); }
+  showLoading(false);
+}
+
+function openEditEmployeeInfoModal() {
+  if (!currentFullInfoEmployee) return;
+  var e = currentFullInfoEmployee;
+  document.getElementById("eeiEmpCode").value = e.emp_code || "";
+  document.getElementById("eeiName").value = e.name || "";
+  document.getElementById("eeiPhone").value = e.phone || "";
+  document.getElementById("eeiTitle").value = e.title || "";
+  document.getElementById("eeiDept").value = e.dept || "";
+  document.getElementById("eeiBirthDate").value = e.birth_date || "";
+  document.getElementById("editEmployeeInfoModalOverlay").classList.add("active");
+}
+function closeEditEmployeeInfoModal() {
+  document.getElementById("editEmployeeInfoModalOverlay").classList.remove("active");
+}
+function submitEditEmployeeInfo() {
+  var name = document.getElementById("eeiName").value.trim();
+  var empCode = document.getElementById("eeiEmpCode").value.trim();
+  if (!name) { showToast("!", "الاسم مينفعش يبقى فاضي"); return; }
+  if (!empCode) { showToast("!", "كود الموظف مينفعش يبقى فاضي"); return; }
+  var payload = {
+    emp_code: empCode,
+    name: name,
+    phone: document.getElementById("eeiPhone").value.trim(),
+    title: document.getElementById("eeiTitle").value.trim(),
+    dept: document.getElementById("eeiDept").value.trim(),
+    birth_date: document.getElementById("eeiBirthDate").value || null,
+  };
+  document.getElementById("editEmployeeInfoModalOverlay").classList.remove("active"); // hide first, keep currentFullInfoEmployee
+  openPinModal("CONFIRM EDIT · تأكيد التعديل", "هيتحدّث بيانات " + name + " فوراً في كل النظام. ادخل كود الأمان:", function(pin) {
+    if (!pin) { showToast("!", "لازم تدخل كود الأمان"); document.getElementById("editEmployeeInfoModalOverlay").classList.add("active"); return; }
+    executeEditEmployeeInfo(payload, pin);
+  });
+}
+async function executeEditEmployeeInfo(payload, pin) {
+  showLoading(true);
+  try {
+    var empId = currentFullInfoEmployee.id;
+    payload.pin = pin;
+    await apiRequest("/api/admin/employees/" + empId + "/edit-info", "POST", payload);
+    showToast("v", "تم تحديث البيانات");
+    document.getElementById("infoEmployee").value = empId;
+    await showEmployeeFullInfo();
+    await refreshEmployeesOnly();
   } catch(e) { showToast("!", e.message); }
   showLoading(false);
 }
@@ -5241,6 +5324,7 @@ function utcToCairo24Time(utcStr) {
 }
 
 var currentDayEditEmployeeId = null, currentDayEditDate = null, currentDayEditData = null;
+var currentFullInfoEmployee = null;
 
 async function openDayEditModal(employeeId, date) {
   currentDayEditEmployeeId = employeeId;
