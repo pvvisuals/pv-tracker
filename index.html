@@ -5795,6 +5795,7 @@ async function loadClients() {
     if (typeof renderAdminProjects === "function") renderAdminProjects();
   } catch(e) { /* non-fatal */ }
   loadClientTypes();
+  loadClientGovernorates();
 }
 
 async function loadClientTypes() {
@@ -5818,7 +5819,6 @@ async function loadClientTypes() {
       if (cur) filterSel.value = cur;
     }
   } catch(e) { /* non-fatal */ }
-  loadClientGovernorates();
 }
 
 async function loadClientGovernorates() {
