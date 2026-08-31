@@ -1362,10 +1362,10 @@ textarea{resize:vertical;min-height:76px;}
 <select id="clFilterRating" onchange="renderClientsList()">
 <option value="">-- All Ratings · كل التقييمات --</option>
 <option value="5">⭐⭐⭐⭐⭐ 5</option>
-<option value="4">⭐⭐⭐⭐ 4+</option>
-<option value="3">⭐⭐⭐ 3+</option>
-<option value="2">⭐⭐ 2+</option>
-<option value="1">⭐ 1+</option>
+<option value="4">⭐⭐⭐⭐ 4</option>
+<option value="3">⭐⭐⭐ 3</option>
+<option value="2">⭐⭐ 2</option>
+<option value="1">⭐ 1</option>
 </select>
 </div>
 <div class="form-row">
@@ -5899,7 +5899,7 @@ function renderClientsList() {
   var filtered = adminClients.filter(function(c) {
     if (codeFilter && c.client_code.indexOf(codeFilter) === -1) return false;
     if (typeFilter && c.client_type !== typeFilter) return false;
-    if (ratingFilter && (Number(c.rating) || 0) < ratingFilter) return false;
+    if (ratingFilter && (Number(c.rating) || 0) !== ratingFilter) return false;
     if (govFilter && c.governorate !== govFilter) return false;
     if (cityFilter && c.city_area !== cityFilter) return false;
     return true;
