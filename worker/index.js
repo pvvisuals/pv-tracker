@@ -2884,6 +2884,55 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
   }
 
   // ---------- per-employee salary config ----------
+  // Basic profile fields only (name/phone/title/dept/birth_date) — salary,
+  // leave balances, and admin role each have their OWN dedicated, more
+  // careful edit paths elsewhere (salary_history, leave adjustments,
+  // set-role) and are deliberately NOT touched here, so this can't ever
+  // conflict with or bypass those.
+  const editInfoMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/edit-info$/);
+  if (editInfoMatch && method === "POST") {
+    if (!pinOk(body)) return err("كود الأمان غلط", 403);
+    const empId = Number(editInfoMatch[1]);
+    const cur = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [empId] });
+    const existing = cur.rows[0];
+    if (!existing) return err("Employee not found", 404);
+
+    const fields = [];
+    const args = [];
+    if (body.emp_code !== undefined) {
+      const trimmedCode = String(body.emp_code).trim();
+      if (!trimmedCode) return err("كود الموظف مينفعش يبقى فاضي");
+      if (trimmedCode !== existing.emp_code) {
+        const dupCheck = await db.execute({ sql: "SELECT id FROM employees WHERE emp_code = ? AND id != ?", args: [trimmedCode, empId] });
+        if (dupCheck.rows.length) return err("كود الموظف ده مستخدم بالفعل عند موظف تاني — اختار كود مختلف", 409);
+      }
+      fields.push("emp_code = ?"); args.push(trimmedCode);
+    }
+    if (body.name !== undefined) {
+      const trimmed = String(body.name).trim();
+      if (!trimmed) return err("الاسم مينفعش يبقى فاضي");
+      fields.push("name = ?"); args.push(trimmed);
+    }
+    if (body.phone !== undefined) { fields.push("phone = ?"); args.push(String(body.phone).trim() || null); }
+    if (body.title !== undefined) { fields.push("title = ?"); args.push(String(body.title).trim() || null); }
+    if (body.dept !== undefined) { fields.push("dept = ?"); args.push(String(body.dept).trim() || null); }
+    if (body.birth_date !== undefined) { fields.push("birth_date = ?"); args.push(body.birth_date || null); }
+    if (!fields.length) return err("مفيش بيانات للتحديث");
+
+    args.push(empId);
+    await db.execute({ sql: `UPDATE employees SET ${fields.join(", ")} WHERE id = ?`, args });
+
+    // The employee's "first name" is copied into attendance/task/break rows
+    // at the moment each one is created, purely for fast display — like
+    // salary_history, those historical copies are intentionally left as
+    // they were, not rewritten. Everywhere else (admin lists, reports,
+    // notifications) reads the name live from this table, so it reflects
+    // the change immediately with nothing further to update.
+    const updatedRes = await db.execute({ sql: "SELECT * FROM employees WHERE id = ?", args: [empId] });
+    const salaryMap = await getCurrentSalaryMap(db, [empId]);
+    return json({ employee: adminEmployeeView(updatedRes.rows[0], salaryMap[empId]) });
+  }
+
   const salaryMatch = path.match(/^\/api\/admin\/employees\/(\d+)\/salary$/);
   // ---------- salary history: scheduled raises/changes, one entry per
   // effective month. A future month just sits here until the calendar
