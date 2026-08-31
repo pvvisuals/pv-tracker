@@ -3469,9 +3469,9 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       return json({ client: updated.rows[0] });
     }
     const res = await db.execute({
-      sql: `INSERT INTO clients (client_code, client_name, client_type, entity_type, address, instagram_url, facebook_url, website_url, phone, contact_person_name, contact_person_title, rating, created_by)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
-      args: [code, fields.client_name, fields.client_type, fields.entity_type, fields.address, fields.instagram_url, fields.facebook_url, fields.website_url, fields.phone, fields.contact_person_name, fields.contact_person_title, fields.rating, admin.id],
+      sql: `INSERT INTO clients (client_code, client_name, client_type, entity_type, address, governorate, city_area, instagram_url, facebook_url, website_url, phone, contact_person_name, contact_person_title, rating, created_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+      args: [code, fields.client_name, fields.client_type, fields.entity_type, fields.address, fields.governorate, fields.city_area, fields.instagram_url, fields.facebook_url, fields.website_url, fields.phone, fields.contact_person_name, fields.contact_person_title, fields.rating, admin.id],
     });
     return json({ client: res.rows[0] }, 201);
   }
