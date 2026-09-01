@@ -765,6 +765,7 @@ async function signIn(db, me) {
         args: [me.id, today, t],
       });
       lateArrival = laRes.rows[0];
+      await createNotification(db, me.id, "late_arrival", "اتسجّل تأخير", "وصلت الساعة " + t + " — الإدارة هتراجعها", "attendance", laRes.rows[0].id);
     } else {
       lateArrival = existing.rows[0];
     }
@@ -2144,6 +2145,7 @@ async function monthlyReport(db, employeeId, monthStr) {
   // span many months at once, so there's no single correct historical rate
   // to apply — current rate is used there as the only sensible fallback.
   const reportRateLookup = await buildSalaryRateLookup(db, [employeeId]);
+  const reportBaseSalaryLookup = await buildBaseSalaryLookup(db, [employeeId]);
   const rate = isAllMonths ? hourlyRate(emp) : reportRateLookup(employeeId, `${year}-${String(month).padStart(2, "0")}`);
   const financialTotalEGP = finRows.rows.reduce((s, r) => s + Number(r.amount_egp), 0);
   const financialHours = rate > 0 ? financialTotalEGP / rate : 0;
@@ -2183,7 +2185,7 @@ async function monthlyReport(db, employeeId, monthStr) {
   const requiredHours = +(requiredSeconds / 3600).toFixed(2);
   const countedHoursFinal = +(totalCountedSeconds / 3600).toFixed(2);
   const hoursDiff = +(countedHoursFinal - requiredHours).toFixed(2);
-  const baseSalary = Number(emp.monthly_salary) || 0;
+  const baseSalary = isAllMonths ? (Number(emp.monthly_salary) || 0) : reportBaseSalaryLookup(employeeId, `${year}-${String(month).padStart(2, "0")}`);
   const salaryAdjustment = +(hoursDiff * rate).toFixed(2);
   const finalSalary = +(baseSalary + salaryAdjustment + bonusesTotalEGP - penaltiesTotalEGP).toFixed(2);
 
@@ -2408,6 +2410,36 @@ async function buildSalaryRateLookup(db, employeeIds) {
       if (h.effective_month <= monthStr) best = h; else break;
     }
     return hourlyRate({ monthly_salary: best.monthly_salary, work_days_per_month: best.work_days_per_month, daily_work_hours: best.daily_work_hours });
+  };
+}
+
+// Same historical resolution as buildSalaryRateLookup above, but returns the
+// raw monthly_salary figure instead of the derived hourly rate — used for
+// the report's "Base Salary" / "Final Salary" figures, which need the
+// actual EGP amount that was on record for the reported month, not just
+// its hourly equivalent. A separate function so buildSalaryRateLookup's
+// existing return contract (a plain rate number) stays unchanged for its
+// other caller (projectCostReportData).
+async function buildBaseSalaryLookup(db, employeeIds) {
+  if (!employeeIds.length) return () => 0;
+  const placeholders = employeeIds.map(() => "?").join(",");
+  const res = await db.execute({
+    sql: `SELECT * FROM salary_history WHERE employee_id IN (${placeholders}) ORDER BY employee_id ASC, effective_month ASC`,
+    args: employeeIds,
+  });
+  const byEmployee = {};
+  for (const r of res.rows) {
+    if (!byEmployee[r.employee_id]) byEmployee[r.employee_id] = [];
+    byEmployee[r.employee_id].push(r);
+  }
+  return function baseSalaryForEmployeeMonth(employeeId, monthStr) {
+    const history = byEmployee[employeeId];
+    if (!history || !history.length) return 0;
+    let best = history[0];
+    for (const h of history) {
+      if (h.effective_month <= monthStr) best = h; else break;
+    }
+    return Number(best.monthly_salary) || 0;
   };
 }
 
@@ -3211,6 +3243,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       sql: "UPDATE late_arrivals SET status = 'excused', decided_by = ?, decided_at = datetime('now') WHERE id = ?",
       args: [admin.id, laId],
     });
+    await createNotification(db, cur.rows[0].employee_id, "late_arrival_decided", "اتسمح لك في التأخير", "تأخيرة يوم " + cur.rows[0].date + " اتسمح فيها من غير خصم", "attendance", laId);
     return json({ ok: true });
   }
   const latePenalizeMatch = path.match(/^\/api\/admin\/late-arrivals\/(\d+)\/penalize$/);
@@ -3235,6 +3268,7 @@ async function handleAdmin(db, admin, path, method, body, url, env) {
       sql: "UPDATE late_arrivals SET status = 'penalized', penalty_id = ?, decided_by = ?, decided_at = datetime('now') WHERE id = ?",
       args: [penRes.rows[0].id, admin.id, laId],
     });
+    await createNotification(db, la.employee_id, "late_arrival_decided", "اتخصم عليك بسبب التأخير", "تأخيرة يوم " + la.date + " — خصم " + amountEGP.toFixed(2) + " EGP", "attendance", laId);
     return json({ ok: true, penalty: penRes.rows[0] });
   }
   const lateEditMatch = path.match(/^\/api\/admin\/late-arrivals\/(\d+)\/reset$/);
