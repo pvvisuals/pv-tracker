@@ -766,6 +766,7 @@ async function signIn(db, me) {
       });
       lateArrival = laRes.rows[0];
       await createNotification(db, me.id, "late_arrival", "اتسجّل تأخير", "وصلت الساعة " + t + " — الإدارة هتراجعها", "attendance", laRes.rows[0].id);
+      await notifyAdmins(db, "late_arrival", "تأخير جديد محتاج قرار", fn + " وصل متأخر الساعة " + t, "late_arrival", laRes.rows[0].id);
     } else {
       lateArrival = existing.rows[0];
     }
