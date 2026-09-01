@@ -7877,6 +7877,8 @@ function navigateNotification(n) {
     var targetSection = null;
     if (rt === "leave_request" || rt === "financial_request" || rt === "offclock_request" || rt === "permission_request" || rt === "task_deadline_request") {
       targetSection = "section-requests";
+    } else if (rt === "late_arrival") {
+      targetSection = "section-late-arrivals-title";
     } else if (n.type === "deadline_overdue" || n.type === "deadline_approaching") {
       targetSection = "section-delivery-status";
     } else if (n.type === "activity_task_start" || n.type === "activity_task_end") {
