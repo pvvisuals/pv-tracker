@@ -1312,7 +1312,11 @@ async function myLeaveRequests(db, me, monthStr) {
   });
   return json({
     requests: res.rows,
-    balance: { casual: me.casual_balance, annual: me.annual_balance, sick: me.sick_balance },
+    balance: {
+      casual: (Number(me.casual_balance) || 0) + (Number(me.casual_extra_used) || 0),
+      annual: (Number(me.annual_balance) || 0) + (Number(me.annual_extra_used) || 0),
+      sick: me.sick_balance,
+    },
   });
 }
 
@@ -2326,7 +2330,11 @@ async function monthlyReport(db, employeeId, monthStr) {
       bonuses_total_egp: +bonusesTotalEGP.toFixed(2),
       final_salary: finalSalary,
     },
-    leave_balance: { casual: emp.casual_balance, annual: emp.annual_balance, sick: emp.sick_balance },
+    leave_balance: {
+      casual: (Number(emp.casual_balance) || 0) + (Number(emp.casual_extra_used) || 0),
+      annual: (Number(emp.annual_balance) || 0) + (Number(emp.annual_extra_used) || 0),
+      sick: emp.sick_balance,
+    },
     project_hours: buildProjectHoursByType(projectRows.rows),
   });
 }
