@@ -4120,9 +4120,11 @@ async function adminEmployeesStatus(db) {
       for (const a of attRows) {
         if (a.action === "sign_in") pin = a;
         else if (a.action === "sign_out" && pin) {
-          const inMs = new Date(pin.created_at + "Z").getTime();
-          const outMs = new Date(a.created_at + "Z").getTime();
-          if (outMs > inMs) totalSecs += Math.floor((outMs - inMs) / 1000);
+          if (a.date === today) {
+            const inMs = new Date(pin.created_at + "Z").getTime();
+            const outMs = new Date(a.created_at + "Z").getTime();
+            if (outMs > inMs) totalSecs += Math.floor((outMs - inMs) / 1000);
+          }
           pin = null;
         }
       }
